@@ -20,6 +20,21 @@
     burger.setAttribute("aria-expanded", String(open));
   });
 
+  // ---- каталог в меню (плитки групп) ----
+  const cat = $(".nav-cat"), mega = $("#mega");
+  const setMega = open => { mega.hidden = !open; cat.setAttribute("aria-expanded", String(open)); };
+  if (cat && mega) {
+    cat.addEventListener("click", ev => { ev.stopPropagation(); setMega(mega.hidden); });
+    document.addEventListener("click", ev => { if (!mega.hidden && !mega.contains(ev.target)) setMega(false); });
+    document.addEventListener("keydown", ev => { if (ev.key === "Escape") setMega(false); });
+  }
+
+  // ---- «Заказать звонок» ----
+  const dlg = $("#callback");
+  $$("[data-callback]").forEach(b => b.addEventListener("click", () => dlg?.showModal()));
+  $("[data-close]")?.addEventListener("click", () => dlg.close());
+  dlg?.addEventListener("click", ev => { if (ev.target === dlg) dlg.close(); });
+
   // ---- карточка товара ----
   const main = $("[data-main]");
   $$(".thumbs button").forEach(b => b.addEventListener("click", () => {
@@ -66,8 +81,10 @@
     chips("[data-chips-p]", "fp", v => fp = v);
     chips("[data-chips-g]", "fg", v => fg = v);
     search.addEventListener("input", apply);
-    const u = new URLSearchParams(location.search).get("q");
-    if (u) { search.value = u; apply(); }
+    const qs = new URLSearchParams(location.search);
+    if (qs.get("q")) search.value = qs.get("q");
+    const g0 = qs.get("g") && $(`[data-chips-g] button[data-fg="${CSS.escape(qs.get("g"))}"]`);
+    if (g0) g0.click(); else if (qs.get("q")) apply();
   }
 
   // ---- страница сметы ----
