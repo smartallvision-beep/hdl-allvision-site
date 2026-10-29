@@ -59,32 +59,68 @@
     setTimeout(() => { add.textContent = "В смету"; }, 1600);
   });
 
-  // ---- фильтр каталога ----
+  // ---- «В смету» прямо с карточки в сетке ----
+  document.addEventListener("click", ev => {
+    const b = ev.target.closest("[data-add-card]"); if (!b) return;
+    const s = load(); s[b.dataset.addCard] = (s[b.dataset.addCard] || 0) + 1; save(s);
+    b.textContent = "✓ В смете"; b.classList.add("done");
+    setTimeout(() => { b.textContent = "В смету"; b.classList.remove("done"); }, 1600);
+  });
+
+  // ---- каталог: галочки (система, группа), поиск, сортировка, плитка/список ----
   const search = $("[data-search]");
   if (search) {
-    let fp = "", fg = "";
-    const cards = $$(".grid .card");
-    const found = $("[data-found]");
-    const apply = () => {
+    const grid = $(".cat-main .grid"), cards = $$(".card", grid);
+    const found = $("[data-found]"), title = $("[data-cat-title]"), empty = $("[data-empty]");
+    const intro = found.textContent, title0 = title.textContent;
+    const boxes = n => $$(`.cat-side input[name=${n}]`);
+    const checked = n => boxes(n).filter(x => x.checked).map(x => x.value);
+    const label = x => x.parentElement.querySelector("span").textContent;
+    const plural = (n, a, b, c) => { const m10 = n % 10, m100 = n % 100; return n + " " + (m10 === 1 && m100 !== 11 ? a : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? b : c); };
+    const apply = (push = true) => {
+      const ps = checked("p"), gs = checked("g");
       const q = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const okQ = c => q.every(w => c.dataset.q.includes(w));
       let n = 0;
       cards.forEach(c => {
-        const ok = (!fp || c.dataset.p === fp) && (!fg || c.dataset.g === fg) && q.every(w => c.dataset.q.includes(w));
+        const ok = (!ps.length || ps.includes(c.dataset.p)) && (!gs.length || gs.includes(c.dataset.g)) && okQ(c);
         c.hidden = !ok; if (ok) n++;
       });
-      found.textContent = n === cards.length ? "" : `Найдено: ${n}`;
+      // счётчики у галочек — сколько будет, если отметить ещё и эту
+      boxes("p").forEach(x => x.parentElement.querySelector("em").textContent = cards.filter(c => c.dataset.p === x.value && (!gs.length || gs.includes(c.dataset.g)) && okQ(c)).length);
+      boxes("g").forEach(x => x.parentElement.querySelector("em").textContent = cards.filter(c => c.dataset.g === x.value && (!ps.length || ps.includes(c.dataset.p)) && okQ(c)).length);
+      const gl = boxes("g").filter(x => x.checked).map(label), pl = boxes("p").filter(x => x.checked).map(label);
+      title.textContent = gl.length === 1 ? gl[0] + (pl.length === 1 ? " " + pl[0] : "") : pl.length === 1 && !gl.length ? pl[0] : title0;
+      found.textContent = n === cards.length ? intro : "Найдено: " + plural(n, "позиция", "позиции", "позиций");
+      empty.hidden = n > 0;
+      if (push) {
+        const u = new URLSearchParams();
+        if (search.value.trim()) u.set("q", search.value.trim());
+        ps.forEach(v => u.append("p", v)); gs.forEach(v => u.append("g", v));
+        history.replaceState(null, "", location.pathname + (u.toString() ? "?" + u : ""));
+      }
     };
-    const chips = (sel, attr, set) => $$(sel + " button").forEach(b => b.addEventListener("click", () => {
-      $$(sel + " button").forEach(x => x.setAttribute("aria-pressed", "false"));
-      b.setAttribute("aria-pressed", "true"); set(b.dataset[attr]); apply();
-    }));
-    chips("[data-chips-p]", "fp", v => fp = v);
-    chips("[data-chips-g]", "fg", v => fg = v);
-    search.addEventListener("input", apply);
+    $$(".cat-side input").forEach(x => x.addEventListener("change", () => apply()));
+    search.addEventListener("input", () => apply());
+    $("[data-reset]").addEventListener("click", () => { $$(".cat-side input").forEach(x => x.checked = false); search.value = ""; apply(); });
+    // сортировка
+    $("[data-sort]").addEventListener("change", ev => {
+      const v = ev.target.value, k = v.replace("-", ""), dir = v.startsWith("-") ? -1 : 1;
+      const val = c => k === "p" ? +c.dataset.price : k === "n" ? c.dataset.n : +c.dataset.i;
+      cards.slice().sort((x, y) => { const a = val(x), b = val(y); return (a > b ? 1 : a < b ? -1 : 0) * dir; }).forEach(c => grid.appendChild(c));
+    });
+    // плитка / список — запоминаем у посетителя
+    const setView = v => { grid.classList.toggle("list", v === "list"); $$("[data-view]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.view === v))); try { localStorage.setItem("hdl-view", v); } catch {} };
+    $$("[data-view]").forEach(b => b.addEventListener("click", () => setView(b.dataset.view)));
+    try { if (localStorage.getItem("hdl-view") === "list") setView("list"); } catch {}
+    // фильтры на телефоне
+    const fo = $("[data-f-open]"), side = $("#cat-side");
+    fo.addEventListener("click", () => { const o = side.classList.toggle("open"); fo.setAttribute("aria-expanded", String(o)); });
+    // из адреса: ?q=…&p=buspro&g=datchiki (ссылки из меню каталога)
     const qs = new URLSearchParams(location.search);
     if (qs.get("q")) search.value = qs.get("q");
-    const g0 = qs.get("g") && $(`[data-chips-g] button[data-fg="${CSS.escape(qs.get("g"))}"]`);
-    if (g0) g0.click(); else if (qs.get("q")) apply();
+    qs.getAll("p").concat(qs.getAll("g")).forEach(v => boxes("p").concat(boxes("g")).forEach(x => { if (x.value === v) x.checked = true; }));
+    if ([...qs.keys()].length) apply(false);
   }
 
   // ---- страница сметы ----
