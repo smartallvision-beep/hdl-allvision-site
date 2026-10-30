@@ -71,11 +71,11 @@
   const search = $("[data-search]");
   if (search) {
     const grid = $(".cat-main .grid"), cards = $$(".card", grid);
-    const found = $("[data-found]"), title = $("[data-cat-title]"), empty = $("[data-empty]"), facetsBox = $("[data-facets]");
+    const found = $("[data-found]"), title = $("[data-cat-title]"), empty = $("[data-empty]"), facetsBox = $("[data-facets]"), bar = $("[data-bar]");
     const intro = found.textContent, title0 = title.textContent;
     const NAMES = ["p", "g", "coll", "col", "pt", "k", "mat", "std"];
     const PANEL_GROUPS = ["paneli", "rozetki-vyklyuchateli"];
-    const boxes = n => $$(`.cat-side input[name=${n}]`);
+    const boxes = n => $$(`[data-fl] input[name=${n}]`);
     const checked = n => boxes(n).filter(x => x.checked).map(x => x.value);
     const label = x => x.parentElement.querySelector("span").textContent.trim();
     const vals = (c, n) => (c.dataset[n] || "").split("|").filter(Boolean);
@@ -93,16 +93,19 @@
         x.parentElement.querySelector("em").textContent = k;
         x.parentElement.classList.toggle("zero", k === 0 && !x.checked);
       }));
-      // фильтры панелей — когда группа не выбрана или выбраны панели/розетки
-      const panelCtx = !sel.g.length || sel.g.some(g => PANEL_GROUPS.includes(g));
+      // фильтры панелей (строка «Коллекция/Цвет» и тип, клавиши…) — когда на странице панели или розетки
+      const hasPanels = cards.some(c => PANEL_GROUPS.includes(c.dataset.g));
+      const onlyPanelGroups = hasPanels && (sel.g.length ? sel.g.some(g => PANEL_GROUPS.includes(g)) : cards.every(c => PANEL_GROUPS.includes(c.dataset.g)));
       const facetOn = ["coll", "col", "pt", "k", "mat", "std"].some(n => sel[n].length);
-      facetsBox.hidden = !(panelCtx || facetOn);
-      // открыть «Тип», «Клавиш»… когда выбраны именно панели
-      if (sel.g.includes("paneli")) $$("[data-facet]").forEach(d => d.open = true);
+      const showF = onlyPanelGroups || facetOn;
+      if (facetsBox) facetsBox.hidden = !showF;
+      if (bar) bar.hidden = !showF;
+      $$("[data-clear]").forEach(b => b.setAttribute("aria-pressed", String(!sel[b.dataset.clear].length)));
       // заголовок
       const lab = n => boxes(n).filter(x => x.checked).map(label);
       const gl = lab("g"), pl = lab("p"), cl = lab("coll");
-      title.textContent = cl.length === 1 ? "Коллекция " + cl[0] + (gl.length === 1 ? ": " + gl[0].toLowerCase() : "")
+      title.textContent = cl.length === 1 && !boxes("g").length ? title0 + " · " + cl[0]
+        : cl.length === 1 ? "Коллекция " + cl[0] + (gl.length === 1 ? ": " + gl[0].toLowerCase() : "")
         : gl.length === 1 ? gl[0] + (pl.length === 1 ? " " + pl[0] : "") : pl.length === 1 && !gl.length ? pl[0] : title0;
       found.textContent = n === cards.length ? intro : "Найдено: " + plural(n, "позиция", "позиции", "позиций");
       empty.hidden = n > 0;
@@ -116,9 +119,10 @@
         history.replaceState(null, "", location.pathname + (u.toString() ? "?" + u : ""));
       }
     };
-    $$(".cat-side input").forEach(x => x.addEventListener("change", () => apply()));
+    $$("[data-fl] input").forEach(x => x.addEventListener("change", () => apply()));
+    $$("[data-clear]").forEach(b => b.addEventListener("click", () => { boxes(b.dataset.clear).forEach(x => x.checked = false); apply(); }));
     search.addEventListener("input", () => apply());
-    $("[data-reset]").addEventListener("click", () => { $$(".cat-side input").forEach(x => x.checked = false); search.value = ""; apply(); });
+    $("[data-reset]").addEventListener("click", () => { $$("[data-fl] input").forEach(x => x.checked = false); search.value = ""; apply(); });
     // сортировка
     $("[data-sort]").addEventListener("change", ev => {
       const v = ev.target.value, k = v.replace("-", ""), dir = v.startsWith("-") ? -1 : 1;
