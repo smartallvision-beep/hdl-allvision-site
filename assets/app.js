@@ -118,10 +118,10 @@
       found.textContent = n === cards.length ? intro : "Найдено: " + plural(n, "позиция", "позиции", "позиций");
       empty.hidden = n > 0;
       // выбран один цвет — ссылка карточки откроет нужный вариант
-      const oneCol = sel.col.length === 1 ? sel.col[0] : "";
+      const oneCol = sel.col && sel.col.length === 1 ? sel.col[0] : "";
       cards.forEach(c => { const a = $(".card-link", c), base = a.getAttribute("href").split("?")[0]; a.setAttribute("href", oneCol && vals(c, "col").includes(oneCol) ? base + "?c=" + encodeURIComponent(oneCol) : base); });
       // фото и цена карточки — варианта выбранного цвета (если такой вариант есть в прайсе)
-      const wantCols = sel.col;
+      const wantCols = [...(sel.col || []), ...(sel.mat || [])];
       cards.forEach(c => {
         if (!c.dataset.vmap) return;
         const m = JSON.parse(c.dataset.vmap), img = $(".pic img", c), pr = $(".card-buy .price", c);
