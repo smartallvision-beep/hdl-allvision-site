@@ -288,6 +288,7 @@ table.specs { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-s
 
 /* строка «Коллекция / Цвет» над товарами */
 .cat-bar { margin: 6px 0 14px; display: flex; flex-direction: column; gap: 10px; }
+.cat-bar[hidden], .facets[hidden] { display: none; }
 .bar-row { display: flex; align-items: flex-start; gap: 12px; }
 .bar-l { flex: none; width: 92px; padding-top: 10px; font-weight: 700; font-size: 15px; }
 .bar-chips { display: flex; gap: 8px; flex-wrap: wrap; }
