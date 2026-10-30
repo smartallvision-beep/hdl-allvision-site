@@ -52,6 +52,7 @@ h3 { font-size: 18px; margin: 20px 0 8px; }
 .mega { position: absolute; left: 0; right: 0; top: 100%; background: var(--bg2); color: var(--ink); max-height: calc(100vh - 140px); overflow: auto;
   box-shadow: 0 18px 40px rgba(31,10,40,.18); padding: 14px 0 24px; }
 .mega-all { margin: 0 0 12px; } .mega-all a { color: var(--muted); text-decoration: none; }
+.mega-back { display: none; }
 .mtiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
 .mtile { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; text-align: center; }
 .mtile:hover { border-color: var(--brand); }
@@ -74,7 +75,10 @@ h3 { font-size: 18px; margin: 20px 0 8px; }
   .nav .nav-m { display: block; font-weight: 700; }
   .nav .nav-cat-like { color: #fff; background: none; border: 0; border-bottom: 1px solid rgba(255,255,255,.1); padding: 11px 0; font: 700 16px var(--font); text-align: left; cursor: pointer; }
   .nav-cat::after { content: ""; }
-  .mega { position: static; box-shadow: none; max-height: none; }
+  /* на телефоне каталог открывается вместо списка меню и прокручивается внутри экрана */
+  .top.cat-open .navbar { display: none; }
+  .mega { position: static; box-shadow: none; max-height: calc(100vh - 60px); max-height: calc(100dvh - 60px); overscroll-behavior: contain; padding-top: 6px; }
+  .mega-back { display: block; margin: 0 0 8px; padding: 10px 0; background: none; border: 0; color: var(--brand); font: 600 16px var(--font); cursor: pointer; }
   .mtiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .mtile { padding: 10px 6px; } .mt-main img { width: 56px; height: 56px; } .mt-main b { font-size: 14px; }
 }

@@ -16,17 +16,19 @@
   // ---- меню на телефоне ----
   const burger = $(".burger");
   if (burger) burger.addEventListener("click", () => {
+    if (mega && !mega.hidden) { setMega(false); $(".top").classList.add("open"); }  // открыт каталог — бургер закрывает всё меню
     const open = $(".top").classList.toggle("open");
     burger.setAttribute("aria-expanded", String(open));
   });
 
   // ---- каталог в меню (плитки групп) ----
   const cat = $(".nav-cat"), mega = $("#mega");
-  const setMega = open => { mega.hidden = !open; cat.setAttribute("aria-expanded", String(open)); };
+  const setMega = open => { mega.hidden = !open; cat.setAttribute("aria-expanded", String(open)); $(".top").classList.toggle("cat-open", open); if (open) mega.scrollTop = 0; };
   if (cat && mega) {
     cat.addEventListener("click", ev => { ev.stopPropagation(); setMega(mega.hidden); });
     document.addEventListener("click", ev => { if (!mega.hidden && !mega.contains(ev.target)) setMega(false); });
     document.addEventListener("keydown", ev => { if (ev.key === "Escape") setMega(false); });
+    $("[data-mega-back]")?.addEventListener("click", () => setMega(false));
   }
 
   // ---- «Заказать звонок» ----
