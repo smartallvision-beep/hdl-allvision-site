@@ -94,13 +94,17 @@
       showBars();
       const sel = Object.fromEntries(NAMES.map(n => [n, checked(n)]));
       const q = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      // в карточке с двумя материалами пара «материал + цвет» должна существовать
+      const combo = (c, mats = [], cols = []) => !c.dataset.cm || !mats.length || !cols.length || mats.some(m => cols.some(k => c.dataset.cm.split("|").includes(m + ":" + k)));
       const pass = (c, skip) => q.every(w => c.dataset.q.includes(w)) &&
+        (skip === "col" || skip === "mat" || combo(c, sel.mat, sel.col)) &&
         NAMES.every(n => n === skip || !sel[n].length || vals(c, n).some(v => sel[n].includes(v)));
       let n = 0;
       cards.forEach(c => { const ok = pass(c); c.hidden = !ok; if (ok) n++; });
       // счётчик у галочки — сколько будет, если отметить и её (по остальным фильтрам)
       NAMES.forEach(nm => boxes(nm).forEach(x => {
-        const k = cards.filter(c => pass(c, nm) && vals(c, nm).includes(x.value)).length;
+        const k = cards.filter(c => pass(c, nm) && vals(c, nm).includes(x.value) &&
+          (nm === "col" ? combo(c, sel.mat, [x.value]) : nm === "mat" ? combo(c, [x.value], sel.col) : true)).length;
         x.parentElement.querySelector("em").textContent = k;
         x.parentElement.classList.toggle("zero", k === 0 && !x.checked);
       }));
@@ -118,8 +122,8 @@
       found.textContent = n === cards.length ? intro : "Найдено: " + plural(n, "позиция", "позиции", "позиций");
       empty.hidden = n > 0;
       // выбран один цвет — ссылка карточки откроет нужный вариант
-      const oneCol = sel.col && sel.col.length === 1 ? sel.col[0] : "";
-      cards.forEach(c => { const a = $(".card-link", c), base = a.getAttribute("href").split("?")[0]; a.setAttribute("href", oneCol && vals(c, "col").includes(oneCol) ? base + "?c=" + encodeURIComponent(oneCol) : base); });
+      const oneCol = sel.col && sel.col.length === 1 ? sel.col[0] : sel.mat && sel.mat.length === 1 ? sel.mat[0] : "";
+      cards.forEach(c => { const a = $(".card-link", c), base = a.getAttribute("href").split("?")[0]; a.setAttribute("href", oneCol && (vals(c, "col").includes(oneCol) || vals(c, "mat").includes(oneCol)) ? base + "?c=" + encodeURIComponent(oneCol) : base); });
       // фото и цена карточки — варианта выбранного цвета (если такой вариант есть в прайсе)
       const wantCols = [...(sel.col || []), ...(sel.mat || [])];
       cards.forEach(c => {
