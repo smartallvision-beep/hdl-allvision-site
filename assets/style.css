@@ -316,3 +316,11 @@ table.specs { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-s
   .cat-bar, .bar-row, .bar-chips { min-width: 0; max-width: 100%; }
 }
 .chip { position: relative; }
+
+/* разделители: строка фильтров над товарами — в рамке, ряды через линию; блоки слева — через линию */
+.cat-bar { border: 1px solid var(--line); border-radius: 14px; padding: 2px 14px; gap: 0; background: #fff; }
+.bar-row { padding: 10px 0; }
+.bar-row + .bar-row { border-top: 1px solid var(--line); }
+.cat-side fieldset, .cat-side .ff { border-top: 1px solid var(--line); padding-top: 10px; margin-bottom: 12px; }
+.cat-side .facets { border-top: 0; padding-top: 0; }
+.cat-side .facets > p { margin: 14px 0 6px; }
