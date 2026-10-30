@@ -104,6 +104,10 @@
         x.parentElement.querySelector("em").textContent = k;
         x.parentElement.classList.toggle("zero", k === 0 && !x.checked);
       }));
+      // варианты с нулём спрятаны; ряд или блок, где не осталось вариантов, прячем целиком
+      $$(".bar-row, .cat-side fieldset, .cat-side .ff").forEach(r => { r.hidden = !$$(".chip:not(.all):not(.zero), .fbox:not(.zero)", r).length; });
+      bars.forEach(b => { if (!b.hidden) b.hidden = !$$(".bar-row:not([hidden])", b).length; });
+      if (facetsBox && !facetsBox.hidden) facetsBox.hidden = !$$(".ff:not([hidden])", facetsBox).length;
       $$("[data-clear]").forEach(b => b.setAttribute("aria-pressed", String(!sel[b.dataset.clear].length)));
       // заголовок
       const lab = n => boxes(n).filter(x => x.checked).map(label);

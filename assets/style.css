@@ -278,7 +278,7 @@ table.specs { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-s
 .facets { border-top: 1px solid var(--line); padding-top: 10px; }
 .ff { margin: 0 0 10px; }
 .ff summary { font-weight: 700; cursor: pointer; padding: 4px 0; }
-.fbox.zero { opacity: .45; }
+.fbox.zero { display: none; }
 .dots { display: inline-flex; gap: 3px; align-items: center; vertical-align: middle; margin-right: 4px; }
 .dots i { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0,0,0,.18); display: inline-block; }
 .dots b { font-size: 11px; color: var(--muted); font-weight: 500; }
@@ -288,7 +288,7 @@ table.specs { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-s
 
 /* строка «Коллекция / Цвет» над товарами */
 .cat-bar { margin: 6px 0 14px; display: flex; flex-direction: column; gap: 10px; }
-.cat-bar[hidden], .facets[hidden] { display: none; }
+.cat-bar[hidden], .facets[hidden], .bar-row[hidden], .cat-side fieldset[hidden], .cat-side .ff[hidden] { display: none; }
 .bar-row { display: flex; align-items: flex-start; gap: 12px; }
 .bar-l { flex: none; width: 92px; padding-top: 10px; font-weight: 700; font-size: 15px; }
 .bar-chips { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -304,7 +304,7 @@ table.specs { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-s
 .chip.col .dots i { width: 18px; height: 18px; }
 .chip.all { padding: 9px 14px; font-weight: 600; }
 .chip.all[aria-pressed=true] { background: var(--brand); color: #fff; border-color: var(--brand); }
-.chip.zero { opacity: .4; }
+.chip.zero { display: none; }
 @media (max-width: 760px) {
   .bar-row { flex-direction: column; gap: 6px; }
   .bar-l { width: auto; padding: 0; }
@@ -322,6 +322,7 @@ table.specs { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-s
 .cat-bar { border: 1px solid var(--line); border-radius: 14px; padding: 2px 14px; gap: 0; background: #fff; }
 .bar-row { padding: 10px 0; }
 .bar-row + .bar-row { border-top: 1px solid var(--line); }
+.bar-row[hidden] + .bar-row { border-top: 0; }
 .cat-side fieldset, .cat-side .ff { border-top: 1px solid var(--line); padding-top: 10px; margin-bottom: 12px; }
 .cat-side .facets { border-top: 0; padding-top: 0; }
 .cat-side .facets > p { margin: 14px 0 6px; }
