@@ -71,6 +71,16 @@
     setTimeout(() => { b.textContent = "В смету"; b.classList.remove("done"); }, 1600);
   });
 
+  // ---- фото не загрузилось (сбой сети, защита хостинга, испорченная копия в кэше браузера): ещё две попытки мимо кэша ----
+  document.addEventListener("error", ev => {
+    const im = ev.target;
+    if (im.tagName !== "IMG") return;
+    const n = +(im.dataset.retry || 0);
+    if (n >= 2) return;
+    im.dataset.retry = n + 1;
+    setTimeout(() => { im.src = im.getAttribute("src").split("?")[0] + "?r=" + Date.now(); }, 1500 * (n + 1));
+  }, true);
+
   // ---- каталог: галочки (система, группа, коллекция, цвет, тип…), поиск, сортировка, плитка/список ----
   const search = $("[data-search]");
   if (search) {
