@@ -49,6 +49,8 @@
     $("[data-price]").textContent = fmt(+b.dataset.byn) + " BYN";
     $("[data-art]").textContent = b.dataset.a;
     if (add) add.dataset.add = b.dataset.a;
+    // большое фото — того же цвета (картинка варианта из прайса)
+    if (main && b.dataset.img) { main.src = b.dataset.img; $$(".thumbs button").forEach(x => x.removeAttribute("aria-current")); }
   }));
   const qi = $("[data-qty-input]");
   $$("[data-qty]").forEach(b => b.addEventListener("click", () => { qi.value = Math.max(1, (+qi.value || 1) + +b.dataset.qty); }));
@@ -112,6 +114,16 @@
       // выбран один цвет — ссылка карточки откроет нужный вариант
       const oneCol = sel.col.length === 1 ? sel.col[0] : "";
       cards.forEach(c => { const a = $(".card-link", c), base = a.getAttribute("href").split("?")[0]; a.setAttribute("href", oneCol && vals(c, "col").includes(oneCol) ? base + "?c=" + encodeURIComponent(oneCol) : base); });
+      // фото и цена карточки — варианта выбранного цвета (если такой вариант есть в прайсе)
+      const wantCols = sel.col;
+      cards.forEach(c => {
+        if (!c.dataset.vmap) return;
+        const m = JSON.parse(c.dataset.vmap), img = $(".pic img", c), pr = $(".card-buy .price", c);
+        if (img && !c.dataset.img0) { c.dataset.img0 = img.getAttribute("src"); c.dataset.pr0 = pr.textContent; }
+        const hit = wantCols.find(k => m[k]);
+        if (hit) { if (img && m[hit].i) img.src = m[hit].i; pr.textContent = fmt(m[hit].b) + " BYN"; }
+        else if (c.dataset.img0) { img.src = c.dataset.img0; pr.textContent = c.dataset.pr0; }
+      });
       if (push) {
         const u = new URLSearchParams();
         if (search.value.trim()) u.set("q", search.value.trim());
