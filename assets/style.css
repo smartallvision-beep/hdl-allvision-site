@@ -288,6 +288,19 @@ table.specs { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-s
 .dots b { font-size: 11px; color: var(--muted); font-weight: 500; }
 .card .coll { font-size: 12px; color: var(--brand); font-weight: 600; }
 .card .dots { margin-top: 2px; }
+.interior { margin: 8px 0 18px; }
+.int-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.int-grid a { display: block; height: 220px; max-width: 100%; }
+.int-grid img { display: block; height: 100%; width: auto; max-width: 100%; object-fit: cover; border-radius: 10px; }
+.cat-main .interior h2 { font-size: 18px; margin: 0 0 8px; }
+.cat-main .int-grid { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; }
+.cat-main .int-grid a { flex: none; height: 170px; }
+.cat-main .int-grid img { max-width: none; }
+@media (max-width: 640px) {
+  .int-grid { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; }
+  .int-grid a { flex: none; height: 190px; }
+  .int-grid img { max-width: none; }
+}
 .collinfo { font-size: 15px; } .collinfo .dots i { width: 16px; height: 16px; }
 
 /* строка «Коллекция / Цвет» над товарами */
