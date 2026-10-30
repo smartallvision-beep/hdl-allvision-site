@@ -73,16 +73,25 @@
   const search = $("[data-search]");
   if (search) {
     const grid = $(".cat-main .grid"), cards = $$(".card", grid);
-    const found = $("[data-found]"), title = $("[data-cat-title]"), empty = $("[data-empty]"), facetsBox = $("[data-facets]"), bar = $("[data-bar]");
+    const found = $("[data-found]"), title = $("[data-cat-title]"), empty = $("[data-empty]"), facetsBox = $("[data-facets]"), bars = $$("[data-bar]");
     const intro = found.textContent, title0 = title.textContent;
-    const NAMES = ["p", "g", "coll", "col", "pt", "k", "mat", "std"];
+    const NAMES = [...new Set($$("[data-fl] input").map(x => x.name))];  // все фильтры страницы
     const PANEL_GROUPS = ["paneli", "rozetki-vyklyuchateli"];
     const boxes = n => $$(`[data-fl] input[name=${n}]`);
     const checked = n => boxes(n).filter(x => x.checked).map(x => x.value);
     const label = x => x.parentElement.querySelector("span").textContent.trim();
     const vals = (c, n) => (c.dataset[n] || "").split("|").filter(Boolean);
     const plural = (n, a, b, c) => { const m10 = n % 10, m100 = n % 100; return n + " " + (m10 === 1 && m100 !== 11 ? a : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? b : c); };
+    const pageGroups = [...new Set(cards.map(c => c.dataset.g))];
+    // строка фильтров категории видна, только когда открыта эта категория; у скрытых — отметки снимаем
+    const showBars = () => {
+      const gsel = checked("g"), cur = gsel.length ? gsel : pageGroups;
+      const fits = list => cur.length > 0 && cur.every(g => list.includes(g));
+      bars.forEach(b => { const ok = fits(b.dataset.bar.split(" ")); b.hidden = !ok; if (!ok) $$("input", b).forEach(x => x.checked = false); });
+      if (facetsBox) { const ok = fits(PANEL_GROUPS); facetsBox.hidden = !ok; if (!ok) $$("input", facetsBox).forEach(x => x.checked = false); }
+    };
     const apply = (push = true) => {
+      showBars();
       const sel = Object.fromEntries(NAMES.map(n => [n, checked(n)]));
       const q = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
       const pass = (c, skip) => q.every(w => c.dataset.q.includes(w)) &&
@@ -95,13 +104,6 @@
         x.parentElement.querySelector("em").textContent = k;
         x.parentElement.classList.toggle("zero", k === 0 && !x.checked);
       }));
-      // фильтры панелей (строка «Коллекция/Цвет» и тип, клавиши…) — когда на странице панели или розетки
-      const hasPanels = cards.some(c => PANEL_GROUPS.includes(c.dataset.g));
-      const onlyPanelGroups = hasPanels && (sel.g.length ? sel.g.some(g => PANEL_GROUPS.includes(g)) : cards.every(c => PANEL_GROUPS.includes(c.dataset.g)));
-      const facetOn = ["coll", "col", "pt", "k", "mat", "std"].some(n => sel[n].length);
-      const showF = onlyPanelGroups || facetOn;
-      if (facetsBox) facetsBox.hidden = !showF;
-      if (bar) bar.hidden = !showF;
       $$("[data-clear]").forEach(b => b.setAttribute("aria-pressed", String(!sel[b.dataset.clear].length)));
       // заголовок
       const lab = n => boxes(n).filter(x => x.checked).map(label);
