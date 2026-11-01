@@ -279,7 +279,12 @@
     $("[data-today]").textContent = new Date().toLocaleDateString("ru-RU");
     // поиск артикула: без знаков; артикул без цвета — первый цвет из прайса
     const keyOf = {}; Object.keys(D.items).forEach(a => { keyOf[low(a).replace(/[^a-z0-9а-я]/g, "")] = a; });
-    const findArt = s => { const c = low(s).replace(/[^a-z0-9а-я]/g, ""); return keyOf[c] || Object.keys(keyOf).filter(k => k.length === c.length + 1 && k.startsWith(c)).map(k => keyOf[k])[0]; };
+    // цвет одной цифрой; пластик, если в прайсе один артикул на два материала; окончание, которого нет в прайсе (-06, -46), если такая карточка одна: EU и US не угадываем
+    const findArt = s => {
+      const c = low(s).replace(/[^a-z0-9а-я]/g, ""), near = Object.keys(keyOf).filter(k => k.startsWith(c));
+      const tail = near.filter(k => /^\d\d$/.test(k.slice(c.length)));
+      return keyOf[c] || keyOf[near.find(k => k.length === c.length + 1)] || keyOf[c + "пластик"] || (tail.length === 1 ? keyOf[tail[0]] : undefined);
+    };
     // открыта ссылка на чужую смету: ?s=артикул*количество,…
     const shared = new URLSearchParams(location.search).get("s");
     if (shared) {
