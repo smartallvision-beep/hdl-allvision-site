@@ -524,9 +524,11 @@ body[data-page=catalog] .hsearch { display: none; }
 .keynote { display: flex; gap: 12px; align-items: flex-start; background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin: 12px 0; }
 .keynote p { margin: 2px 0 4px; font-size: 14px; }
 .keynote a { font-size: 14px; }
+.keynote p.muted { font-size: 13px; }
 .keyx { margin: 8px 0 24px; }
 .keyx h2 { margin-top: 0; }
 .keyx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+.keyx-grid.one { grid-template-columns: minmax(0, 640px); }
 .keyx-one { display: flex; gap: 16px; align-items: center; border: 1px solid var(--line); border-radius: 12px; padding: 14px; color: var(--ink); text-decoration: none; font-size: 15px; }
 .keyx-one:hover { border-color: var(--brand); }
 .keyx-one img { width: 150px; height: 150px; object-fit: contain; flex: none; }
