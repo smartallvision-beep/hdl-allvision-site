@@ -87,6 +87,7 @@
   // ---- карточка товара ----
   const main = $("[data-main]");
   $$(".thumbs button").forEach(b => b.addEventListener("click", () => {
+    if (b.dataset.opt) $$(".variants button").find(x => x.dataset.col === b.dataset.opt)?.click();  // снимок другого цвета — выбираем этот цвет
     main.src = b.dataset.src;
     $$(".thumbs button").forEach(x => x.removeAttribute("aria-current"));
     b.setAttribute("aria-current", "true");
@@ -95,8 +96,9 @@
   $$(".variants button").forEach(b => b.addEventListener("click", () => {
     $$(".variants button").forEach(x => x.setAttribute("aria-checked", "false"));
     b.setAttribute("aria-checked", "true");
-    $("[data-price]").textContent = fmt(+b.dataset.byn) + " BYN";
-    $("[data-art]").textContent = b.dataset.a;
+    if (b.dataset.byn && $("[data-price]")) $("[data-price]").textContent = fmt(+b.dataset.byn) + " BYN";
+    $("[data-art]").textContent = b.dataset.art || b.dataset.a;
+    const noPhoto = $("[data-nophoto]"); if (noPhoto) noPhoto.hidden = !!b.dataset.img;
     if (add) add.dataset.add = b.dataset.a;
     // большое фото — того же цвета (картинка варианта из прайса)
     if (main && b.dataset.img) { main.src = b.dataset.img; $$(".thumbs button").forEach(x => x.removeAttribute("aria-current")); }
@@ -192,7 +194,7 @@
         const m = JSON.parse(c.dataset.vmap), img = $(".pic img", c), pr = $(".card-buy .price", c);
         if (img && !c.dataset.img0) { c.dataset.img0 = img.getAttribute("src"); c.dataset.pr0 = pr.textContent; }
         const hit = wantCols.find(k => m[k]);
-        if (hit) { if (img && m[hit].i) img.src = m[hit].i; pr.textContent = fmt(m[hit].b) + " BYN"; }
+        if (hit) { if (img && m[hit].i) img.src = m[hit].i; if (m[hit].b != null) pr.textContent = fmt(m[hit].b) + " BYN"; }
         else if (c.dataset.img0) { img.src = c.dataset.img0; pr.textContent = c.dataset.pr0; }
       });
       if (push) {

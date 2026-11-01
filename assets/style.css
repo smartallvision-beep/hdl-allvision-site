@@ -511,3 +511,5 @@ body[data-page=catalog] .hsearch { display: none; }
   .cat-main > h1 { order: -1 !important; margin: 4px 0 2px; }
   .cat-main > .lead-p { order: 9 !important; }
 }
+
+.variants .dots { margin: 0; } .variants .dots i { width: 30px; height: 30px; border-radius: 8px; }
