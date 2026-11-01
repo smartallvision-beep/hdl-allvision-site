@@ -6,6 +6,22 @@
   const fmt = n => n.toLocaleString("ru-RU").replace(/\s/g, " ");
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+  // ---- поиск: запрос → варианты написания. Одно правило для шапки и каталога ----
+  const low = s => String(s ?? "").toLowerCase().replace(/ё/g, "е");
+  const stem = w => /[а-я]/.test(w) && w.length > 4 ? w.replace(/(ами|ями|ого|его|ому|ему|ыми|ими|ах|ях|ов|ев|ей|ой|ый|ий|ая|яя|ое|ее|ые|ие|ом|ем|ам|ям|а|я|ы|и|у|ю|е|о|ь|й)$/, "") : w;
+  const SYN = {
+    штор: ["штор", "карниз", "жалюзи"], жалюзи: ["жалюзи", "штор"], карниз: ["карниз", "штор"], рольставн: ["штор", "жалюзи"],
+    кондиционер: ["кондицион", "hvac", "fcu", "fchc", "vrv", "mac01"], отоплен: ["отоплен", "термостат", "fcu", "fchc", "mfh"], радиатор: ["радиатор", "термостат", "fchc"],
+    движен: ["движен", "присутств", "pir"], присутств: ["присутств", "движен"], свет: ["свет", "диммер", "реле"], освещен: ["освещен", "диммер", "реле"],
+    кнопк: ["клав"], клавиш: ["клав"], экран: ["экран", "дисплей", "display"], дисплей: ["экран", "дисплей", "display"],
+    икселент: ["xelent"], иксэлент: ["xelent"], экселент: ["xelent"], тайл: ["tile"], инкслаб: ["inkslab"], фанджи: ["fangzhi"], гранит: ["granite"], соурс: ["source"], сурс: ["source"], фанор: ["fanora"], энвиро: ["enviro"], айтач: ["itouch"],
+  };
+  const terms = q => low(q).replace(/тепл(ый|ые|ого) пол\S*/g, "термостат").split(/\s+/).filter(Boolean).map(w => {
+    const s = stem(w);
+    return [...new Set([s, w.replace(/[^a-z0-9а-я]/g, ""), ...(SYN[s] || [])])].filter(Boolean);
+  });
+  const hit = (hay, ts) => ts.every(alts => alts.some(a => hay.includes(a)));
+
   // ---- смета: { артикул: количество } ----
   const KEY = "hdl-smeta";
   const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } };
@@ -19,6 +35,37 @@
     if (mega && !mega.hidden) { setMega(false); $(".top").classList.add("open"); }  // открыт каталог — бургер закрывает всё меню
     const open = $(".top").classList.toggle("open");
     burger.setAttribute("aria-expanded", String(open));
+  });
+
+  // ---- поиск в шапке: на телефоне открывается значком, индекс грузится при первом обращении ----
+  const hs = $("[data-hsearch]"), hsBox = $("[data-hs-res]"), hsToggle = $("[data-search-toggle]");
+  let hsLoading = null;
+  const hsIndex = () => hsLoading || (hsLoading = new Promise((ok, no) => { const s = document.createElement("script"); s.src = "/assets/search.js?v=" + ($('meta[name=build]')?.content || "").replace(/\D/g, ""); s.onload = ok; s.onerror = no; document.head.appendChild(s); }));
+  const hsRender = async () => {
+    const q = hs.value.trim();
+    if (q.length < 2) { hsBox.hidden = true; return; }
+    try { await hsIndex(); } catch { return; }
+    const ts = terms(q), cq = low(q).replace(/[^a-z0-9]/g, "");
+    const found = (window.HDLS || []).filter(x => hit(x.q, ts));
+    const exact = x => cq.length > 2 && x.q.includes(cq) ? 0 : 1;
+    found.sort((a, b) => exact(a) - exact(b));
+    hsBox.innerHTML = found.length
+      ? found.slice(0, 7).map(x => `<a href="${esc(x.u)}">${x.t ? `<img src="${esc(x.t)}" alt="" width="44" height="44">` : "<i></i>"}<span>${esc(x.n)}<br><small>${esc(x.a)}</small></span><b>${x.b != null ? (x.m ? "от " : "") + fmt(x.b) + " BYN" : "по запросу"}</b></a>`).join("")
+        + `<a class="hs-all" href="/katalog/?q=${encodeURIComponent(q)}">Все результаты: ${found.length} →</a>`
+      : `<p>Ничего не нашлось. <a href="/kontakty/">Спросите нас</a>: подскажем, чем решить задачу.</p>`;
+    hsBox.hidden = false;
+  };
+  if (hs) {
+    hs.addEventListener("input", hsRender);
+    hs.addEventListener("focus", () => { hsIndex().catch(() => {}); if (hs.value.trim().length > 1) hsRender(); });
+    document.addEventListener("click", ev => { if (!ev.target.closest(".hsearch") && !ev.target.closest("[data-search-toggle]")) hsBox.hidden = true; });
+    document.addEventListener("keydown", ev => { if (ev.key === "Escape") hsBox.hidden = true; });
+  }
+  if (hsToggle) hsToggle.addEventListener("click", () => {
+    if (document.body.dataset.page === "catalog") { const c = $("[data-search]"); c?.focus(); c?.scrollIntoView({ block: "center" }); return; }
+    const open = $(".top").classList.toggle("search-open");
+    hsToggle.setAttribute("aria-expanded", String(open));
+    if (open) { $(".top").classList.remove("open"); hs?.focus(); }
   });
 
   // ---- каталог в меню (плитки групп) ----
@@ -105,10 +152,10 @@
     const apply = (push = true) => {
       showBars();
       const sel = Object.fromEntries(NAMES.map(n => [n, checked(n)]));
-      const q = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const q = terms(search.value);
       // в карточке с двумя материалами пара «материал + цвет» должна существовать
       const combo = (c, mats = [], cols = []) => !c.dataset.cm || !mats.length || !cols.length || mats.some(m => cols.some(k => c.dataset.cm.split("|").includes(m + ":" + k)));
-      const pass = (c, skip) => q.every(w => c.dataset.q.includes(w)) &&
+      const pass = (c, skip) => hit(c.dataset.q, q) &&
         (skip === "col" || skip === "mat" || combo(c, sel.mat, sel.col)) &&
         NAMES.every(n => n === skip || !sel[n].length || vals(c, n).some(v => sel[n].includes(v)));
       let n = 0;
@@ -171,7 +218,7 @@
     try { if (localStorage.getItem("hdl-view") === "list") setView("list"); } catch {}
     // фильтры на телефоне
     const fo = $("[data-f-open]"), side = $("#cat-side");
-    fo.addEventListener("click", () => { const o = side.classList.toggle("open"); fo.setAttribute("aria-expanded", String(o)); });
+    fo.addEventListener("click", () => { const o = side.classList.toggle("open"); fo.setAttribute("aria-expanded", String(o)); $(".cat-layout").classList.toggle("f-on", o); });
     // из адреса: ?q=…&p=buspro&g=paneli&coll=Xelent&col=Латунь
     const qs = new URLSearchParams(location.search);
     if (qs.get("q")) search.value = qs.get("q");
@@ -189,27 +236,67 @@
   // ---- страница сметы ----
   const box = $("[data-smeta]");
   const rows = () => Object.entries(load()).map(([a, q]) => ({ a, q, it: D.items[a] || { n: a, u: "", t: "", b: null } }));
+  const renderHints = r => {
+    const el = $("[data-smeta-hints]");
+    if (!el) return;
+    const have = new Set(r.map(x => x.a)), want = {}, frames = {};
+    r.forEach(({ a, q, it }) => {
+      (it.k || []).forEach(k => { if (!have.has(k)) want[k] = (want[k] || 0) + q; });
+      if (it.fr && !r.some(x => x.it.isf === it.fr)) frames[it.fr] = 1;
+    });
+    const rowsH = Object.entries(want).map(([k, q]) => {
+      const it = D.items[k];
+      return `<li><span>Шинный соединитель <b>${esc(k)}</b>${it?.b != null ? ", " + fmt(it.b) + " BYN" : ""}: нужен к панелям из списка</span>${it ? `<button class="cbtn" type="button" data-hint-add="${esc(k)}" data-q="${q}">Добавить ${q} шт.</button>` : ""}</li>`;
+    }).concat(Object.keys(frames).map(c => `<li><span>Рамка <b>${esc(c)}</b>: не входит в цену панелей и розеток</span>${D.collUrl?.[c] ? `<a class="cbtn ghost" href="/kollekcii/${D.collUrl[c]}/#ramki">Выбрать рамку</a>` : ""}</li>`));
+    el.hidden = !rowsH.length;
+    el.innerHTML = rowsH.length ? `<h3>Не забудьте</h3><ul>${rowsH.join("")}</ul>` : "";
+  };
   const renderSmeta = () => {
     if (!box) return;
     const r = rows();
     $("[data-smeta-form]").hidden = !r.length;
-    if (!r.length) { box.innerHTML = '<p>Список пуст. Добавляйте позиции кнопкой «В смету» в <a href="/katalog/">каталоге</a>.</p>'; return; }
+    $("[data-smeta-tools]").hidden = !r.length;
+    renderHints(r);
+    if (!r.length) { box.innerHTML = '<p>Список пуст. Добавляйте позиции кнопкой «В смету» в <a href="/katalog/">каталоге</a> или загрузите готовый список артикулов.</p>'; return; }
     let sum = 0, ask = 0;
     const tr = r.map(({ a, q, it }) => {
       const t = it.b != null ? it.b * q : null;
       if (t != null) sum += t; else ask++;
       return `<tr><td class="hide-m">${it.t ? `<img src="${esc(it.t)}" alt="">` : ""}</td>
         <td><a href="${esc(it.u)}">${esc(it.n)}</a><br><span class="muted small">${esc(a)}</span></td>
-        <td><div class="qty"><button type="button" data-d="-1" data-a="${esc(a)}">−</button><input type="number" min="1" value="${q}" data-set="${esc(a)}" aria-label="Количество"><button type="button" data-d="1" data-a="${esc(a)}">+</button></div></td>
+        <td><div class="qty"><button type="button" data-d="-1" data-a="${esc(a)}" aria-label="Меньше">−</button><input type="number" min="1" value="${q}" data-set="${esc(a)}" aria-label="Количество"><button type="button" data-d="1" data-a="${esc(a)}" aria-label="Больше">+</button></div></td>
         <td class="num hide-m">${it.b != null ? fmt(it.b) + " BYN" : "по запросу"}</td>
         <td class="num">${t != null ? fmt(t) + " BYN" : "по запросу"}</td>
-        <td><button class="rm" type="button" data-rm="${esc(a)}" aria-label="Убрать">×</button></td></tr>`;
+        <td class="no-print"><button class="rm" type="button" data-rm="${esc(a)}" aria-label="Убрать">×</button></td></tr>`;
     }).join("");
-    box.innerHTML = `<table class="smeta-tbl"><thead><tr><th class="hide-m"></th><th>Позиция</th><th>Кол-во</th><th class="num hide-m">Цена</th><th class="num">Сумма</th><th></th></tr></thead>
-      <tbody>${tr}</tbody><tfoot><tr><td class="hide-m"></td><td colspan="3">Итого с НДС${ask ? `<br><span class="muted small">без ${ask} поз. по запросу</span>` : ""}</td><td class="num">${fmt(sum)} BYN</td><td></td></tr></tfoot></table>
-      <p class="muted small">Цены по курсу НБРБ ${String(D.rate).replace(".", ",")} на ${D.rateDate.split("-").reverse().join(".")}. Монтаж и настройка — в смете от нас.</p>`;
+    box.innerHTML = `<table class="smeta-tbl"><thead><tr><th class="hide-m"></th><th>Позиция</th><th>Кол-во</th><th class="num hide-m">Цена</th><th class="num">Сумма</th><th class="no-print"></th></tr></thead>
+      <tbody>${tr}</tbody><tfoot><tr><td class="hide-m"></td><td colspan="3">Итого с НДС${ask ? `<br><span class="muted small">без ${ask} поз. по запросу</span>` : ""}</td><td class="num">${fmt(sum)} BYN</td><td class="no-print"></td></tr></tfoot></table>
+      <p class="muted small">Цены по курсу НБРБ ${String(D.rate).replace(".", ",")} на ${D.rateDate.split("-").reverse().join(".")}. Монтаж и настройка считаем отдельно.</p>`;
   };
   if (box) {
+    $("[data-today]").textContent = new Date().toLocaleDateString("ru-RU");
+    // поиск артикула: без знаков; артикул без цвета — первый цвет из прайса
+    const keyOf = {}; Object.keys(D.items).forEach(a => { keyOf[low(a).replace(/[^a-z0-9а-я]/g, "")] = a; });
+    const findArt = s => { const c = low(s).replace(/[^a-z0-9а-я]/g, ""); return keyOf[c] || Object.keys(keyOf).filter(k => k.length === c.length + 1 && k.startsWith(c)).map(k => keyOf[k])[0]; };
+    // открыта ссылка на чужую смету: ?s=артикул*количество,…
+    const shared = new URLSearchParams(location.search).get("s");
+    if (shared) {
+      const got = {};
+      shared.split(",").forEach(x => { const [a, q] = x.split("*"); if (D.items[a]) got[a] = Math.max(1, +q || 1); });
+      const n = Object.keys(got).length, shareBox = $("[data-smeta-share]");
+      history.replaceState(null, "", location.pathname);
+      if (n && !Object.keys(load()).length) { save(got); shareBox.textContent = `Смета открыта по ссылке: ${n} поз.`; shareBox.hidden = false; }
+      else if (n) {
+        shareBox.innerHTML = `По ссылке передана смета: ${n} поз. <button class="cbtn" type="button" data-share="replace">Заменить мой список</button> <button class="cbtn ghost" type="button" data-share="add">Добавить к моему</button>`;
+        shareBox.hidden = false;
+        shareBox.addEventListener("click", ev => {
+          const m = ev.target.dataset.share; if (!m) return;
+          const s = m === "add" ? load() : {};
+          Object.entries(got).forEach(([a, q]) => { s[a] = (s[a] || 0) + q; });
+          save(s); shareBox.hidden = true; renderSmeta();
+        });
+      }
+    }
     renderSmeta();
     box.addEventListener("click", ev => {
       const b = ev.target.closest("button"); if (!b) return;
@@ -221,6 +308,31 @@
     box.addEventListener("change", ev => {
       const i = ev.target.closest("[data-set]"); if (!i) return;
       const s = load(); s[i.dataset.set] = Math.max(1, Math.round(+i.value) || 1); save(s); renderSmeta();
+    });
+    $("[data-smeta-hints]").addEventListener("click", ev => {
+      const b = ev.target.closest("[data-hint-add]"); if (!b) return;
+      const s = load(); s[b.dataset.hintAdd] = (s[b.dataset.hintAdd] || 0) + (+b.dataset.q || 1); save(s); renderSmeta();
+    });
+    // печать, ссылка, текст
+    const tmsg = $("[data-tools-msg]");
+    const copy = async (text, ok) => { try { await navigator.clipboard.writeText(text); tmsg.textContent = ok; } catch { window.prompt("Скопируйте:", text); } setTimeout(() => { tmsg.textContent = ""; }, 3000); };
+    $("[data-print]").addEventListener("click", () => window.print());
+    $("[data-copy-link]").addEventListener("click", () => copy(location.origin + "/smeta/?s=" + Object.entries(load()).map(([a, q]) => encodeURIComponent(a) + "*" + q).join(","), "Ссылка скопирована"));
+    $("[data-copy-text]").addEventListener("click", () => copy(rows().map(({ a, q, it }) => `${a}\t${it.n}\t${q}\t${it.b != null ? it.b * q + " BYN" : "по запросу"}`).join("\n"), "Список скопирован"));
+    // загрузка списка: «артикул количество» в строке
+    $("[data-import-go]").addEventListener("click", () => {
+      const area = $("[data-import]"), m = $("[data-import-msg]"), s = load(), miss = [];
+      let n = 0;
+      area.value.split(/\r?\n/).map(x => x.trim()).filter(Boolean).forEach(line => {
+        const parts = line.split(/[\s;,]+/).filter(Boolean);
+        const q = parts.length > 1 && /^\d+$/.test(parts[parts.length - 1]) ? +parts.pop() : 1;
+        const a = findArt(parts[0] || "");
+        if (a) { s[a] = (s[a] || 0) + Math.max(1, q); n++; } else miss.push(parts[0]);
+      });
+      save(s); renderSmeta();
+      m.className = "msg " + (miss.length ? "bad" : "ok");
+      m.textContent = `Добавлено позиций: ${n}.` + (miss.length ? ` Не нашли: ${miss.slice(0, 8).join(", ")}${miss.length > 8 ? "…" : ""}. Такие позиции напишите в комментарии к заявке.` : "");
+      if (!miss.length) area.value = "";
     });
   }
 
