@@ -166,11 +166,10 @@
         NAMES.every(n => n === skip || !sel[n].length || vals(c, n).some(v => sel[n].includes(v)));
       let n = 0;
       cards.forEach(c => { const ok = pass(c); c.hidden = !ok; if (ok) n++; });
-      // счётчик у галочки — сколько будет, если отметить и её (по остальным фильтрам)
+      // вариант, который при остальных фильтрах ничего не найдёт, прячем
       NAMES.forEach(nm => boxes(nm).forEach(x => {
         const k = cards.filter(c => pass(c, nm) && vals(c, nm).includes(x.value) &&
           (nm === "col" ? combo(c, sel.mat, [x.value]) : nm === "mat" ? combo(c, [x.value], sel.col) : true)).length;
-        x.parentElement.querySelector("em").textContent = k;
         x.parentElement.classList.toggle("zero", k === 0 && !x.checked);
       }));
       // варианты с нулём спрятаны; ряд или блок, где не осталось вариантов, прячем целиком
