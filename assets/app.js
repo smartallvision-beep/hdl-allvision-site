@@ -142,7 +142,7 @@
 
   // ---- светильник: при открытии исполнение не выбрано, «Без драйвера», цена «от». Выбрали исполнение — его первый драйвер, цена суммой,
   // в смету обе позиции; «Без драйвера» сбрасывает драйвер ----
-  const ctl = $("[data-ctl]");
+  const ctl = $(".ctl[data-ctl]");  // только блок карточки светильника: у карточек панелей в сетке тоже есть data-ctl (фильтр «Управление»)
   if (ctl) {
     const opts = $$(".ctl-opts button", ctl), box = $(".ctl-opts", ctl), inc = $("[data-ctl-inc]", ctl), sum = $("[data-sum]"), pr = $("[data-price]");
     const variant = () => $$(".variants button").find(x => x.getAttribute("aria-checked") === "true");
