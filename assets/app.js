@@ -89,6 +89,15 @@
     $("[data-mega-back]")?.addEventListener("click", () => setMega(false));
   }
 
+  // ---- «Техподдержка»: номер под кнопкой ----
+  const supBtn = $("[data-sup]"), supPop = $("#sup-pop");
+  const setSup = open => { if (supPop) { supPop.hidden = !open; supBtn.setAttribute("aria-expanded", open); } };
+  if (supBtn && supPop) {
+    supBtn.addEventListener("click", ev => { ev.stopPropagation(); setSup(supPop.hidden); });
+    document.addEventListener("click", ev => { if (!supPop.hidden && !supPop.contains(ev.target)) setSup(false); });
+    document.addEventListener("keydown", ev => { if (ev.key === "Escape") setSup(false); });
+  }
+
   // ---- «Заказать звонок» ----
   const dlg = $("#callback");
   $$("[data-callback]").forEach(b => b.addEventListener("click", () => dlg?.showModal()));
