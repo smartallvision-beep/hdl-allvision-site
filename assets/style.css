@@ -581,3 +581,8 @@ body[data-page=catalog] .hsearch { display: none; }
 .sup-pop span { font-size: 13px; color: var(--muted); }
 .sup-pop a { font-size: 20px; font-weight: 600; color: var(--ink); text-decoration: none; }
 .sup-pop a:hover { color: var(--brand); }
+
+/* освещение: плашка раздела, подпись драйвера и исполнения в блоке «Драйвер для подключения» */
+.b-svet { background: #fbf1df; color: #8a5a12; }
+.kit-note { display: block; font-size: 12px; color: var(--muted); }
+.kit-h { margin: 10px 0 2px; font-size: 13px; font-weight: 600; }
