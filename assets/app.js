@@ -150,8 +150,8 @@
       const v = variant(), va = v ? v.dataset.a : ctl.dataset.v0, vb = v ? +v.dataset.byn : +ctl.dataset.b0;
       const mine = opts.filter(o => o.dataset.v === va);
       opts.forEach(o => { o.hidden = o.dataset.v !== "*" && o.dataset.v !== va; });
-      const kit = !!va && !mine.length;  // у исполнения «вкл/выкл» драйвер в комплекте
-      box.hidden = kit; inc.hidden = !kit;
+      const kit = !!va && !mine.length;  // у исполнения «вкл/выкл» драйвер в комплекте: остаётся одна кнопка «Без драйвера» и подпись
+      box.hidden = false; inc.hidden = !kit;
       const sel = mine.find(o => o.getAttribute("aria-checked") === "true");
       if (sel) {
         pr.textContent = fmt(vb + +sel.dataset.b) + " BYN";
@@ -166,6 +166,7 @@
     // выбрали исполнение — подставляем его первый драйвер (у «вкл/выкл» драйвер в комплекте)
     $$(".variants button").forEach(b => b.addEventListener("click", () => {
       $("[data-need]", ctl).hidden = true;
+      const lab = $("[data-art-l]"); if (lab) lab.textContent = "Артикул";  // до выбора исполнения там модель
       pick(opts.find(o => o.dataset.v === b.dataset.a) || opts.find(o => o.dataset.v === "*"));
     }));
     show();
