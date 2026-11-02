@@ -152,6 +152,7 @@
       opts.forEach(o => { o.hidden = o.dataset.v !== "*" && o.dataset.v !== va; });
       const kit = !!va && !mine.length;  // у исполнения «вкл/выкл» драйвер в комплекте: остаётся одна кнопка «Без драйвера» и подпись
       box.hidden = false; inc.hidden = !kit;
+      if (kit) none.setAttribute("aria-checked", "false");  // драйвер внутри светильника: подсвечено только исполнение, «Без драйвера» — сброс
       const sel = mine.find(o => o.getAttribute("aria-checked") === "true");
       if (sel) {
         pr.textContent = fmt(vb + +sel.dataset.b) + " BYN";
