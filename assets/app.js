@@ -22,21 +22,16 @@
   });
   const hit = (hay, ts) => ts.every(alts => alts.some(a => hay.includes(a)));
 
-  // ---- cookie: Метрика только после «Принять»; выбор в памяти браузера, «Настройки cookie» в подвале снова показывают окно ----
+  // ---- cookie: окно с одной фразой, пока его не закрыли; отметка в памяти браузера ----
   const CK = "hdl-cookie";
-  const ckGet = () => { try { return localStorage.getItem(CK); } catch { return null; } };
   const ckBox = $("#cookie");
-  const ckRun = () => { if (ckGet() === "all" && window.hdlMetrika) { window.hdlMetrika(); window.hdlMetrika = null; } };
   if (ckBox) {
-    ckBox.hidden = !!ckGet();
+    try { ckBox.hidden = !!localStorage.getItem(CK); } catch { ckBox.hidden = false; }
     $$("[data-cookie]", ckBox).forEach(b => b.addEventListener("click", () => {
-      try { localStorage.setItem(CK, b.dataset.cookie); } catch {}
+      try { localStorage.setItem(CK, "ok"); } catch {}
       ckBox.hidden = true;
-      ckRun();
     }));
   }
-  $$("[data-cookie-open]").forEach(b => b.addEventListener("click", () => { if (ckBox) ckBox.hidden = false; }));
-  ckRun();
 
   // ---- смета: { артикул: количество } ----
   const KEY = "hdl-smeta";
