@@ -547,3 +547,16 @@ body[data-page=catalog] .hsearch { display: none; }
   .cat-layout.no-side .f-open { display: none; }
   .cat-layout.no-side .cat-tools .sort { grid-column: 1 / -1; }
 }
+
+/* переключатель систем: на компьютере там, где нет левого списка с системой, на телефоне всегда */
+.sys-switch { display: flex; gap: 6px; margin: 0 0 12px; max-width: 520px; }
+.sys-switch a, .sys-switch button { flex: 1; text-align: center; padding: 9px 6px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); font: 600 14px var(--font); text-decoration: none; cursor: pointer; }
+.sys-switch a:hover, .sys-switch button:hover { border-color: var(--brand); }
+.sys-switch [aria-current=page], .sys-switch [aria-pressed=true] { background: var(--brand); border-color: var(--brand); color: #fff; }
+.sys-switch [hidden] { display: none; }
+.sys-switch.with-side { display: none; }
+@media (max-width: 980px) {
+  .cat-main > .sys-switch { max-width: none; order: 0; }
+  .sys-switch.with-side { display: flex; }
+  .cat-side .fs-sys { display: none; }
+}

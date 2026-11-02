@@ -173,6 +173,11 @@
         x.parentElement.classList.toggle("zero", k === 0 && !x.checked);
       }));
       // варианты с нулём спрятаны; ряд или блок, где не осталось вариантов, прячем целиком
+      $$("[data-sys]").forEach(b => {
+        const v = b.dataset.sys, x = v && boxes("p").find(i => i.value === v);
+        b.setAttribute("aria-pressed", String(v ? sel.p.length === 1 && sel.p[0] === v : !sel.p.length));
+        if (x) b.hidden = x.parentElement.classList.contains("zero");
+      });
       $$(".bar-row, .cat-side fieldset, .cat-side .ff").forEach(r => { r.hidden = !$$(".chip:not(.all):not(.zero), .fbox:not(.zero)", r).length; });
       bars.forEach(b => {
         if (!b.hidden) b.hidden = !$$(".bar-row:not([hidden])", b).length;
@@ -237,6 +242,14 @@
       const bar = b.parentElement, on = !bar.classList.contains("open");
       bar.dataset.manual = on ? "open" : "closed";  // выбор посетителя важнее правил ниже
       barOpen(bar, on);
+    }));
+    // переключатель систем: где на странице все системы, работает как фильтр; где одна, это ссылки, выбранные фильтры едут с собой
+    $$("[data-sys]").forEach(b => b.addEventListener("click", () => { boxes("p").forEach(x => { x.checked = x.value === b.dataset.sys; }); apply(); }));
+    $$(".sys-switch a").forEach(a => a.addEventListener("click", () => {
+      a.dataset.base = a.dataset.base || a.getAttribute("href");
+      const u = new URL(a.dataset.base, location.href);
+      new URLSearchParams(location.search).forEach((v, k) => { if (!u.searchParams.has(k)) u.searchParams.append(k, v); });
+      a.href = u.href;
     }));
     // из адреса: ?q=…&p=buspro&g=paneli&coll=Xelent&col=Латунь
     const qs = new URLSearchParams(location.search);
