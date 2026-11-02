@@ -1,0 +1,6 @@
+<FilesMatch "\.xlsx$">
+  ForceType application/octet-stream
+  <IfModule mod_headers.c>
+    Header set Content-Disposition attachment
+  </IfModule>
+</FilesMatch>
