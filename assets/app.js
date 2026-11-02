@@ -134,7 +134,7 @@
     setTimeout(() => { add.textContent = "В смету"; }, 1600);
   });
 
-  // ---- светильник: выбор управления. По умолчанию первый драйвер исполнения: цена суммой, в смету обе позиции; «Без драйвера» — цена светильника ----
+  // ---- светильник: выбор управления. По умолчанию «Без драйвера» — цена светильника; выбран драйвер — цена суммой, в смету обе позиции ----
   const ctl = $("[data-ctl]");
   if (ctl) {
     const opts = $$(".ctl-opts button", ctl), box = $(".ctl-opts", ctl), inc = $("[data-ctl-inc]", ctl), sum = $("[data-sum]"), pr = $("[data-price]");
@@ -155,8 +155,7 @@
     };
     const pick = o => { opts.forEach(x => x.setAttribute("aria-checked", String(x === o))); show(); };
     opts.forEach(o => o.addEventListener("click", () => pick(o)));
-    // другое исполнение — его первый драйвер (у «вкл/выкл» драйвер в комплекте)
-    $$(".variants button").forEach(b => b.addEventListener("click", () => pick(opts.find(o => o.dataset.v === b.dataset.a) || opts.find(o => o.dataset.v === "*"))));
+    $$(".variants button").forEach(b => b.addEventListener("click", () => pick(opts.find(o => o.dataset.v === "*"))));  // другое исполнение — снова без драйвера
     show();
   }
 
