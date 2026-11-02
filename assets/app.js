@@ -132,8 +132,8 @@
       if (need) { need.hidden = false; $(".variants")?.scrollIntoView({ block: "center", behavior: "smooth" }); }
       return;
     }
-    const s = load(), q = Math.max(1, +(qi?.value) || 1), d = add.dataset.add2;
-    s[a] = (s[a] || 0) + q;
+    const s = load(), q = Math.max(1, +(qi?.value) || 1), d = add.dataset.add2, key = a + (add.dataset.opt || "");
+    s[key] = (s[key] || 0) + q;
     if (d) s[d] = (s[d] || 0) + q;  // драйвер — по одному на светильник
     save(s);
     add.textContent = d ? "Добавлено с драйвером ✓" : "Добавлено ✓";
@@ -182,6 +182,53 @@
       pick(opts.find(o => o.dataset.v === b.dataset.a) || opts.find(o => o.dataset.v === "*"));
     }));
     show();
+  }
+
+  // ---- светильник: угол луча и цвет света. По умолчанию максимальный угол и 3000 K; картинка конуса по выбору; выбранное — в строку сметы ----
+  const beamBox = $("[data-beam]");
+  if (beamBox) {
+    const data = JSON.parse(beamBox.dataset.beam), svg = $("svg", beamBox), cap = $("[data-beam-cap]", beamBox);
+    const aBox = $("[data-beam-a]", beamBox), kBox = $("[data-beam-k]", beamBox), kHead = $("[data-beam-kh]", beamBox), kNote = $("[data-beam-kn]", beamBox);
+    const KCOL = { 2700: "#ffb24d", 3000: "#ffc56b", 3500: "#ffd894", 4000: "#fff0cf", 5000: "#e3ecff" };
+    const KTXT = { 2700: "тёплый, уютный вечерний свет", 3000: "тёплый белый, для жилых комнат", 3500: "нейтрально-тёплый", 4000: "нейтральный белый, для кухни и работы", 5000: "холодный белый, дневной" };
+    const ATXT = a => a <= 16 ? "узкий луч: акцент на картину, нишу, предмет" : a <= 36 ? "средний луч: свет над столом и общий свет" : a <= 60 ? "широкий луч: общий свет комнаты" : "рассеянный свет: ровное общее освещение";
+    let ang = 0, k = 3000, cur = null;
+    const variantNow = () => {
+      const v = $$(".variants button").find(x => x.getAttribute("aria-checked") === "true");
+      return v ? data.find(d => d.v === v.dataset.a) : data.length === 1 ? data[0] : null;
+    };
+    const draw = () => {
+      const d = cur, half = Math.min(96, Math.tan(Math.min(ang, 150) / 2 * Math.PI / 180) * 96);
+      const fill = d && d.cct ? "url(#bcct)" : d && d.k.length ? KCOL[k] || "#fff4e0" : "#fff4e0";
+      svg.innerHTML = '<defs><linearGradient id="bcct" x1="0" x2="1"><stop offset="0" stop-color="#ffb24d"/><stop offset="1" stop-color="#e3ecff"/></linearGradient>'
+        + '<linearGradient id="bfade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".95"/><stop offset="1" stop-color="#fff" stop-opacity=".25"/></linearGradient>'
+        + '<mask id="bm"><rect width="200" height="120" fill="url(#bfade)"/></mask></defs>'
+        + '<rect width="200" height="120" rx="10" fill="#1f1a1e"/>'
+        + `<polygon points="100,14 ${100 - half},110 ${100 + half},110" fill="${fill}" mask="url(#bm)"/>`
+        + `<ellipse cx="100" cy="110" rx="${Math.max(half, 6)}" ry="4" fill="${fill}" opacity=".5"/><circle cx="100" cy="12" r="5" fill="#ffd36b"/>`;
+      const t = d && d.cct ? `регулируется ${d.cct[0]}–${d.cct[1]} K: теплее вечером, холоднее днём` : d && d.k.length ? `${k} K — ${KTXT[k] || ""}` : "";
+      cap.textContent = `${ang}° — ${ATXT(ang)}` + (t ? `. ${t[0].toUpperCase()}${t.slice(1)}` : "");
+      if (add) add.dataset.opt = d && d.v === add.dataset.add ? ` · ${ang}°` + (d.k.length ? ` · ${k} K` : "") : "";
+    };
+    const chip = (box, vals, sel, unit, on) => {
+      box.innerHTML = vals.map(v => `<button type="button" role="radio" aria-checked="${v === sel}" data-x="${v}">${v}${unit}</button>`).join("");
+      $$("button", box).forEach(b => b.addEventListener("click", () => { on(+b.dataset.x); render(false); }));
+    };
+    const render = (fresh = true) => {
+      cur = variantNow();
+      const angs = cur ? cur.ang : [...new Set(data.flatMap(d => d.ang))].sort((a, b) => a - b);
+      if (fresh || !angs.includes(ang)) ang = angs[angs.length - 1];  // по умолчанию — максимальный угол
+      const ks = cur ? cur.k : [];
+      if (ks.length && !ks.includes(k)) k = ks.includes(3000) ? 3000 : ks[0];
+      chip(aBox, angs, ang, "°", v => { ang = v; });
+      chip(kBox, ks, k, " K", v => { k = v; });
+      kBox.hidden = kHead.hidden = !ks.length;
+      kNote.textContent = cur && cur.cct ? "Цветовая температура регулируется: выбирать не нужно." : !cur && data.some(d => d.k.length) ? "Цвет света выбирается после выбора исполнения." : "";
+      draw();
+    };
+    // смена исполнения и сброс «Без драйвера» — после обработчиков карточки
+    document.addEventListener("click", ev => { if (ev.target.closest(".variants button, .ctl-opts button:not([data-x])")) setTimeout(() => render(true), 0); });
+    render(true);
   }
 
   // ---- «В смету» прямо с карточки в сетке ----
@@ -336,7 +383,12 @@
 
   // ---- страница сметы ----
   const box = $("[data-smeta]");
-  const rows = () => Object.entries(load()).map(([a, q]) => ({ a, q, it: D.items[a] || { n: a, u: "", t: "", b: null } }));
+  const itemOf = a => {
+    if (D.items[a]) return D.items[a];
+    const [base, ...opt] = a.split(" · "), it = D.items[base];
+    return it ? { ...it, n: it.n + ", " + opt.join(", ") } : { n: a, u: "", t: "", b: null };
+  };
+  const rows = () => Object.entries(load()).map(([a, q]) => ({ a, q, it: itemOf(a) }));
   const renderHints = r => {
     const el = $("[data-smeta-hints]");
     if (!el) return;
@@ -388,7 +440,7 @@
     const shared = new URLSearchParams(location.search).get("s");
     if (shared) {
       const got = {};
-      shared.split(",").forEach(x => { const [a, q] = x.split("*"); if (D.items[a]) got[a] = Math.max(1, +q || 1); });
+      shared.split(",").forEach(x => { const [a, q] = x.split("*"); if (D.items[a] || D.items[a.split(" · ")[0]]) got[a] = Math.max(1, +q || 1); });
       const n = Object.keys(got).length, shareBox = $("[data-smeta-share]");
       history.replaceState(null, "", location.pathname);
       if (n && !Object.keys(load()).length) { save(got); shareBox.textContent = `Смета открыта по ссылке: ${n} поз.`; shareBox.hidden = false; }

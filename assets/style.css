@@ -599,3 +599,13 @@ body[data-page=catalog] .hsearch { display: none; }
 .ctl .muted.small { margin: 4px 0 0; }
 .ctl-sum { margin: 6px 0 0; font-size: 14px; }
 .ctl-need { margin: 0 0 8px; padding: 8px 12px; border-radius: 10px; background: #fff4e5; color: #8a5a12; font-size: 14px; }
+
+/* светильник: угол луча и цвет света — картинка конуса слева, кнопки справа */
+.beam { display: flex; gap: 16px; align-items: flex-start; margin: 4px 0 14px; }
+.beam-pic { flex: 0 0 200px; }
+.beam-pic svg { display: block; width: 200px; height: 120px; }
+.beam-cap { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+.beam-ctl { flex: 1; min-width: 0; }
+.beam-ctl .ctl-opts + .ctl-h { margin-top: 10px; }
+[data-beam-kh][hidden] { display: none; }
+@media (max-width: 560px) { .beam { flex-direction: column; } .beam-pic, .beam-pic svg { width: 100%; height: auto; } }
