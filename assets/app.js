@@ -134,10 +134,9 @@
   const search = $("[data-search]");
   if (search) {
     const grid = $(".cat-main .grid"), cards = $$(".card", grid);
-    const found = $("[data-found]"), title = $("[data-cat-title]"), empty = $("[data-empty]"), facetsBox = $("[data-facets]"), bars = $$("[data-bar]");
+    const found = $("[data-found]"), title = $("[data-cat-title]"), empty = $("[data-empty]"), bars = $$("[data-bar]");
     const intro = found.textContent, title0 = title.textContent;
     const NAMES = [...new Set($$("[data-fl] input").map(x => x.name))];  // все фильтры страницы
-    const PANEL_GROUPS = ["paneli", "rozetki-vyklyuchateli"];
     const boxes = n => $$(`[data-fl] input[name=${n}]`);
     const checked = n => boxes(n).filter(x => x.checked).map(x => x.value);
     const label = x => x.parentElement.querySelector("span").textContent.trim();
@@ -149,7 +148,6 @@
       const gsel = checked("g"), cur = gsel.length ? gsel : pageGroups;
       const fits = list => cur.length > 0 && cur.every(g => list.includes(g));
       bars.forEach(b => { const ok = fits(b.dataset.bar.split(" ")); b.hidden = !ok; if (!ok) $$("input", b).forEach(x => x.checked = false); });
-      if (facetsBox) { const ok = fits(PANEL_GROUPS); facetsBox.hidden = !ok; if (!ok) $$("input", facetsBox).forEach(x => x.checked = false); }
     };
     const apply = (push = true) => {
       showBars();
@@ -172,7 +170,6 @@
       // варианты с нулём спрятаны; ряд или блок, где не осталось вариантов, прячем целиком
       $$(".bar-row, .cat-side fieldset, .cat-side .ff").forEach(r => { r.hidden = !$$(".chip:not(.all):not(.zero), .fbox:not(.zero)", r).length; });
       bars.forEach(b => { if (!b.hidden) b.hidden = !$$(".bar-row:not([hidden])", b).length; });
-      if (facetsBox && !facetsBox.hidden) facetsBox.hidden = !$$(".ff:not([hidden])", facetsBox).length;
       $$("[data-clear]").forEach(b => b.setAttribute("aria-pressed", String(!sel[b.dataset.clear].length)));
       // заголовок
       const lab = n => boxes(n).filter(x => x.checked).map(label);
@@ -184,6 +181,8 @@
       // выбрана одна коллекция — её снимки в интерьере над карточками
       $$("[data-int]").forEach(x => { x.hidden = !(sel.coll && sel.coll.length === 1 && sel.coll[0] === x.dataset.int); });
       empty.hidden = n > 0;
+      const resetRow = $(".bar-reset");
+      if (resetRow) resetRow.hidden = !search.value && !NAMES.some(n => sel[n].length);
       // выбран один цвет — ссылка карточки откроет нужный вариант
       const oneCol = sel.col && sel.col.length === 1 ? sel.col[0] : sel.mat && sel.mat.length === 1 ? sel.mat[0] : "";
       cards.forEach(c => { const a = $(".card-link", c), base = a.getAttribute("href").split("?")[0]; a.setAttribute("href", oneCol && (vals(c, "col").includes(oneCol) || vals(c, "mat").includes(oneCol)) ? base + "?c=" + encodeURIComponent(oneCol) : base); });
