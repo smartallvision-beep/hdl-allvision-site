@@ -162,7 +162,18 @@
       }
     };
     const pick = o => { opts.forEach(x => x.setAttribute("aria-checked", String(x === o))); show(); };
-    opts.forEach(o => o.addEventListener("click", () => pick(o)));
+    const none = opts.find(o => o.dataset.v === "*"), chips = $$(".variants button");
+    // «Без драйвера» — как при открытии: исполнение не выбрано, цена «от», модель вместо артикула, в смету — после выбора исполнения
+    const reset = () => {
+      if (chips.length) {
+        chips.forEach(x => x.setAttribute("aria-checked", "false"));
+        $("[data-art]").textContent = ctl.dataset.model;
+        const lab = $("[data-art-l]"); if (lab) lab.textContent = "Модель";
+        add.dataset.add = "";
+      }
+      pick(none);
+    };
+    opts.forEach(o => o.addEventListener("click", () => o === none ? reset() : pick(o)));
     // выбрали исполнение — подставляем его первый драйвер (у «вкл/выкл» драйвер в комплекте)
     $$(".variants button").forEach(b => b.addEventListener("click", () => {
       $("[data-need]", ctl).hidden = true;
