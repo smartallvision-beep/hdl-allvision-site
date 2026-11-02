@@ -15,7 +15,18 @@ function reply(int $code, array $body): void {
 }
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') reply(405, ['ok' => false]);
-$cfg = is_file(__DIR__ . '/config.php') ? require __DIR__ . '/config.php' : [];
+// config.php правят руками на сервере: опечатка в нём не должна терять заявку, она уходит в CSV, причина — в журнал
+$cfg = [];
+$cfgErr = '';
+if (is_file(__DIR__ . '/config.php')) {
+    try {
+        $cfg = require __DIR__ . '/config.php';
+    } catch (Throwable $e) {
+        $cfgErr = 'ошибка в config.php, строка ' . $e->getLine() . ': ' . $e->getMessage();
+    }
+    if (!is_array($cfg)) $cfg = [];
+}
+$cfg = array_map(fn($v) => is_string($v) ? trim($v) : $v, $cfg);
 $in = json_decode((string) file_get_contents('php://input'), true);
 if (!is_array($in)) reply(400, ['ok' => false]);
 
@@ -85,7 +96,7 @@ if (!empty($cfg['tg_token']) && !empty($cfg['tg_chat'])) {
     // причина неудачи — в журнал рядом с заявками (без токена), чтобы было видно, почему не дошло
     if (!$sent) @file_put_contents($dir . '/tg-errors.log', date('Y-m-d H:i:s') . ' ' . ($err ?: mb_substr((string) $raw, 0, 300)) . "\n", FILE_APPEND);
 } else {
-    @file_put_contents($dir . '/tg-errors.log', date('Y-m-d H:i:s') . " в config.php нет tg_token или tg_chat\n", FILE_APPEND);
+    @file_put_contents($dir . '/tg-errors.log', date('Y-m-d H:i:s') . ' ' . ($cfgErr ?: 'в config.php нет tg_token или tg_chat') . "\n", FILE_APPEND);
 }
 if (!$sent && !empty($cfg['mail_to'])) {
     $sent = mail($cfg['mail_to'], '=?UTF-8?B?' . base64_encode('Заявка с сайта hdl.by') . '?=', $text,
