@@ -22,13 +22,13 @@
   });
   const hit = (hay, ts) => ts.every(alts => alts.some(a => hay.includes(a)));
 
-  // ---- cookie: окно с одной фразой, пока его не закрыли; отметка в памяти браузера ----
+  // ---- cookie: окно, пока не выбрали «Принять» или «Отклонить»; выбор в памяти браузера, после «no» Метрика не грузится ----
   const CK = "hdl-cookie";
   const ckBox = $("#cookie");
   if (ckBox) {
     try { ckBox.hidden = !!localStorage.getItem(CK); } catch { ckBox.hidden = false; }
     $$("[data-cookie]", ckBox).forEach(b => b.addEventListener("click", () => {
-      try { localStorage.setItem(CK, "ok"); } catch {}
+      try { localStorage.setItem(CK, b.dataset.cookie); } catch {}
       ckBox.hidden = true;
     }));
   }
