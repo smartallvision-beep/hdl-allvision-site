@@ -496,6 +496,18 @@
     });
   }
 
+  // ---- телефон: в пустом поле «+375 », дальше код оператора и номер по образцу +375 29 123-45-67; стёрли «+375» — любой номер как есть ----
+  const BY = "+375 ";
+  $$('input[name="phone"]').forEach(i => {
+    i.addEventListener("focus", () => { if (!i.value) { i.value = BY; requestAnimationFrame(() => i.setSelectionRange(BY.length, BY.length)); } });
+    i.addEventListener("blur", () => { if (i.value.trim() === "+375") i.value = ""; });
+    i.addEventListener("input", ev => {
+      if (!i.value.startsWith("+375") || (ev.inputType || "").startsWith("delete")) return;  // свой номер или стирание — не мешаем
+      const d = i.value.slice(4).replace(/\D/g, "").slice(0, 9);
+      i.value = BY + d.slice(0, 2) + (d.length > 2 ? " " + d.slice(2, 5) : "") + (d.length > 5 ? "-" + d.slice(5, 7) : "") + (d.length > 7 ? "-" + d.slice(7, 9) : "");
+    });
+  });
+
   // ---- заявки ----
   $$("form.lead").forEach(f => f.addEventListener("submit", async ev => {
     ev.preventDefault();
