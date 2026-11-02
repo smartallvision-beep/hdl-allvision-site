@@ -126,7 +126,13 @@
   const qi = $("[data-qty-input]");
   $$("[data-qty]").forEach(b => b.addEventListener("click", () => { qi.value = Math.max(1, (+qi.value || 1) + +b.dataset.qty); }));
   if (add) add.addEventListener("click", () => {
-    const s = load(), a = add.dataset.add, q = Math.max(1, +(qi?.value) || 1), d = add.dataset.add2;
+    const a = add.dataset.add;
+    if (!a) {  // светильник: исполнение ещё не выбрано
+      const need = $("[data-need]");
+      if (need) { need.hidden = false; $(".variants")?.scrollIntoView({ block: "center", behavior: "smooth" }); }
+      return;
+    }
+    const s = load(), q = Math.max(1, +(qi?.value) || 1), d = add.dataset.add2;
     s[a] = (s[a] || 0) + q;
     if (d) s[d] = (s[d] || 0) + q;  // драйвер — по одному на светильник
     save(s);
@@ -134,7 +140,8 @@
     setTimeout(() => { add.textContent = "В смету"; }, 1600);
   });
 
-  // ---- светильник: выбор управления. По умолчанию «Без драйвера» — цена светильника; выбран драйвер — цена суммой, в смету обе позиции ----
+  // ---- светильник: при открытии исполнение не выбрано, «Без драйвера», цена «от». Выбрали исполнение — его первый драйвер, цена суммой,
+  // в смету обе позиции; «Без драйвера» сбрасывает драйвер ----
   const ctl = $("[data-ctl]");
   if (ctl) {
     const opts = $$(".ctl-opts button", ctl), box = $(".ctl-opts", ctl), inc = $("[data-ctl-inc]", ctl), sum = $("[data-sum]"), pr = $("[data-price]");
@@ -143,19 +150,24 @@
       const v = variant(), va = v ? v.dataset.a : ctl.dataset.v0, vb = v ? +v.dataset.byn : +ctl.dataset.b0;
       const mine = opts.filter(o => o.dataset.v === va);
       opts.forEach(o => { o.hidden = o.dataset.v !== "*" && o.dataset.v !== va; });
-      box.hidden = !mine.length; inc.hidden = !!mine.length;  // у исполнения «вкл/выкл» драйвер в комплекте
+      const kit = !!va && !mine.length;  // у исполнения «вкл/выкл» драйвер в комплекте
+      box.hidden = kit; inc.hidden = !kit;
       const sel = mine.find(o => o.getAttribute("aria-checked") === "true");
       if (sel) {
         pr.textContent = fmt(vb + +sel.dataset.b) + " BYN";
         sum.innerHTML = "Светильник " + fmt(vb) + " BYN + драйвер <a href=\"" + sel.dataset.u + "\">" + sel.dataset.m + "</a> " + fmt(+sel.dataset.b) + " BYN";
         sum.hidden = false; add.dataset.add2 = sel.dataset.a;
       } else {
-        pr.textContent = fmt(vb) + " BYN"; sum.hidden = true; delete add.dataset.add2;
+        pr.textContent = (va ? "" : ctl.dataset.from) + fmt(vb) + " BYN"; sum.hidden = true; delete add.dataset.add2;
       }
     };
     const pick = o => { opts.forEach(x => x.setAttribute("aria-checked", String(x === o))); show(); };
     opts.forEach(o => o.addEventListener("click", () => pick(o)));
-    $$(".variants button").forEach(b => b.addEventListener("click", () => pick(opts.find(o => o.dataset.v === "*"))));  // другое исполнение — снова без драйвера
+    // выбрали исполнение — подставляем его первый драйвер (у «вкл/выкл» драйвер в комплекте)
+    $$(".variants button").forEach(b => b.addEventListener("click", () => {
+      $("[data-need]", ctl).hidden = true;
+      pick(opts.find(o => o.dataset.v === b.dataset.a) || opts.find(o => o.dataset.v === "*"));
+    }));
     show();
   }
 

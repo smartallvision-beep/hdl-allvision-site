@@ -598,3 +598,4 @@ body[data-page=catalog] .hsearch { display: none; }
 .ctl-inc { margin: 0 0 6px; font-size: 14px; }
 .ctl .muted.small { margin: 4px 0 0; }
 .ctl-sum { margin: 6px 0 0; font-size: 14px; }
+.ctl-need { margin: 0 0 8px; padding: 8px 12px; border-radius: 10px; background: #fff4e5; color: #8a5a12; font-size: 14px; }
