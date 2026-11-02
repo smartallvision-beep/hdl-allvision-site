@@ -149,7 +149,7 @@
       const fits = list => cur.length > 0 && cur.every(g => list.includes(g));
       bars.forEach(b => { const ok = fits(b.dataset.bar.split(" ")); b.hidden = !ok; if (!ok) $$("input", b).forEach(x => x.checked = false); });
     };
-    // на телефоне виден первый ряд блока фильтров, остальные раскрываются в нём же; в каталоге панелей открыты сразу
+    // на телефоне ряды блока фильтров открыты сразу, кнопка их сворачивает
     const barOpen = (bar, on) => {
       bar.classList.toggle("open", on);
       const m = $("[data-bar-more]", bar);
@@ -183,10 +183,7 @@
         if (!b.hidden) b.hidden = !$$(".bar-row:not([hidden])", b).length;
         const m = $("[data-bar-more]", b);
         if (m) m.hidden = $$(".bar-row:not([hidden])", b).length < 2;
-        const g = checked("g").length ? checked("g") : pageGroups;
-        const panels = g.length === 1 && g[0] === "paneli" && b.dataset.bar.split(" ").includes("paneli");
-        // выбранное должно быть видно, например при открытии по ссылке
-        barOpen(b, b.dataset.manual ? b.dataset.manual === "open" : panels || $$(".bar-row ~ .bar-row input:checked", b).length > 0);
+        barOpen(b, b.dataset.manual !== "closed");
       });
       $$("[data-clear]").forEach(b => b.setAttribute("aria-pressed", String(!sel[b.dataset.clear].length)));
       // заголовок
@@ -240,7 +237,7 @@
     fo.addEventListener("click", () => { const o = side.classList.toggle("open"); fo.setAttribute("aria-expanded", String(o)); });
     $$("[data-bar-more]").forEach(b => b.addEventListener("click", () => {
       const bar = b.parentElement, on = !bar.classList.contains("open");
-      bar.dataset.manual = on ? "open" : "closed";  // выбор посетителя важнее правил ниже
+      bar.dataset.manual = on ? "open" : "closed";  // выбор посетителя сохраняется при смене фильтров
       barOpen(bar, on);
     }));
     // переключатель систем: где на странице все системы, работает как фильтр; где одна, это ссылки, выбранные фильтры едут с собой
