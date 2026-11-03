@@ -768,3 +768,8 @@ body[data-page=catalog] .hsearch { display: none; }
   .circ-day-t span:nth-child(3), .circ-day-t span:nth-child(4) { display: none; }
   .circ-table td:last-child, .circ-table th:last-child { display: none; }
 }
+.circ sup { font-size: 11px; line-height: 0; margin-left: 1px; }
+.circ sup a { text-decoration: none; }
+.circ-src { padding-left: 22px; font-size: 13px; }
+.circ-src li { margin: 4px 0; overflow-wrap: anywhere; color: var(--muted); }
+.circ-src li:target { background: var(--brand-soft); }
