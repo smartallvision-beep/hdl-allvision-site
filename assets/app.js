@@ -314,8 +314,9 @@
         : cl.length === 1 ? "Коллекция " + cl[0] + (gl.length === 1 ? ": " + gl[0].toLowerCase() : "")
         : gl.length === 1 ? gl[0] + (pl.length === 1 ? " " + pl[0] : "") : pl.length === 1 && !gl.length ? pl[0] : title0;
       found.textContent = n === cards.length ? intro : "Найдено: " + plural(n, "позиция", "позиции", "позиций");
-      // выбрана одна коллекция — её снимки в интерьере над карточками
-      $$("[data-int]").forEach(x => { x.hidden = !(sel.coll && sel.coll.length === 1 && sel.coll[0] === x.dataset.int); });
+      // выбрана одна коллекция — её снимки в интерьере над карточками; блок «функции на клавише» — только когда среди найденного есть панели
+      const panelsShown = cards.some(c => !c.hidden && c.dataset.g === "paneli");
+      $$("[data-int]").forEach(x => { x.hidden = !(sel.coll && sel.coll.length === 1 && sel.coll[0] === x.dataset.int) || (x.classList.contains("keyx") && !panelsShown); });
       empty.hidden = n > 0;
       const resetRow = $(".bar-reset");
       if (resetRow) resetRow.hidden = !search.value && !NAMES.some(n => sel[n].length);
