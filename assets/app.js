@@ -201,6 +201,7 @@
           if (vs.length) nd.innerHTML = '<p class="need-w">Для работы светильника необходим драйвер. Если драйвер у вас уже есть, светильник можно заказать без него.</p>'
             + '<label class="need-ok" data-need-ok><input type="checkbox"> <i>Понимаю, что без драйвера светильник работать не будет. Драйвер не нужен: он у меня есть</i></label>'
             + `<div class="need-more" data-need-more hidden><fieldset class="need-v" data-need-v><legend>${vs.length > 1 && vs.some(b => /цветов/i.test(b.textContent)) ? "Выберите светильник без драйвера — с регулировкой цветовой температуры или без:" : "Светильник без драйвера:"}</legend>`
+            + (vs.some(b => /цветов/i.test(b.textContent)) ? '<p class="need-why"><a href="/cirkadnoe-osveshchenie/" target="_blank">Что даёт регулировка цветовой температуры?</a></p>' : "")
             + vs.map(b => `<label><input type="radio" name="need-v" value="${esc(b.dataset.a)}"${vs.length === 1 ? " checked" : ""}> <i>${name(b)}${b.dataset.byn ? ` <span>· ${fmt(+b.dataset.byn)} BYN</span>` : ""}</i></label>`).join("")
             + '</fieldset><button type="button" class="need-go" data-need-go>Всё равно в смету без драйвера</button><p class="need-err" data-need-err hidden></p></div>'
             + kit.map(b => `<p class="need-kit">Исполнению «${name(b)}» отдельный драйвер не нужен — выберите его выше.</p>`).join("");

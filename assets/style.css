@@ -729,3 +729,42 @@ body[data-page=catalog] .hsearch { display: none; }
 .kab-files { list-style: none; padding: 0; margin: 0 0 18px; }
 .kab-files li { padding: 8px 0; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
 .kab-files .cbtn { margin-left: auto; }
+
+/* циркадное освещение (владелец 04.11.2026): страница-объяснение, ссылка «зачем» в карточках, полоса в разделе «Освещение» */
+.cct-why { margin: 12px 0 12px; font-size: 14px; }
+.cct-why a { font-weight: 600; }
+.cct-why a::before { content: "☀"; display: inline-block; margin-right: 5px; text-decoration: none; }
+.need-why { margin: 2px 0 4px !important; font-size: 13px; }
+.circ-band { display: flex; gap: 14px; align-items: center; margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg2); color: var(--ink); text-decoration: none; max-width: 760px; }
+.circ-band:hover { border-color: var(--brand); }
+.circ-band b { display: block; color: var(--brand); }
+.circ-band span { font-size: 14px; }
+.circ-band-pic { flex: 0 0 64px; height: 40px; border-radius: 8px; }
+.circ .k-scale { margin: 18px 0 8px; }
+.k-bar { height: 22px; border-radius: 11px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .06); }
+.k-labels { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; font-size: 14px; color: var(--muted); }
+.k-labels span { display: flex; flex-direction: column; } .k-labels span:nth-child(2) { text-align: center; } .k-labels span:last-child { text-align: right; }
+.k-labels b { color: var(--ink); }
+.circ-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 20px 0; }
+.circ-mode { padding: 14px 16px; border-radius: var(--r); background: var(--bg2); border-left: 4px solid; }
+.circ-mode.day { border-color: #6f9cf5; } .circ-mode.eve { border-color: #f0a33a; }
+.circ-mode h2 { margin: 0 0 6px; font-size: 18px; } .circ-mode p { margin: 0; }
+.circ-facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 0 0 20px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r); text-align: center; }
+.circ-facts b { display: block; font-size: 22px; color: var(--dark); } .circ-facts span { font-size: 13px; color: var(--muted); }
+.circ-day { display: flex; height: 44px; border-radius: 10px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .06); }
+.circ-day i { flex: 1; }
+.circ-day-t { position: relative; height: 18px; margin: 6px 0 8px; font-size: 13px; color: var(--muted); }
+.circ-day-t span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.circ-day-t span:first-child { left: 0 !important; transform: none; } .circ-day-t span:last-child { left: auto !important; right: 0; transform: none; }
+.circ-table { margin: 6px 0 18px; } .circ-table summary { cursor: pointer; color: var(--brand); font-weight: 600; }
+.tablewrap { overflow-x: auto; }
+.circ-table table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
+.circ-table th, .circ-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.circ-table th { color: var(--muted); font-weight: 500; }
+.k-chip { display: inline-block; padding: 1px 8px; border-radius: 6px; font-weight: 600; white-space: nowrap; color: #2c252a; }
+@media (max-width: 640px) {
+  .circ-modes { grid-template-columns: 1fr; }
+  .circ-facts { grid-template-columns: 1fr 1fr; }
+  .circ-day-t span:nth-child(3), .circ-day-t span:nth-child(4) { display: none; }
+  .circ-table td:last-child, .circ-table th:last-child { display: none; }
+}
