@@ -189,11 +189,21 @@
     if (!a) {  // светильник: исполнение ещё не выбрано
       const need = $("[data-need]");
       // красная подсказка и рамка вокруг исполнений; повторный щелчок снова встряхивает подсказку (владелец 03.11.2026: «было явно видно»).
-      // В подсказке исполнения кнопками с ценой (уже со скидкой дилера): щелчок — в смету без драйвера (владелец 03.11.2026, вариант Б)
+      // В подсказке заказ без драйвера (владелец 04.11.2026): предупреждение, что драйвер нужен; обязательный выбор исполнения, которому нужен
+      // драйвер (с регулировкой цветовой температуры или без); согласие «драйвер у меня есть»; одна кнопка. Цены — с кнопок исполнений, уже со скидкой дилера
       if (need) {
-        const box = $("[data-need-opts]", need);
-        if (box && !box.children.length) box.innerHTML = $$(".variants button").map(b =>
-          `<button type="button" data-a="${esc(b.dataset.a)}">${esc($("span", b)?.textContent || b.dataset.a)}${b.dataset.byn ? ` <span>· ${fmt(+b.dataset.byn)} BYN</span>` : ""}</button>`).join("");
+        const nd = $("[data-need-nd]", need);
+        if (nd && !nd.children.length) {
+          const name = b => esc($("span", b)?.textContent || b.dataset.a);
+          const drv = new Set($$(".ctl-opts button[data-a]").map(o => o.dataset.v)), chips = $$(".variants button");
+          const vs = chips.filter(b => drv.has(b.dataset.a)), kit = chips.filter(b => !drv.has(b.dataset.a));
+          if (vs.length) nd.innerHTML = '<p class="need-w">Для работы светильника необходим драйвер. Если драйвер у вас уже есть, светильник можно заказать без него.</p>'
+            + `<fieldset class="need-v" data-need-v><legend>${vs.length > 1 && vs.some(b => /цветов/i.test(b.textContent)) ? "Выберите светильник — с регулировкой цветовой температуры или без:" : "Исполнение:"}</legend>`
+            + vs.map(b => `<label><input type="radio" name="need-v" value="${esc(b.dataset.a)}"${vs.length === 1 ? " checked" : ""}> <i>${name(b)}${b.dataset.byn ? ` <span>· ${fmt(+b.dataset.byn)} BYN</span>` : ""}</i></label>`).join("")
+            + '</fieldset><label class="need-ok" data-need-ok><input type="checkbox"> <i>Понимаю, что без драйвера светильник работать не будет. Драйвер не нужен: он у меня есть</i></label>'
+            + '<button type="button" class="need-go" data-need-go>Всё равно в смету без драйвера</button><p class="need-err" data-need-err hidden></p>'
+            + kit.map(b => `<p class="need-kit">Исполнению «${name(b)}» отдельный драйвер не нужен — выберите его выше.</p>`).join("");
+        }
         need.hidden = false;
         need.classList.remove("shake"); void need.offsetWidth; need.classList.add("shake");
         const v = $(".variants");
@@ -209,15 +219,27 @@
     add.textContent = d ? "Добавлено с драйвером ✓" : "Добавлено ✓";
     setTimeout(() => { add.textContent = "В смету"; }, 1600);
   });
-  $("[data-need-opts]")?.addEventListener("click", ev => {
-    const b = ev.target.closest("button[data-a]"); if (!b || b.disabled) return;
-    const s = load(), q = Math.max(1, +(qi?.value) || 1), key = b.dataset.a + beamOpt(b.dataset.a);
+  // «Всё равно в смету без драйвера»: только с выбранным исполнением и согласием; в строке сметы пометка «без драйвера»
+  const needBox = $("[data-need]");
+  needBox?.addEventListener("change", ev => {
+    ev.target.closest("[data-need-v], [data-need-ok]")?.classList.remove("bad");
+    if (!$(".bad", needBox)) $("[data-need-err]", needBox).hidden = true;
+  });
+  needBox?.addEventListener("click", ev => {
+    const go = ev.target.closest("[data-need-go]"); if (!go || go.disabled) return;
+    const v = $("[data-need-v] input:checked", needBox), ok = $("[data-need-ok] input", needBox), err = $("[data-need-err]", needBox);
+    $("[data-need-v]", needBox).classList.toggle("bad", !v);
+    $("[data-need-ok]", needBox).classList.toggle("bad", !ok.checked);
+    const miss = [!v && "выберите светильник", !ok.checked && "отметьте, что драйвер у вас есть"].filter(Boolean);
+    err.hidden = !miss.length;
+    if (miss.length) { err.textContent = miss.join(" и ").replace(/^./, c => c.toUpperCase()) + "."; return; }
+    const s = load(), q = Math.max(1, +(qi?.value) || 1), key = v.value + beamOpt(v.value) + " · без драйвера";
     s[key] = (s[key] || 0) + q;
     save(s);
-    const t = b.innerHTML; b.textContent = "Добавлено ✓"; b.disabled = true;
-    setTimeout(() => {
-      b.innerHTML = t; b.disabled = false;
-      $("[data-need]").hidden = true; $(".variants")?.classList.remove("need-pick");
+    go.textContent = "Добавлено без драйвера ✓"; go.disabled = true;
+    setTimeout(() => {  // подсказка закрывается; в следующий раз выбор и согласие — заново
+      needBox.hidden = true; $("[data-need-nd]", needBox).innerHTML = "";
+      $(".variants")?.classList.remove("need-pick");
     }, 1600);
   });
 
