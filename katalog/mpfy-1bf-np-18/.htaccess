@@ -1,0 +1,2 @@
+RewriteEngine On
+RewriteRule ^ /katalog/buspro/shinnye-soediniteli/ [R=301,L]

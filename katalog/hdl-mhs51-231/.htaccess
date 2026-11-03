@@ -1,0 +1,2 @@
+RewriteEngine On
+RewriteRule ^ /katalog/buspro/vhody/ [R=301,L]

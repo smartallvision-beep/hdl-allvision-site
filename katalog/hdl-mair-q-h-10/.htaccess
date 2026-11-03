@@ -1,0 +1,2 @@
+RewriteEngine On
+RewriteRule ^ /katalog/buspro/datchiki/ [R=301,L]

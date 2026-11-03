@@ -1,0 +1,2 @@
+RewriteEngine On
+RewriteRule ^ /katalog/knx/shlyuzy/ [R=301,L]

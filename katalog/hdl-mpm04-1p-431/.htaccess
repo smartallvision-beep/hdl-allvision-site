@@ -1,0 +1,2 @@
+RewriteEngine On
+RewriteRule ^ /katalog/buspro/shlyuzy/ [R=301,L]
