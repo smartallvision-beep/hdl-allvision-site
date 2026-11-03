@@ -189,8 +189,8 @@
     if (!a) {  // светильник: исполнение ещё не выбрано
       const need = $("[data-need]");
       // красная подсказка и рамка вокруг исполнений; повторный щелчок снова встряхивает подсказку (владелец 03.11.2026: «было явно видно»).
-      // В подсказке заказ без драйвера (владелец 04.11.2026): предупреждение, что драйвер нужен; обязательный выбор исполнения, которому нужен
-      // драйвер (с регулировкой цветовой температуры или без); согласие «драйвер у меня есть»; одна кнопка. Цены — с кнопок исполнений, уже со скидкой дилера
+      // В подсказке заказ без драйвера (владелец 04.11.2026): предупреждение, что драйвер нужен, и согласие «драйвер у меня есть»; только после
+      // галочки — выбор исполнения, которому нужен драйвер (с регулировкой цветовой температуры или без), и одна кнопка. Цены — с кнопок исполнений, уже со скидкой дилера
       if (need) {
         const nd = $("[data-need-nd]", need);
         if (nd && !nd.children.length) {
@@ -198,10 +198,10 @@
           const drv = new Set($$(".ctl-opts button[data-a]").map(o => o.dataset.v)), chips = $$(".variants button");
           const vs = chips.filter(b => drv.has(b.dataset.a)), kit = chips.filter(b => !drv.has(b.dataset.a));
           if (vs.length) nd.innerHTML = '<p class="need-w">Для работы светильника необходим драйвер. Если драйвер у вас уже есть, светильник можно заказать без него.</p>'
-            + `<fieldset class="need-v" data-need-v><legend>${vs.length > 1 && vs.some(b => /цветов/i.test(b.textContent)) ? "Выберите светильник — с регулировкой цветовой температуры или без:" : "Исполнение:"}</legend>`
+            + '<label class="need-ok" data-need-ok><input type="checkbox"> <i>Понимаю, что без драйвера светильник работать не будет. Драйвер не нужен: он у меня есть</i></label>'
+            + `<div class="need-more" data-need-more hidden><fieldset class="need-v" data-need-v><legend>${vs.length > 1 && vs.some(b => /цветов/i.test(b.textContent)) ? "Выберите светильник без драйвера — с регулировкой цветовой температуры или без:" : "Светильник без драйвера:"}</legend>`
             + vs.map(b => `<label><input type="radio" name="need-v" value="${esc(b.dataset.a)}"${vs.length === 1 ? " checked" : ""}> <i>${name(b)}${b.dataset.byn ? ` <span>· ${fmt(+b.dataset.byn)} BYN</span>` : ""}</i></label>`).join("")
-            + '</fieldset><label class="need-ok" data-need-ok><input type="checkbox"> <i>Понимаю, что без драйвера светильник работать не будет. Драйвер не нужен: он у меня есть</i></label>'
-            + '<button type="button" class="need-go" data-need-go>Всё равно в смету без драйвера</button><p class="need-err" data-need-err hidden></p>'
+            + '</fieldset><button type="button" class="need-go" data-need-go>Всё равно в смету без драйвера</button><p class="need-err" data-need-err hidden></p></div>'
             + kit.map(b => `<p class="need-kit">Исполнению «${name(b)}» отдельный драйвер не нужен — выберите его выше.</p>`).join("");
         }
         need.hidden = false;
@@ -219,20 +219,22 @@
     add.textContent = d ? "Добавлено с драйвером ✓" : "Добавлено ✓";
     setTimeout(() => { add.textContent = "В смету"; }, 1600);
   });
-  // «Всё равно в смету без драйвера»: только с выбранным исполнением и согласием; в строке сметы пометка «без драйвера»
+  // галочка «драйвер у меня есть» открывает выбор светильника и кнопку; «Всё равно в смету без драйвера» — только с выбранным исполнением;
+  // в строке сметы пометка «без драйвера»
   const needBox = $("[data-need]");
   needBox?.addEventListener("change", ev => {
-    ev.target.closest("[data-need-v], [data-need-ok]")?.classList.remove("bad");
+    const ok = ev.target.closest("[data-need-ok] input");
+    if (ok) $("[data-need-more]", needBox).hidden = !ok.checked;
+    ev.target.closest("[data-need-v]")?.classList.remove("bad");
     if (!$(".bad", needBox)) $("[data-need-err]", needBox).hidden = true;
   });
   needBox?.addEventListener("click", ev => {
     const go = ev.target.closest("[data-need-go]"); if (!go || go.disabled) return;
     const v = $("[data-need-v] input:checked", needBox), ok = $("[data-need-ok] input", needBox), err = $("[data-need-err]", needBox);
+    if (!ok.checked) return;  // кнопка видна только после галочки
     $("[data-need-v]", needBox).classList.toggle("bad", !v);
-    $("[data-need-ok]", needBox).classList.toggle("bad", !ok.checked);
-    const miss = [!v && "выберите светильник", !ok.checked && "отметьте, что драйвер у вас есть"].filter(Boolean);
-    err.hidden = !miss.length;
-    if (miss.length) { err.textContent = miss.join(" и ").replace(/^./, c => c.toUpperCase()) + "."; return; }
+    err.hidden = !!v;
+    if (!v) { err.textContent = "Выберите светильник."; return; }
     const s = load(), q = Math.max(1, +(qi?.value) || 1), key = v.value + beamOpt(v.value) + " · без драйвера";
     s[key] = (s[key] || 0) + q;
     save(s);
@@ -280,10 +282,17 @@
     opts.forEach(o => o.addEventListener("click", () => o === none ? reset() : pick(o)));
     // выбрали исполнение — подставляем его первый драйвер (у «вкл/выкл» драйвер в комплекте)
     $$(".variants button").forEach(b => b.addEventListener("click", () => {
-      $("[data-need]", ctl).hidden = true;
+      const need = $("[data-need]", ctl), hinted = !need.hidden;
+      need.hidden = true;
       $(".variants")?.classList.remove("need-pick");
       const lab = $("[data-art-l]"); if (lab) lab.textContent = "Артикул";  // до выбора исполнения там модель
       pick(opts.find(o => o.dataset.v === b.dataset.a) || opts.find(o => o.dataset.v === "*"));
+      // после красной подсказки показываем, где подобран драйвер: кнопки «Управления», у «вкл/выкл» — строка «Драйвер в комплекте» (владелец 04.11.2026)
+      if (hinted) {
+        const el = inc.hidden ? box : inc;
+        el.classList.remove("drv-hl"); void el.offsetWidth; el.classList.add("drv-hl");
+        clearTimeout(el.hlT); el.hlT = setTimeout(() => el.classList.remove("drv-hl"), 3000);
+      }
     }));
     show();
   }
