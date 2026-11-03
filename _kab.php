@@ -1,11 +1,11 @@
 <?php
 // Общее для кабинета hdl.by (kab.php) и заявок (lead.php): настройки, база SQLite вне папки сайта, вход по Telegram, сообщения бота.
 // Сам по себе ничего не делает: подключается из kab.php и lead.php. Пишется под PHP 7.4+ (версия на хостинге не задана).
-// Роли (владелец 03.11.2026): client — клиент, dealer — дилер, staff — сотрудник AllVision. Дилер и сотрудник — после подтверждения сотрудником.
+// Роли (владелец 03.11.2026): user — пользователь (так регистрируются все), client — клиент, dealer — дилер, staff — сотрудник AllVision; права отмечает сотрудник.
 declare(strict_types=1);
 if (realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === __FILE__) { http_response_code(404); exit; }
 
-const KAB_ROLES = ['client', 'dealer', 'staff'];
+const KAB_ROLES = ['user', 'client', 'dealer', 'staff'];  // user — после регистрации; остальное отмечает сотрудник
 const KAB_LEAD_STATUS = ['new', 'work', 'kp', 'closed'];
 const KAB_SESSION_DAYS = 90;
 // файлы кабинета (этап 2): документы по объекту клиента и материалы сотрудников. Только эти расширения; html, svg, php, exe — нет
@@ -182,7 +182,7 @@ function kab_say($chat, string $text): bool {
 
 function kab_site(): string { return 'https://' . (kab_cfg()['site_host'] ?? 'hdl.by'); }
 
-const KAB_ROLE_NAME = ['client' => 'клиент', 'dealer' => 'дилер', 'staff' => 'сотрудник AllVision'];
+const KAB_ROLE_NAME = ['user' => 'пользователь', 'client' => 'клиент', 'dealer' => 'дилер', 'staff' => 'сотрудник AllVision'];
 const KAB_STATUS_NAME = ['new' => 'Новая', 'work' => 'В работе', 'kp' => 'КП отправлено', 'closed' => 'Закрыта'];
 
 function kab_who(array $u): string {

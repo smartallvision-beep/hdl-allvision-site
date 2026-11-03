@@ -629,6 +629,14 @@ body[data-page=catalog] .hsearch { display: none; }
 @keyframes need-shake { 0%, 100% { transform: none; } 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
 @media (prefers-reduced-motion: reduce) { .ctl-need.shake { animation: none; } }
 .variants.need-pick { outline: 2px solid var(--bad); outline-offset: 6px; border-radius: 10px; }
+.ctl-need p { margin: 0; }
+/* исполнения кнопками в подсказке: щелчок — в смету без драйвера */
+.need-opts { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 8px; }
+.need-opts:empty { display: none; }
+.need-opts button { background: var(--brand); color: #fff; border: 0; border-radius: 8px; padding: 8px 12px; font: 600 14px var(--font); text-align: left; cursor: pointer; }
+.need-opts button span { white-space: nowrap; }
+.need-opts button:hover { background: var(--brand-d); }
+.need-opts button:disabled { background: var(--ok); cursor: default; }
 
 /* светильник: угол луча и цвет света — картинка конуса слева, кнопки справа */
 .beam { display: flex; gap: 16px; align-items: flex-start; margin: 4px 0 14px; }

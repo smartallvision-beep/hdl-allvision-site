@@ -66,7 +66,7 @@ case 'login':
         $db->prepare('UPDATE users SET tg_username = ?, tg_name = ?, seen_at = ? WHERE id = ?')->execute([kab_clean($tg['username'] ?? '', 64), $tgName, kab_now(), $u['id']]);
         $id = (int) $u['id'];
     } else {
-        $db->prepare('INSERT INTO users (tg_id, tg_username, tg_name, created_at, seen_at) VALUES (?, ?, ?, ?, ?)')
+        $db->prepare("INSERT INTO users (tg_id, tg_username, tg_name, role, created_at, seen_at) VALUES (?, ?, ?, 'user', ?, ?)")
             ->execute([(int) $tg['id'], kab_clean($tg['username'] ?? '', 64), $tgName, kab_now(), kab_now()]);
         $id = (int) $db->lastInsertId();
     }
@@ -89,24 +89,20 @@ case 'profile':  // анкета при первом входе и правка 
     $phone = kab_clean($in['phone'] ?? '', 40);
     $company = kab_clean($in['company'] ?? '', 120);
     $unp = kab_clean($in['unp'] ?? '', 20);
-    $wanted = in_array($in['wanted'] ?? '', KAB_ROLES, true) ? $in['wanted'] : 'client';
     if (mb_strlen($name) < 2) reply(422, ['ok' => false, 'error' => 'name']);
     if (preg_match_all('/\d/', $phone) < 7) reply(422, ['ok' => false, 'error' => 'phone']);
     if ($me['status'] === 'form' && empty($in['consent'])) reply(422, ['ok' => false, 'error' => 'consent']);
-    if ($wanted === 'dealer' && $company === '') reply(422, ['ok' => false, 'error' => 'company']);
-    $boot = in_array((int) $me['tg_id'], kab_staff_ids(), true);
-    $role = $boot ? 'staff' : $me['role'];
-    $ask = $boot || $wanted === $role || ($wanted === 'client') ? '' : $wanted;  // клиент — сразу; дилер и сотрудник — запрос на подтверждение
+    // роль в анкете не выбирают (владелец 03.11.2026): все — «пользователь», права отмечает сотрудник во вкладке «Пользователи»
+    $role = in_array((int) $me['tg_id'], kab_staff_ids(), true) ? 'staff' : $me['role'];
     $first = $me['status'] === 'form';
-    $db->prepare('UPDATE users SET name = ?, phone = ?, company = ?, unp = ?, role = ?, wanted = ?, status = ?, consent_at = ? WHERE id = ?')
-        ->execute([$name, $phone, $company, $unp, $role, $ask, 'active', $first ? kab_now() : $me['consent_at'], $me['id']]);
-    if ($ask !== '' && $ask !== $me['wanted']) {
+    $db->prepare('UPDATE users SET name = ?, phone = ?, company = ?, unp = ?, role = ?, status = ?, consent_at = ? WHERE id = ?')
+        ->execute([$name, $phone, $company, $unp, $role, 'active', $first ? kab_now() : $me['consent_at'], $me['id']]);
+    if ($first && $role !== 'staff') {  // сотрудникам — о новом человеке, чтобы отметить ему права
         kab_say(kab_cfg()['tg_chat'] ?? '', implode("\n", array_filter([
-            'Регистрация на hdl.by: хочет статус «' . KAB_ROLE_NAME[$ask] . '»',
-            $name . ($me['tg_username'] ? ' (@' . $me['tg_username'] . ')' : ''),
+            'Новый пользователь на hdl.by: ' . $name . ($me['tg_username'] ? ' (@' . $me['tg_username'] . ')' : ''),
             'Телефон: ' . $phone,
             $company ? 'Компания: ' . $company . ($unp ? ', УНП ' . $unp : '') : '',
-            'Подтвердить или отклонить: ' . kab_site() . '/kabinet/#users',
+            'Отметить права (клиент, дилер, сотрудник): ' . kab_site() . '/kabinet/#users',
         ])));
     }
     $q = $db->prepare('SELECT * FROM users WHERE id = ?');
@@ -187,7 +183,7 @@ case 'lead_status':
 case 'users':  // сотрудник: все пользователи, сначала ждущие подтверждения
     $need($staff);
     $rows = $db->query("SELECT id, tg_username, tg_name, name, phone, company, unp, role, wanted, discount, status, created_at, seen_at
-        FROM users ORDER BY (wanted <> '') DESC, (status = 'blocked'), created_at DESC LIMIT 1000")->fetchAll();
+        FROM users ORDER BY (wanted <> '') DESC, (role = 'user' AND status = 'active') DESC, (status = 'blocked'), created_at DESC LIMIT 1000")->fetchAll();  // сначала — кому ещё не отмечены права
     $rows = array_map(function ($r) { $r['id'] = (int) $r['id']; $r['discount'] = (float) $r['discount']; return $r; }, $rows);  // числа числами при любой версии PHP
     reply(200, ['ok' => true, 'users' => $rows, 'me' => (int) $me['id']]);
 
@@ -211,7 +207,10 @@ case 'user_set':  // сотрудник: подтвердить или откл�
     } elseif ($do === 'set') {
         $role = in_array($in['role'] ?? '', KAB_ROLES, true) ? $in['role'] : $u['role'];
         $need(!$self || $role === 'staff', 409);  // себя из сотрудников не убрать — иначе некому подтверждать
-        $db->prepare('UPDATE users SET role = ?, discount = ? WHERE id = ?')->execute([$role, $disc, $u['id']]);
+        $db->prepare('UPDATE users SET role = ?, discount = ?, approved_by = ?, approved_at = ? WHERE id = ?')->execute([$role, $disc, $me['id'], kab_now(), $u['id']]);
+        if (!$self && ($role !== $u['role'] || $disc !== (float) $u['discount'])) {  // человеку — какие права ему отметили
+            $note = 'Ваши права на hdl.by: ' . KAB_ROLE_NAME[$role] . ($disc > 0 ? ', скидка ' . rtrim(rtrim(number_format($disc, 1, ',', ''), '0'), ',') . ' % от розничных цен' : '') . '. ' . kab_site() . '/kabinet/';
+        }
     } elseif ($do === 'block' || $do === 'unblock') {
         $need(!$self, 409);
         $db->prepare('UPDATE users SET status = ? WHERE id = ?')->execute([$do === 'block' ? 'blocked' : 'active', $u['id']]);

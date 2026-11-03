@@ -183,12 +183,17 @@
   }));
   const qi = $("[data-qty-input]");
   $$("[data-qty]").forEach(b => b.addEventListener("click", () => { qi.value = Math.max(1, (+qi.value || 1) + +b.dataset.qty); }));
+  let beamOpt = () => "";  // угол и цвет света для строки сметы — задаёт блок «Угол луча» ниже
   if (add) add.addEventListener("click", () => {
     const a = add.dataset.add;
     if (!a) {  // светильник: исполнение ещё не выбрано
       const need = $("[data-need]");
-      // красная подсказка и рамка вокруг исполнений; повторный щелчок снова встряхивает подсказку (владелец 03.11.2026: «было явно видно»)
+      // красная подсказка и рамка вокруг исполнений; повторный щелчок снова встряхивает подсказку (владелец 03.11.2026: «было явно видно»).
+      // В подсказке исполнения кнопками с ценой (уже со скидкой дилера): щелчок — в смету без драйвера (владелец 03.11.2026, вариант Б)
       if (need) {
+        const box = $("[data-need-opts]", need);
+        if (box && !box.children.length) box.innerHTML = $$(".variants button").map(b =>
+          `<button type="button" data-a="${esc(b.dataset.a)}">${esc($("span", b)?.textContent || b.dataset.a)}${b.dataset.byn ? ` <span>· ${fmt(+b.dataset.byn)} BYN</span>` : ""}</button>`).join("");
         need.hidden = false;
         need.classList.remove("shake"); void need.offsetWidth; need.classList.add("shake");
         const v = $(".variants");
@@ -203,6 +208,17 @@
     save(s);
     add.textContent = d ? "Добавлено с драйвером ✓" : "Добавлено ✓";
     setTimeout(() => { add.textContent = "В смету"; }, 1600);
+  });
+  $("[data-need-opts]")?.addEventListener("click", ev => {
+    const b = ev.target.closest("button[data-a]"); if (!b || b.disabled) return;
+    const s = load(), q = Math.max(1, +(qi?.value) || 1), key = b.dataset.a + beamOpt(b.dataset.a);
+    s[key] = (s[key] || 0) + q;
+    save(s);
+    const t = b.innerHTML; b.textContent = "Добавлено ✓"; b.disabled = true;
+    setTimeout(() => {
+      b.innerHTML = t; b.disabled = false;
+      $("[data-need]").hidden = true; $(".variants")?.classList.remove("need-pick");
+    }, 1600);
   });
 
   // ---- светильник: при открытии исполнение не выбрано, «Без драйвера», цена «от». Выбрали исполнение — его первый драйвер, цена суммой,
@@ -293,6 +309,12 @@
       kBox.hidden = kHead.hidden = !ks.length;
       kNote.textContent = cur && cur.cct ? "Цветовая температура регулируется: выбирать не нужно." : "";
       draw();
+    };
+    // исполнение в смету из красной подсказки, без выбора исполнения: угол и цвет, выбранные на картинке, если они есть у этого исполнения
+    beamOpt = va => {
+      const d = data.find(x => x.v === va); if (!d) return "";
+      const a = d.ang.includes(ang) ? ang : d.ang[d.ang.length - 1], kk = d.k.includes(k) ? k : d.k.includes(3000) ? 3000 : d.k[0];
+      return (a ? ` · ${a}°` : "") + (d.k.length ? ` · ${kk} K` : "");
     };
     // смена исполнения и сброс «Без драйвера» — после обработчиков карточки
     document.addEventListener("click", ev => { if (ev.target.closest(".variants button, .ctl-opts button:not([data-x])")) setTimeout(() => render(true), 0); });
@@ -636,7 +658,7 @@
   // (подтвердить или отклонить, роль, скидка, блокировка), все заявки с состоянием и все сметы ----
   const kab = $("[data-kab]");
   if (kab) {
-    const ROLE = { client: "клиент", dealer: "дилер", staff: "сотрудник AllVision" };
+    const ROLE = { user: "пользователь", client: "клиент", dealer: "дилер", staff: "сотрудник AllVision" };
     const ST = { new: "Новая", work: "В работе", kp: "КП отправлено", closed: "Закрыта" };
     const day = s => (s || "").slice(0, 10).split("-").reverse().join(".");
     const loginBox = $("[data-kab-login]"), form = $("[data-kab-form]"), main = $("[data-kab-main]"), panel = $("[data-kab-panel]"), E = form.elements;
@@ -666,26 +688,22 @@
       slot.appendChild(s);
     };
 
-    // анкета при первом входе; та же форма — во вкладке «Мои данные»
-    const company = $("[data-kab-company]", form);
-    const who = () => form.querySelector("[name=wanted]:checked")?.value || "client";
-    form.addEventListener("change", () => { company.hidden = who() !== "dealer"; });
+    // анкета при первом входе; та же форма — во вкладке «Мои данные». Роль не выбирают: права отмечает сотрудник (владелец 03.11.2026)
     const setupForm = first => {
       $("h3", form).textContent = first ? "Расскажите о себе" : "Ваши данные";
       $("[data-kab-consent]", form).hidden = !first;
+      $("[data-kab-hint]", form).hidden = !first;
       $("button[type=submit]", form).textContent = first ? "Готово" : "Сохранить";
       E.name.value = user.name || (first ? user.tg_name : "") || "";
       E.phone.value = user.phone || ""; E.company.value = user.company || ""; E.unp.value = user.unp || "";
-      (form.querySelector(`[name=wanted][value="${user.wanted || user.role}"]`) || E.wanted[0]).checked = true;
-      company.hidden = who() !== "dealer";
       $(".msg", form).textContent = "";
     };
     form.addEventListener("submit", async ev => {
       ev.preventDefault();
       const msg = $(".msg", form), first = user.status === "form", btn = $("button[type=submit]", form);
-      const err = { name: "Укажите имя.", phone: "Укажите телефон.", consent: "Отметьте согласие на обработку данных.", company: "Для дилера укажите компанию." };
+      const err = { name: "Укажите имя.", phone: "Укажите телефон.", consent: "Отметьте согласие на обработку данных." };
       btn.disabled = true;
-      const j = await kabApi("profile", { name: E.name.value, phone: E.phone.value, company: E.company.value, unp: E.unp.value, wanted: who(), consent: E.consent.checked }).catch(() => ({}));
+      const j = await kabApi("profile", { name: E.name.value, phone: E.phone.value, company: E.company.value, unp: E.unp.value, consent: E.consent.checked }).catch(() => ({}));
       btn.disabled = false;
       if (!j.ok) { bad(msg, err[j.error] || "Не удалось сохранить. Попробуйте ещё раз."); return; }
       if (first) done(j);
@@ -758,9 +776,9 @@
             : `<select data-role aria-label="Роль"${self ? " disabled" : ""}>${Object.entries(ROLE).map(([k, t]) => `<option value="${k}"${k === u.role ? " selected" : ""}>${t}</option>`).join("")}</select>`;
           const acts = u.wanted ? '<button class="cbtn" type="button" data-do="approve">Подтвердить</button> <button class="cbtn ghost" type="button" data-do="reject">Отклонить</button>'
             : '<button class="cbtn ghost" type="button" data-do="set">Сохранить</button>' + (self ? "" : ` <button class="cbtn ghost" type="button" data-do="${blocked ? "unblock" : "block"}">${blocked ? "Разблокировать" : "Заблокировать"}</button>`);
-          return `<tr data-id="${u.id}"${blocked ? ' class="blocked"' : ""}><td><b>${esc(u.name || u.tg_name || "—")}</b>${u.tg_username ? ` · @${esc(u.tg_username)}` : ""}${blocked ? " · заблокирован" : ""}<br><span class="muted small">${info}</span></td>`
+          return `<tr data-id="${u.id}"${blocked ? ' class="blocked"' : ""}><td><b>${esc(u.name || u.tg_name || "—")}</b>${u.tg_username ? ` · @${esc(u.tg_username)}` : ""}${blocked ? " · заблокирован" : ""}${u.role === "user" && !u.wanted && !blocked ? ' <span class="st new">без прав</span>' : ""}<br><span class="muted small">${info}</span></td>`
             + `<td>${role}</td><td><input class="pct" type="number" min="0" max="50" step="0.5" value="${+u.discount || 0}" data-disc aria-label="Скидка, %"></td><td class="acts">${acts}<p class="msg small"></p></td></tr>`;
-        }).join("") + '</tbody></table></div><p class="muted small">Скидка — процент от розничной цены, до 50 %. Дилер и клиент видят цены с ней на всём сайте и в смете. Сначала — кто ждёт подтверждения.</p>';
+        }).join("") + '</tbody></table></div><p class="muted small">Все регистрируются пользователями — им доступны сметы и заявки. Права отмечаете вы: роль и скидку, затем «Сохранить»; человеку придёт сообщение в Telegram. Клиент — ещё документы по объекту, дилер — цены дилера. Скидка — процент от розничной цены, до 50 %, действует на всём сайте и в смете. Вверху — кому права ещё не отмечены.</p>';
       panel.onclick = async ev => {
         const b = ev.target.closest("[data-do]"); if (!b) return;
         const tr = b.closest("tr"), msg = $(".msg", tr), d = b.dataset.do;
@@ -768,9 +786,11 @@
         b.disabled = true;
         const r = await kabApi("user_set", { id: +tr.dataset.id, do: d, discount: +$("[data-disc]", tr).value || 0, role: $("[data-role]", tr)?.value }).catch(() => ({}));
         b.disabled = false;
-        if (r.ok && d === "set") { msg.className = "msg small ok"; msg.textContent = "Сохранено"; }
-        else if (r.ok) tabUsers();
-        else { msg.className = "msg small bad"; msg.textContent = r.status === 409 ? "Себе так нельзя" : "Не удалось"; }
+        if (!r.ok) { msg.className = "msg small bad"; msg.textContent = r.status === 409 ? "Себе так нельзя" : "Не удалось"; return; }
+        const id = tr.dataset.id;
+        await tabUsers();  // метка «без прав» и порядок — по новой роли
+        const m = $(`tr[data-id="${id}"] .msg`, panel);
+        if (m && d === "set") { m.className = "msg small ok"; m.textContent = "Сохранено"; }
       };
     };
 
@@ -785,7 +805,7 @@
     const upload = (kind, j, people) => {
       const objects = [...new Set(j.files.map(f => f.object).filter(Boolean))];
       return `<form class="kab-up" data-up novalidate><h3>${kind === "doc" ? "Загрузить документы клиенту" : "Загрузить материалы"}</h3><div class="row3">`
-        + (kind === "doc" ? `<label>Кому *<select name="user_id"><option value="">— выберите —</option>${people.map(u => `<option value="${u.id}">${esc(u.name || u.tg_name)}${u.company ? " · " + esc(u.company) : ""}${u.phone ? " · " + esc(u.phone) : ""}</option>`).join("")}</select></label>` : "")
+        + (kind === "doc" ? `<label>Кому *<select name="user_id"><option value="">${people.length ? "— выберите клиента —" : "— нет клиентов: отметьте во вкладке «Пользователи» —"}</option>${people.map(u => `<option value="${u.id}">${esc(u.name || u.tg_name)}${u.company ? " · " + esc(u.company) : ""}${u.phone ? " · " + esc(u.phone) : ""}</option>`).join("")}</select></label>` : "")
         + `<label>${kind === "doc" ? "Объект" : "Раздел"}<input name="object" maxlength="120" list="kab-obj" placeholder="${kind === "doc" ? "Например: квартира, ул. Притыцкого" : "Например: прошивки, инструкции"}"></label>`
         + `<label>Название<input name="title" maxlength="160" placeholder="Если пусто — имя файла"></label></div><datalist id="kab-obj">${objects.map(o => `<option value="${esc(o)}">`).join("")}</datalist>`
         + `<label>Файлы *<input type="file" name="file" multiple></label>`
@@ -827,7 +847,7 @@
       }
       const [j, u] = await Promise.all([kabApi("files&kind=doc"), kabApi("users")]).catch(() => [{}, {}]);
       if (!j.ok || !u.ok) return failed();
-      const people = u.users.filter(x => x.role !== "staff" && x.status !== "form" && x.status !== "blocked");
+      const people = u.users.filter(x => x.role === "client" && x.status === "active");  // документы — клиентам: «Документы» есть только у них
       panel.innerHTML = upload("doc", j, people) + (j.files.length
         ? `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Кому</th><th>Объект</th><th>Документ</th><th></th></tr></thead><tbody>${j.files.map(f => `<tr><td>${esc(f.uname || f.tg_name || "—")}${f.company ? `<br><span class="muted small">${esc(f.company)}</span>` : ""}</td><td>${esc(f.object || "—")}</td><td>${fileLink(f)}</td><td class="acts"><button class="cbtn ghost" type="button" data-fdel="${f.id}">Удалить</button></td></tr>`).join("")}</tbody></table></div>`
         : "<p>Документов пока нет.</p>");
