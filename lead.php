@@ -91,7 +91,7 @@ try {
 
 $text = implode("\n", array_filter([
     'Заявка' . ($leadNo ? ' №' . $leadNo : '') . ' с сайта hdl.by' . ($lead['topic'] ? ': ' . $lead['topic'] : ''),
-    $who ? 'Из кабинета: ' . (KAB_ROLE_NAME[$who['role']] ?? $who['role']) . ($who['company'] ? ', ' . $who['company'] : '')
+    $who ? 'Из кабинета: ' . (array_key_exists($who['role'], KAB_ROLE_NAME) ? KAB_ROLE_NAME[$who['role']] : $who['role']) . ($who['company'] ? ', ' . $who['company'] : '')
         . ((float) $who['discount'] > 0 ? ', скидка ' . rtrim(rtrim(number_format((float) $who['discount'], 1, ',', ''), '0'), ',') . ' % (цены в смете — с ней)' : '')
         . ($who['tg_username'] ? ', @' . $who['tg_username'] : '') : '',
     $lead['name'] ? 'Имя: ' . $lead['name'] : '',

@@ -623,7 +623,12 @@ body[data-page=catalog] .hsearch { display: none; }
 .ctl-inc { margin: 0 0 6px; font-size: 14px; }
 .ctl .muted.small { margin: 4px 0 0; }
 .ctl-sum { margin: 6px 0 0; font-size: 14px; }
-.ctl-need { margin: 0 0 8px; padding: 8px 12px; border-radius: 10px; background: #fff4e5; color: #8a5a12; font-size: 14px; }
+/* «Сначала выберите исполнение»: красным, с рамкой вокруг исполнений и встряхиванием (владелец 03.11.2026: «чтобы было явно видно») */
+.ctl-need { margin: 0 0 8px; padding: 10px 12px; border-radius: 10px; background: #fdecef; color: var(--bad); border: 2px solid var(--bad); font-size: 15px; font-weight: 600; }
+.ctl-need.shake { animation: need-shake .45s; }
+@keyframes need-shake { 0%, 100% { transform: none; } 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+@media (prefers-reduced-motion: reduce) { .ctl-need.shake { animation: none; } }
+.variants.need-pick { outline: 2px solid var(--bad); outline-offset: 6px; border-radius: 10px; }
 
 /* светильник: угол луча и цвет света — картинка конуса слева, кнопки справа */
 .beam { display: flex; gap: 16px; align-items: flex-start; margin: 4px 0 14px; }
@@ -680,3 +685,17 @@ body[data-page=catalog] .hsearch { display: none; }
 .st.new { background: #fff4d6; color: #7a5a00; } .st.work { background: #e3effa; color: #1d4f7a; } .st.kp { background: #e5f3ec; color: var(--ok); } .st.wait { background: #fdecef; color: var(--bad); }
 .disc { display: inline-block; background: var(--ok); color: #fff; font-size: 12px; font-weight: 700; border-radius: 6px; padding: 1px 6px; margin-left: 6px; vertical-align: middle; white-space: nowrap; }
 .disc-note { color: var(--ok); font-weight: 600; font-size: 14px; margin: 4px 0 0; }
+/* кабинет, этап 2: загрузка файлов и списки документов и материалов */
+.kab-up { background: var(--bg2); border-radius: 16px; padding: 18px 20px; margin: 0 0 22px; }
+.kab-up h3 { margin: 0 0 12px; }
+.kab-up .row3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.kab-up label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted); margin-bottom: 12px; }
+.kab-up input, .kab-up select { font: 16px var(--font); padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); color: var(--ink); background: #fff; }
+.kab-up input[type=file] { padding: 8px; }
+.kab-up label { min-width: 0; } .kab-up select, .kab-up input:not([type=checkbox]) { width: 100%; min-width: 0; }  /* длинное имя в списке «Кому» не раздвигает страницу на телефоне */
+.kab-up .consent { flex-direction: row; align-items: center; gap: 8px; color: var(--ink); }
+.kab-up .consent input { padding: 0; }
+@media (max-width: 760px) { .kab-up .row3 { grid-template-columns: 1fr; gap: 0; } }
+.kab-files { list-style: none; padding: 0; margin: 0 0 18px; }
+.kab-files li { padding: 8px 0; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+.kab-files .cbtn { margin-left: auto; }

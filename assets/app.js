@@ -187,7 +187,14 @@
     const a = add.dataset.add;
     if (!a) {  // светильник: исполнение ещё не выбрано
       const need = $("[data-need]");
-      if (need) { need.hidden = false; $(".variants")?.scrollIntoView({ block: "center", behavior: "smooth" }); }
+      // красная подсказка и рамка вокруг исполнений; повторный щелчок снова встряхивает подсказку (владелец 03.11.2026: «было явно видно»)
+      if (need) {
+        need.hidden = false;
+        need.classList.remove("shake"); void need.offsetWidth; need.classList.add("shake");
+        const v = $(".variants");
+        v?.classList.add("need-pick");
+        v?.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
       return;
     }
     const s = load(), q = Math.max(1, +(qi?.value) || 1), d = add.dataset.add2, key = a + (add.dataset.opt || "");
@@ -236,6 +243,7 @@
     // выбрали исполнение — подставляем его первый драйвер (у «вкл/выкл» драйвер в комплекте)
     $$(".variants button").forEach(b => b.addEventListener("click", () => {
       $("[data-need]", ctl).hidden = true;
+      $(".variants")?.classList.remove("need-pick");
       const lab = $("[data-art-l]"); if (lab) lab.textContent = "Артикул";  // до выбора исполнения там модель
       pick(opts.find(o => o.dataset.v === b.dataset.a) || opts.find(o => o.dataset.v === "*"));
     }));
@@ -766,6 +774,79 @@
       };
     };
 
+    // ---- этап 2: документы по объекту клиента (загружает сотрудник) и закрытые материалы сотрудников. Файлы отдаёт kab.php?a=file только тем, кому можно ----
+    const size = n => n >= 1048576 ? String(Math.round(n / 104857.6) / 10).replace(".", ",") + " МБ" : Math.max(1, Math.round(n / 1024)) + " КБ";
+    const fileLink = f => `<a href="/kab.php?a=file&id=${f.id}" target="_blank" rel="noopener">${esc(f.title || f.name)}</a> <span class="muted small">${esc((f.name.split(".").pop() || "").toUpperCase())} · ${size(f.size)} · ${day(f.created_at)}</span>`;
+    const groups = (files, empty) => {
+      const by = {};
+      files.forEach(f => { (by[f.object || empty] = by[f.object || empty] || []).push(f); });
+      return Object.keys(by).sort((a, b) => (a === empty) - (b === empty) || a.localeCompare(b, "ru")).map(k => [k, by[k]]);
+    };
+    const upload = (kind, j, people) => {
+      const objects = [...new Set(j.files.map(f => f.object).filter(Boolean))];
+      return `<form class="kab-up" data-up novalidate><h3>${kind === "doc" ? "Загрузить документы клиенту" : "Загрузить материалы"}</h3><div class="row3">`
+        + (kind === "doc" ? `<label>Кому *<select name="user_id"><option value="">— выберите —</option>${people.map(u => `<option value="${u.id}">${esc(u.name || u.tg_name)}${u.company ? " · " + esc(u.company) : ""}${u.phone ? " · " + esc(u.phone) : ""}</option>`).join("")}</select></label>` : "")
+        + `<label>${kind === "doc" ? "Объект" : "Раздел"}<input name="object" maxlength="120" list="kab-obj" placeholder="${kind === "doc" ? "Например: квартира, ул. Притыцкого" : "Например: прошивки, инструкции"}"></label>`
+        + `<label>Название<input name="title" maxlength="160" placeholder="Если пусто — имя файла"></label></div><datalist id="kab-obj">${objects.map(o => `<option value="${esc(o)}">`).join("")}</datalist>`
+        + `<label>Файлы *<input type="file" name="file" multiple></label>`
+        + (kind === "doc" ? '<label class="consent"><input type="checkbox" name="notify" checked> Сообщить клиенту в Telegram</label>' : "")
+        + `<p class="muted small">До ${size(j.max)} каждый: ${j.ext.join(", ")}.</p><button class="btn" type="submit">Загрузить</button><p class="msg" role="status"></p></form>`;
+    };
+    const sendFiles = async (form, kind, j, again) => {
+      const msg = $(".msg", form), files = [...form.elements.file.files], user = form.elements.user_id?.value;
+      if (kind === "doc" && !user) return bad(msg, "Выберите, кому загрузить.");
+      if (!files.length) return bad(msg, "Выберите файлы.");
+      const big = files.find(f => f.size > j.max);
+      if (big) return bad(msg, `Файл «${big.name}» больше ${size(j.max)} — так много хостинг не принимает.`);
+      const btn = $("button[type=submit]", form);
+      btn.disabled = true;
+      for (let k = 0; k < files.length; k++) {
+        msg.className = "msg"; msg.textContent = `Загружаем ${k + 1} из ${files.length}…`;
+        const fd = new FormData();
+        fd.append("kind", kind); fd.append("file", files[k]); fd.append("object", form.elements.object.value);
+        if (files.length === 1) fd.append("title", form.elements.title.value);
+        if (kind === "doc") { fd.append("user_id", user); fd.append("notify", k === files.length - 1 && form.elements.notify.checked ? files.length : 0); }
+        let r = {};
+        try { const res = await fetch("/kab.php?a=upload", { method: "POST", credentials: "same-origin", headers: { "X-HDL": "1" }, body: fd }); r = await res.json(); } catch {}
+        if (!r.ok) {
+          btn.disabled = false;
+          const why = { size: `больше ${size(r.max || j.max)}`, type: "такой тип файла не принимаем" }[r.error] || "не удалось загрузить";
+          return bad(msg, `«${files[k].name}»: ${why}.` + (k ? ` Загружено ${k} из ${files.length}.` : ""));
+        }
+      }
+      again();
+    };
+    const tabDocs = async () => {
+      wait();
+      if (!staff) {
+        const j = await kabApi("files&kind=doc").catch(() => ({}));
+        if (!j.ok) return failed();
+        panel.innerHTML = j.files.length ? groups(j.files, "Без объекта").map(([o, fs]) => `<h3>${esc(o)}</h3><ul class="kab-files">${fs.map(f => `<li>${fileLink(f)}</li>`).join("")}</ul>`).join("")
+          : "<p>Документов пока нет. Здесь появятся КП, схемы и паспорта по вашему объекту — их загружают наши сотрудники.</p>";
+        return;
+      }
+      const [j, u] = await Promise.all([kabApi("files&kind=doc"), kabApi("users")]).catch(() => [{}, {}]);
+      if (!j.ok || !u.ok) return failed();
+      const people = u.users.filter(x => x.role !== "staff" && x.status !== "form" && x.status !== "blocked");
+      panel.innerHTML = upload("doc", j, people) + (j.files.length
+        ? `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Кому</th><th>Объект</th><th>Документ</th><th></th></tr></thead><tbody>${j.files.map(f => `<tr><td>${esc(f.uname || f.tg_name || "—")}${f.company ? `<br><span class="muted small">${esc(f.company)}</span>` : ""}</td><td>${esc(f.object || "—")}</td><td>${fileLink(f)}</td><td class="acts"><button class="cbtn ghost" type="button" data-fdel="${f.id}">Удалить</button></td></tr>`).join("")}</tbody></table></div>`
+        : "<p>Документов пока нет.</p>");
+      const form = $("[data-up]", panel);
+      form.addEventListener("submit", ev => { ev.preventDefault(); sendFiles(form, "doc", j, tabDocs); });
+      panel.onclick = async ev => { const d = ev.target.closest("[data-fdel]"); if (d && confirm("Удалить документ? Клиент перестанет его видеть.")) { await kabApi("file_del", { id: +d.dataset.fdel }).catch(() => {}); tabDocs(); } };
+    };
+    const tabMats = async () => {
+      wait();
+      const j = await kabApi("files&kind=mat").catch(() => ({}));
+      if (!j.ok) return failed();
+      panel.innerHTML = upload("mat", j, []) + (j.files.length
+        ? groups(j.files, "Без раздела").map(([o, fs]) => `<h3>${esc(o)}</h3><ul class="kab-files">${fs.map(f => `<li>${fileLink(f)} <button class="cbtn ghost" type="button" data-fdel="${f.id}">Удалить</button></li>`).join("")}</ul>`).join("")
+        : "<p>Материалов пока нет: схемы, прошивки, программы и инструкции для монтажников видят только сотрудники.</p>");
+      const form = $("[data-up]", panel);
+      form.addEventListener("submit", ev => { ev.preventDefault(); sendFiles(form, "mat", j, tabMats); });
+      panel.onclick = async ev => { const d = ev.target.closest("[data-fdel]"); if (d && confirm("Удалить файл из материалов?")) { await kabApi("file_del", { id: +d.dataset.fdel }).catch(() => {}); tabMats(); } };
+    };
+
     const tabProfile = () => {
       panel.innerHTML = "";
       setupForm(false);
@@ -784,10 +865,12 @@
       if (!user) return showLogin();
       if (user.status === "form") { main.before(form); setupForm(true); return show(form); }
       show(main); head();
-      const tabs = staff ? [["users", "Пользователи"], ["leads", "Заявки"], ["smetas", "Сметы"], ["profile", "Мои данные"]] : [["smetas", "Сметы"], ["leads", "Заявки"], ["profile", "Мои данные"]];
+      // документы — клиентам (владелец 03.11.2026: у дилера их нет), материалы — только сотрудникам
+      const tabs = staff ? [["users", "Пользователи"], ["leads", "Заявки"], ["smetas", "Сметы"], ["docs", "Документы"], ["mats", "Материалы"], ["profile", "Мои данные"]]
+        : [["smetas", "Сметы"], ["leads", "Заявки"], ...(user.role === "client" ? [["docs", "Документы"]] : []), ["profile", "Мои данные"]];
       const cur = (tabs.find(t => "#" + t[0] === location.hash) || tabs[0])[0];
       $("[data-kab-tabs]").innerHTML = tabs.map(([k, t]) => `<a href="#${k}" class="tab${k === cur ? " on" : ""}"${k === cur ? ' aria-current="page"' : ""}>${t}</a>`).join("");
-      ({ users: tabUsers, leads: tabLeads, smetas: tabSmetas, profile: tabProfile })[cur]();
+      ({ users: tabUsers, leads: tabLeads, smetas: tabSmetas, docs: tabDocs, mats: tabMats, profile: tabProfile })[cur]();
     };
     addEventListener("hashchange", () => { if (user && user.status !== "form") route(); });
     $("[data-kab-logout]").addEventListener("click", async () => { await kabApi("logout", {}).catch(() => {}); out(); });

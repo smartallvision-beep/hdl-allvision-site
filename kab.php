@@ -25,7 +25,7 @@ function pub(?array $u): ?array {
 $a = (string) ($_GET['a'] ?? '');
 $post = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
 if ($post && ($_SERVER['HTTP_X_HDL'] ?? '') !== '1') reply(403, ['ok' => false, 'error' => 'header']);
-$in = $post ? json_decode((string) file_get_contents('php://input'), true) : $_GET;
+$in = $post ? ($a === 'upload' ? $_POST : json_decode((string) file_get_contents('php://input'), true)) : $_GET;  // загрузка файла — форма, остальное — JSON
 if (!is_array($in)) reply(400, ['ok' => false]);
 
 try {
@@ -118,6 +118,9 @@ case 'delete_me':  // удалить свои данные: пользовате
     $need($post, 405);
     $need((bool) $me, 401);
     $need(!$staff, 409);  // сотрудника удаляет другой сотрудник: иначе можно остаться без подтверждающих
+    $q = $db->prepare("SELECT path FROM files WHERE kind = 'doc' AND user_id = ?");  // документы по объекту — с диска тоже
+    $q->execute([$me['id']]);
+    foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $path) @unlink(kab_dir() . '/' . $path);
     kab_end_session();
     $db->prepare('DELETE FROM users WHERE id = ?')->execute([$me['id']]);
     reply(200, ['ok' => true]);
@@ -217,6 +220,82 @@ case 'user_set':  // сотрудник: подтвердить или откл�
         reply(422, ['ok' => false, 'error' => 'do']);
     }
     if ($note !== '') kab_say($u['tg_id'], $note);
+    reply(200, ['ok' => true]);
+
+case 'files':  // документы: свои; сотрудник — все. Материалы — только сотрудникам
+    $need((bool) $me, 401);
+    $kind = ($in['kind'] ?? '') === 'mat' ? 'mat' : 'doc';
+    if ($kind === 'mat') $need($staff);
+    $q = $db->prepare('SELECT f.id, f.user_id, f.object, f.title, f.name, f.size, f.created_at, u.name AS uname, u.tg_name, u.company
+        FROM files f LEFT JOIN users u ON u.id = f.user_id WHERE f.kind = ?' . ($staff ? '' : ' AND f.user_id = ?') . ' ORDER BY f.created_at DESC, f.id DESC LIMIT 3000');
+    $q->execute($staff ? [$kind] : [$kind, $me['id']]);
+    $rows = array_map(function ($r) { $r['id'] = (int) $r['id']; $r['user_id'] = (int) $r['user_id']; $r['size'] = (int) $r['size']; return $r; }, $q->fetchAll());
+    reply(200, ['ok' => true, 'files' => $rows] + ($staff ? ['max' => kab_upload_max(), 'ext' => KAB_FILE_EXT] : []));
+
+case 'upload':  // сотрудник: один файл за запрос (поле file); kind=doc — клиенту user_id по объекту object, kind=mat — в раздел object
+    $need($post, 405);
+    $need($staff);
+    $max = kab_upload_max();
+    $kind = ($in['kind'] ?? '') === 'mat' ? 'mat' : 'doc';
+    $file = $_FILES['file'] ?? null;
+    if (!is_array($file) || is_array($file['name'] ?? null)) reply(422, ['ok' => false, 'error' => (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > $max ? 'size' : 'file', 'max' => $max]);
+    if (in_array($file['error'], [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) reply(422, ['ok' => false, 'error' => 'size', 'max' => $max]);
+    if ($file['error'] !== UPLOAD_ERR_OK || !is_uploaded_file($file['tmp_name'])) reply(422, ['ok' => false, 'error' => 'file']);
+    $name = kab_clean(basename(str_replace('\\', '/', (string) $file['name'])), 160);
+    $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+    if (!in_array($ext, KAB_FILE_EXT, true)) reply(422, ['ok' => false, 'error' => 'type']);
+    $owner = null;
+    if ($kind === 'doc') {
+        $q = $db->prepare('SELECT * FROM users WHERE id = ?');
+        $q->execute([(int) ($in['user_id'] ?? 0)]);
+        $owner = $q->fetch();
+        $need((bool) $owner, 404);
+    }
+    $rel = 'files/' . ($owner ? 'docs/' . (int) $owner['id'] : 'materials');
+    if (!is_dir(kab_dir() . '/' . $rel)) @mkdir(kab_dir() . '/' . $rel, 0750, true);
+    $path = $rel . '/' . bin2hex(random_bytes(12)) . '.' . $ext;  // имя на диске случайное, своё имя файла — в базе
+    if (!move_uploaded_file($file['tmp_name'], kab_dir() . '/' . $path)) { kab_log('загрузка: не удалось сохранить ' . $path); reply(500, ['ok' => false, 'error' => 'save']); }
+    $title = kab_clean($in['title'] ?? '', 160) ?: (string) preg_replace('/\.[^.]+$/', '', $name);
+    $object = kab_clean($in['object'] ?? '', 120);
+    $db->prepare('INSERT INTO files (kind, user_id, object, title, name, path, size, uploaded_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        ->execute([$kind, $owner ? $owner['id'] : null, $object, $title, $name, $path, (int) filesize(kab_dir() . '/' . $path), $me['id'], kab_now()]);
+    $id = (int) $db->lastInsertId();
+    $more = (int) ($in['notify'] ?? 0);  // на последнем файле пачки — сколько файлов загрузили, 0 — не сообщать
+    if ($owner && $more > 0) {
+        kab_say($owner['tg_id'], 'В кабинете hdl.by ' . ($more > 1 ? 'новые документы' : 'новый документ') . ($object ? ' по объекту «' . $object . '»' : '')
+            . ': ' . $title . ($more > 1 ? ' и ещё ' . ($more - 1) : '') . '. ' . kab_site() . '/kabinet/#docs');
+    }
+    reply(200, ['ok' => true, 'id' => $id]);
+
+case 'file':  // выдача файла: сотруднику — любой, клиенту — только свой документ. pdf и картинки открываются в браузере, остальное скачивается
+    $need((bool) $me, 401);
+    $q = $db->prepare('SELECT * FROM files WHERE id = ?');
+    $q->execute([(int) ($in['id'] ?? 0)]);
+    $f = $q->fetch();
+    $need($f && ($staff || ($f['kind'] === 'doc' && (int) $f['user_id'] === (int) $me['id'])), 404);
+    $full = kab_dir() . '/' . $f['path'];
+    $need(is_file($full), 404);
+    if (ob_get_level()) ob_end_clean();
+    $ext = strtolower(pathinfo((string) $f['name'], PATHINFO_EXTENSION));
+    $inline = array_key_exists($ext, KAB_FILE_INLINE);
+    $ascii = preg_replace('/[^A-Za-z0-9._-]+/', '_', (string) $f['name']) ?: 'file.' . $ext;
+    header('Content-Type: ' . ($inline ? KAB_FILE_INLINE[$ext] : 'application/octet-stream'));
+    header('X-Content-Type-Options: nosniff');
+    header('Content-Length: ' . filesize($full));
+    header('Content-Disposition: ' . ($inline ? 'inline' : 'attachment') . '; filename="' . $ascii . '"; filename*=UTF-8' . "''" . rawurlencode((string) $f['name']));
+    header('Cache-Control: private, no-store');
+    readfile($full);
+    exit;
+
+case 'file_del':
+    $need($post, 405);
+    $need($staff);
+    $q = $db->prepare('SELECT * FROM files WHERE id = ?');
+    $q->execute([(int) ($in['id'] ?? 0)]);
+    $f = $q->fetch();
+    $need((bool) $f, 404);
+    @unlink(kab_dir() . '/' . $f['path']);
+    $db->prepare('DELETE FROM files WHERE id = ?')->execute([$f['id']]);
     reply(200, ['ok' => true]);
 
 default:

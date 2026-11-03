@@ -8,6 +8,9 @@ if (realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === __FILE__) { http_
 const KAB_ROLES = ['client', 'dealer', 'staff'];
 const KAB_LEAD_STATUS = ['new', 'work', 'kp', 'closed'];
 const KAB_SESSION_DAYS = 90;
+// файлы кабинета (этап 2): документы по объекту клиента и материалы сотрудников. Только эти расширения; html, svg, php, exe — нет
+const KAB_FILE_EXT = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'zip', 'rar', '7z', 'dwg', 'dxf'];
+const KAB_FILE_INLINE = ['pdf' => 'application/pdf', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp'];
 
 // config.php правят руками на сервере; для проверки на компьютере путь к другому файлу — в переменной окружения HDL_CONFIG
 function kab_cfg(): array {
@@ -48,10 +51,31 @@ function kab_db(): PDO {
         title TEXT, items TEXT, created_at TEXT, updated_at TEXT)");
     $db->exec("CREATE TABLE IF NOT EXISTS leads (id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, created_at TEXT,
         name TEXT, phone TEXT, topic TEXT, page TEXT, comment TEXT, items TEXT, total INTEGER, status TEXT DEFAULT 'new', status_at TEXT)");
+    // kind: doc — документ клиента (user_id, object — объект), mat — материал сотрудников (object — раздел). path — относительно папки данных
+    $db->exec("CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY, kind TEXT NOT NULL, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        object TEXT DEFAULT '', title TEXT, name TEXT, path TEXT, size INTEGER, uploaded_by INTEGER, created_at TEXT)");
     return $db;
 }
 
 function kab_now(): string { return date('Y-m-d H:i:s'); }
+
+// предел загрузки файла на хостинге: меньшее из upload_max_filesize и post_max_size (меняется в cPanel → PHP)
+function kab_ini_bytes(string $v): int {
+    $v = trim($v);
+    $n = (int) $v;
+    switch (strtolower(substr($v, -1))) {
+        case 'g': $n *= 1024;  // дальше без break: гигабайты → мегабайты → килобайты
+        case 'm': $n *= 1024;
+        case 'k': $n *= 1024;
+    }
+    return $n;
+}
+
+function kab_upload_max(): int {
+    $a = kab_ini_bytes((string) ini_get('upload_max_filesize'));
+    $b = kab_ini_bytes((string) ini_get('post_max_size'));
+    return $b > 0 ? min($a, $b) : $a;
+}
 
 function kab_clean($v, int $max): string {
     return mb_substr(trim((string) preg_replace('/\s+/u', ' ', (string) $v)), 0, $max);
