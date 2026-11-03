@@ -1,0 +1,2 @@
+RewriteEngine On
+RewriteRule ^ /katalog/wireless/ [R=301,L]

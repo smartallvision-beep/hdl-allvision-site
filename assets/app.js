@@ -373,7 +373,8 @@
     // из адреса: ?q=…&p=buspro&g=paneli&coll=Xelent&col=Латунь
     const qs = new URLSearchParams(location.search);
     if (qs.get("q")) search.value = qs.get("q");
-    NAMES.forEach(nm => qs.getAll(nm).forEach(v => boxes(nm).forEach(x => { if (x.value === v) x.checked = true; })));
+    const OLD_G = { rele: "upravlenie-svetom", dimmery: "upravlenie-svetom", "bloki-pitaniya": "sistemnye" };  // разделы объединены 03.11.2026
+    NAMES.forEach(nm => qs.getAll(nm).forEach(v => { v = nm === "g" ? OLD_G[v] || v : v; boxes(nm).forEach(x => { if (x.value === v) x.checked = true; }); }));
     apply(false);
   }
 

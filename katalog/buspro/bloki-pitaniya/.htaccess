@@ -1,0 +1,2 @@
+RewriteEngine On
+RewriteRule ^ /katalog/buspro/sistemnye/ [R=301,L]
