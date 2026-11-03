@@ -770,6 +770,7 @@ body[data-page=catalog] .hsearch { display: none; }
 }
 .circ sup { font-size: 11px; line-height: 0; margin-left: 1px; }
 .circ sup a { text-decoration: none; }
-.circ-src { padding-left: 22px; font-size: 13px; }
+.circ-src { padding-left: 22px; font-size: 14px; }
+.circ-src b { color: var(--ink); font-weight: 600; }
 .circ-src li { margin: 4px 0; overflow-wrap: anywhere; color: var(--muted); }
 .circ-src li:target { background: var(--brand-soft); }
