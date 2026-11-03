@@ -22,6 +22,59 @@
   });
   const hit = (hay, ts) => ts.every(alts => alts.some(a => hay.includes(a)));
 
+  // ---- кабинет: вход, роль и скидка (kab.php, владелец 03.11.2026). Скидка дилера или личная скидка клиента — процент от розничной цены.
+  // Пока страница открывается, скидка берётся из памяти браузера (hdl-me), потом сверяется с сервером: изменилась — страница перезагружается.
+  // Применяется один раз, до сметы и подсказок: цены в данных (D.items), в атрибутах вариантов и в тексте цен на странице ----
+  const ME_KEY = "hdl-me";
+  const loggedIn = () => /(^|;\s*)hdl_in=1/.test(document.cookie);
+  let ME = null;
+  try { if (loggedIn()) ME = JSON.parse(localStorage.getItem(ME_KEY)); else localStorage.removeItem(ME_KEY); } catch {}
+  const DISC = ME && ME.d > 0 ? ME.d : 0;
+  const disc = b => DISC ? Math.round(b * (1 - DISC / 100)) : b;
+  const pct = d => String(d).replace(".", ",") + " %";
+  if (DISC) {
+    Object.values(D.items).forEach(it => { if (it.b != null) it.b = disc(it.b); });
+    $$("[data-byn]").forEach(x => { x.dataset.byn = disc(+x.dataset.byn); });
+    $$(".ctl [data-b]").forEach(x => { x.dataset.b = disc(+x.dataset.b); });
+    $$("[data-b0]").forEach(x => { x.dataset.b0 = disc(+x.dataset.b0); });
+    $$(".card[data-price]").forEach(x => { if (+x.dataset.price < 1e9) x.dataset.price = disc(+x.dataset.price); });
+    $$("[data-vmap]").forEach(x => { const m = JSON.parse(x.dataset.vmap); Object.values(m).forEach(v => { if (v.b != null) v.b = disc(v.b); }); x.dataset.vmap = JSON.stringify(m); });
+    // цены, написанные на странице: карточки, цена товара, драйверы светильников, «панели от …» у коллекций
+    $$(".price, b[data-price], .ctl button span, .keyf dd, .ccard em").forEach(el => el.childNodes.forEach(n => {
+      if (n.nodeType === 3) n.textContent = n.textContent.replace(/\d{1,3}(?:\s\d{3})+(?= BYN)|\d+(?= BYN)/g, m => fmt(disc(+m.replace(/\D/g, ""))));
+    }));
+    const label = (ME.role === "dealer" ? "Цена дилера" : "Ваша цена") + ": скидка " + pct(DISC);
+    $$(".card .price").forEach(p => p.insertAdjacentHTML("afterend", `<span class="disc" title="${label}">−${pct(DISC)}</span>`));
+    $(".buy .pr")?.insertAdjacentHTML("afterend", `<p class="disc-note">${label} от розничной</p>`);
+  }
+  const kabApi = async (a, body) => {
+    const r = await fetch("/kab.php?a=" + a, body === undefined ? { credentials: "same-origin" }
+      : { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "X-HDL": "1" }, body: JSON.stringify(body) });
+    let j = {};
+    try { j = await r.json(); } catch {}
+    return Object.assign({ status: r.status }, j);
+  };
+  // в память браузера — только то, что нужно для цен, шапки и подстановки в формы
+  const remember = u => {
+    const m = u ? { d: +u.discount || 0, role: u.role, name: u.name, phone: u.phone } : null;
+    try { if (m) localStorage.setItem(ME_KEY, JSON.stringify(m)); else localStorage.removeItem(ME_KEY); } catch {}
+    return m;
+  };
+  const acc = $("[data-acc]");
+  const setAcc = u => { if (!acc) return; const t = u ? "Кабинет" : "Войти"; $("[data-acc-t]", acc).textContent = t; acc.setAttribute("aria-label", t); };
+  setAcc(ME);
+  if (loggedIn() && !$("[data-kab]")) kabApi("me").then(j => {
+    if (!j.ok) return;
+    const m = remember(j.user);
+    setAcc(m);
+    let again = "";
+    try { again = sessionStorage.getItem("hdl-me-r"); } catch {}
+    if ((m ? m.d : 0) === DISC) { try { sessionStorage.removeItem("hdl-me-r"); } catch {} return; }
+    if (again === location.href) return;  // уже перезагружали ради скидки — не по кругу
+    try { sessionStorage.setItem("hdl-me-r", location.href); } catch {}
+    location.reload();
+  }).catch(() => {});
+
   // ---- высота шапки для перехода к форме по ссылке (style.css, section[id]): на компьютере шапка в две строки, на телефоне в одну ----
   const topH = () => { const t = $(".top"); if (t) document.documentElement.style.setProperty("--top-h", t.offsetHeight + "px"); };
   topH();
@@ -448,7 +501,7 @@
         <td class="no-print"><button class="rm" type="button" data-rm="${esc(a)}" aria-label="Убрать">×</button></td></tr>`;
     }).join("");
     box.innerHTML = `<table class="smeta-tbl"><thead><tr><th class="hide-m"></th><th>Позиция</th><th>Кол-во</th><th class="num hide-m">Цена</th><th class="num">Сумма</th><th class="no-print"></th></tr></thead>
-      <tbody>${tr}</tbody><tfoot><tr><td class="hide-m"></td><td colspan="3">Итого с НДС${ask ? `<br><span class="muted small">без ${ask} поз. по запросу</span>` : ""}</td><td class="num">${fmt(sum)} BYN</td><td class="no-print"></td></tr></tfoot></table>
+      <tbody>${tr}</tbody><tfoot><tr><td class="hide-m"></td><td colspan="3">Итого с НДС${DISC ? `<br><span class="muted small">цены со скидкой ${pct(DISC)}</span>` : ""}${ask ? `<br><span class="muted small">без ${ask} поз. по запросу</span>` : ""}</td><td class="num">${fmt(sum)} BYN</td><td class="no-print"></td></tr></tfoot></table>
       <p class="muted small">Цены по курсу НБРБ ${String(D.rate).replace(".", ",")} на ${D.rateDate.split("-").reverse().join(".")}. Монтаж и настройка считаем отдельно.</p>`;
   };
   if (box) {
@@ -500,6 +553,18 @@
     const tmsg = $("[data-tools-msg]");
     const copy = async (text, ok) => { try { await navigator.clipboard.writeText(text); tmsg.textContent = ok; } catch { window.prompt("Скопируйте:", text); } setTimeout(() => { tmsg.textContent = ""; }, 3000); };
     $("[data-print]").addEventListener("click", () => window.print());
+    // вошедшему — «Сохранить в кабинет»: смета откроется с любого устройства (вкладка «Сметы» в кабинете)
+    const keep = $("[data-smeta-save]");
+    if (keep && ME) {
+      keep.hidden = false;
+      keep.addEventListener("click", async () => {
+        const title = window.prompt("Название сметы, например «Квартира, ул. Притыцкого»:", "");
+        if (title === null) return;
+        const j = await kabApi("smeta_save", { title, items: load() }).catch(() => ({}));
+        tmsg.textContent = j.ok ? `Сохранено в кабинете: «${j.title}»` : j.status === 401 ? "Войдите в кабинет заново, затем сохраните." : "Не удалось сохранить.";
+        setTimeout(() => { tmsg.textContent = ""; }, 5000);
+      });
+    }
     $("[data-copy-link]").addEventListener("click", () => copy(location.origin + "/smeta/?s=" + Object.entries(load()).map(([a, q]) => encodeURIComponent(a) + "*" + q).join(","), "Ссылка скопирована"));
     $("[data-copy-text]").addEventListener("click", () => copy(rows().map(({ a, q, it }) => `${a}\t${it.n}\t${q}\t${it.b != null ? it.b * q + " BYN" : "по запросу"}`).join("\n"), "Список скопирован"));
     // загрузка списка: «артикул количество» в строке
@@ -531,8 +596,10 @@
     });
   });
 
-  // ---- заявки ----
-  $$("form.lead").forEach(f => f.addEventListener("submit", async ev => {
+  // ---- заявки (формы с темой; анкета кабинета — отдельно) ----
+  const prefill = f => { if (!ME) return; [["name", ME.name], ["phone", ME.phone]].forEach(([n, v]) => { if (f.elements[n] && !f.elements[n].value && v) f.elements[n].value = v; }); };
+  $$("form.lead[data-topic]").forEach(prefill);
+  $$("form.lead[data-topic]").forEach(f => f.addEventListener("submit", async ev => {
     ev.preventDefault();
     const msg = $(".msg", f), btn = $("button[type=submit]", f);
     const v = n => (f.elements[n]?.value || "").trim();
@@ -549,12 +616,183 @@
       if (!j.ok) throw new Error(j.error || "fail");
       msg.textContent = "Спасибо! Заявка принята, перезвоним в рабочее время."; msg.classList.add("ok");
       f.reset();
+      prefill(f);
       if (box) { save({}); renderSmeta(); }
     } catch (e) {
       msg.innerHTML = 'Не удалось отправить. Позвоните: <a href="tel:+375293702020">+375 29 370-20-20</a> или напишите на <a href="mailto:info@allvision.by">info@allvision.by</a>.';
       msg.classList.add("bad");
     } finally { btn.disabled = false; }
   }));
+
+  // ---- страница /kabinet/: вход через Telegram, анкета, вкладки «Сметы», «Заявки», «Мои данные»; сотруднику ещё «Пользователи»
+  // (подтвердить или отклонить, роль, скидка, блокировка), все заявки с состоянием и все сметы ----
+  const kab = $("[data-kab]");
+  if (kab) {
+    const ROLE = { client: "клиент", dealer: "дилер", staff: "сотрудник AllVision" };
+    const ST = { new: "Новая", work: "В работе", kp: "КП отправлено", closed: "Закрыта" };
+    const day = s => (s || "").slice(0, 10).split("-").reverse().join(".");
+    const loginBox = $("[data-kab-login]"), form = $("[data-kab-form]"), main = $("[data-kab-main]"), panel = $("[data-kab-panel]"), E = form.elements;
+    let user = null, staff = false;
+    const show = el => [loginBox, form, main].forEach(x => { x.hidden = x !== el; });
+    const bad = (el, t) => { el.className = "msg bad"; el.textContent = t; };
+    const wait = () => { panel.innerHTML = '<p class="muted">Загружаем…</p>'; };
+    const failed = () => { panel.innerHTML = '<p class="msg bad">Не удалось загрузить. Обновите страницу или войдите заново.</p>'; };
+    const done = j => { user = j.user; staff = !!j.staff; remember(user); setAcc(user); route(); };
+    const out = () => { remember(null); setAcc(null); user = null; staff = false; history.replaceState(null, "", location.pathname); route(); };
+
+    const showLogin = async () => {
+      show(loginBox);
+      const msg = $("[data-kab-msg]"), slot = $("[data-tg-btn]");
+      if (slot.childElementCount) return;
+      const j = await kabApi("bot").catch(() => ({}));
+      if (!j.ok) { bad(msg, "Вход временно недоступен. Позвоните: +375 29 370-20-20."); return; }
+      window.hdlTgAuth = async tg => {
+        msg.className = "msg"; msg.textContent = "Входим…";
+        const r = await kabApi("login", tg).catch(() => ({}));
+        if (r.ok) { msg.textContent = ""; done(r); }
+        else bad(msg, r.error === "blocked" ? "Доступ закрыт. Позвоните: +375 29 370-20-20." : "Не получилось войти. Попробуйте ещё раз.");
+      };
+      const s = document.createElement("script");
+      s.async = true; s.src = "https://telegram.org/js/telegram-widget.js?22";
+      Object.assign(s.dataset, { telegramLogin: j.bot, size: "large", radius: "10", requestAccess: "write", onauth: "hdlTgAuth(user)" });
+      slot.appendChild(s);
+    };
+
+    // анкета при первом входе; та же форма — во вкладке «Мои данные»
+    const company = $("[data-kab-company]", form);
+    const who = () => form.querySelector("[name=wanted]:checked")?.value || "client";
+    form.addEventListener("change", () => { company.hidden = who() !== "dealer"; });
+    const setupForm = first => {
+      $("h3", form).textContent = first ? "Расскажите о себе" : "Ваши данные";
+      $("[data-kab-consent]", form).hidden = !first;
+      $("button[type=submit]", form).textContent = first ? "Готово" : "Сохранить";
+      E.name.value = user.name || (first ? user.tg_name : "") || "";
+      E.phone.value = user.phone || ""; E.company.value = user.company || ""; E.unp.value = user.unp || "";
+      (form.querySelector(`[name=wanted][value="${user.wanted || user.role}"]`) || E.wanted[0]).checked = true;
+      company.hidden = who() !== "dealer";
+      $(".msg", form).textContent = "";
+    };
+    form.addEventListener("submit", async ev => {
+      ev.preventDefault();
+      const msg = $(".msg", form), first = user.status === "form", btn = $("button[type=submit]", form);
+      const err = { name: "Укажите имя.", phone: "Укажите телефон.", consent: "Отметьте согласие на обработку данных.", company: "Для дилера укажите компанию." };
+      btn.disabled = true;
+      const j = await kabApi("profile", { name: E.name.value, phone: E.phone.value, company: E.company.value, unp: E.unp.value, wanted: who(), consent: E.consent.checked }).catch(() => ({}));
+      btn.disabled = false;
+      if (!j.ok) { bad(msg, err[j.error] || "Не удалось сохранить. Попробуйте ещё раз."); return; }
+      if (first) done(j);
+      else { user = j.user; remember(user); head(); msg.className = "msg ok"; msg.textContent = "Сохранено."; }
+    });
+
+    const head = () => {
+      $("[data-kab-name]").textContent = user.name || user.tg_name;
+      $("[data-kab-role]").textContent = " · " + ROLE[user.role] + (user.discount > 0 ? " · скидка " + pct(user.discount) : "");
+      const p = $("[data-kab-pending]");
+      p.hidden = !user.wanted;
+      p.textContent = user.wanted ? `Запрос статуса «${ROLE[user.wanted]}» на рассмотрении. Когда сотрудник подтвердит, придёт сообщение в Telegram`
+        + (user.wanted === "dealer" ? ", а цены на сайте станут дилерскими." : ".") : "";
+    };
+
+    const tabSmetas = async () => {
+      wait();
+      const j = await kabApi("smetas" + (staff ? "&all=1" : "")).catch(() => ({}));
+      if (!j.ok) return failed();
+      if (!j.smetas.length) { panel.innerHTML = '<p>Сохранённых смет пока нет. Соберите список в <a href="/katalog/">каталоге</a>, затем на странице <a href="/smeta/">«Смета»</a> нажмите «Сохранить в кабинет».</p>'; return; }
+      const sum = items => Object.entries(items).reduce((s, [a, q]) => { const it = D.items[a] || D.items[a.split(" · ")[0]]; return it && it.b != null ? s + it.b * q : s; }, 0);
+      panel.innerHTML = `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Смета</th>${staff ? "<th>Чья</th>" : ""}<th class="num">Позиций</th><th class="num">Сумма*</th><th>Обновлена</th><th></th></tr></thead><tbody>`
+        + j.smetas.map(s => `<tr><td>${esc(s.title)}</td>${staff ? `<td>${esc(s.name)}${s.company ? `<br><span class="muted small">${esc(s.company)}</span>` : ""}</td>` : ""}`
+          + `<td class="num">${Object.keys(s.items).length}</td><td class="num">${fmt(sum(s.items))} BYN</td><td>${day(s.updated_at)}</td>`
+          + `<td class="acts"><button class="cbtn" type="button" data-open="${s.id}">Открыть</button>${+s.user_id === +user.id ? ` <button class="cbtn ghost" type="button" data-del="${s.id}">Удалить</button>` : ""}</td></tr>`).join("")
+        + `</tbody></table></div><p class="muted small">* По сегодняшним ценам${DISC ? ` со скидкой ${pct(DISC)}` : ""}, без позиций «по запросу». «Открыть» заменяет текущий список для сметы.</p>`;
+      panel.onclick = async ev => {
+        const o = ev.target.closest("[data-open]"), d = ev.target.closest("[data-del]");
+        if (o) {
+          const s = j.smetas.find(x => String(x.id) === o.dataset.open);
+          if (Object.keys(load()).length && !confirm("Заменить текущий список для сметы этой сметой?")) return;
+          save(s.items); location.href = "/smeta/";
+        }
+        if (d && confirm("Удалить смету из кабинета?")) { await kabApi("smeta_del", { id: +d.dataset.del }).catch(() => {}); tabSmetas(); }
+      };
+    };
+
+    const tabLeads = async () => {
+      wait();
+      const j = await kabApi("leads").catch(() => ({}));
+      if (!j.ok) return failed();
+      if (!j.leads.length) { panel.innerHTML = staff ? "<p>Заявок пока нет.</p>" : "<p>Заявок пока нет. Заявки, отправленные с сайта после входа, появятся здесь вместе с их состоянием.</p>"; return; }
+      const list = l => { try { return JSON.parse(l.items || "[]"); } catch { return []; } };
+      panel.innerHTML = `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>№</th><th>Дата</th>${staff ? "<th>Кто</th>" : ""}<th>Что</th><th>Состояние</th></tr></thead><tbody>`
+        + j.leads.map(l => {
+          const it = list(l);
+          return `<tr><td>${l.id}</td><td>${day(l.created_at)}</td>`
+            + (staff ? `<td>${esc(l.name || "—")}<br><a href="tel:${esc(l.phone)}">${esc(l.phone)}</a>${l.role ? `<br><span class="muted small">${esc(ROLE[l.role] || "")}${l.company ? ", " + esc(l.company) : ""}</span>` : ""}</td>` : "")
+            + `<td>${esc(l.topic || "Заявка")}${it.length ? ` · ${it.length} поз.${l.total ? ", " + fmt(+l.total) + " BYN" : ""}` : ""}${l.comment ? `<br><span class="muted small">${esc(l.comment)}</span>` : ""}`
+            + (it.length ? `<details><summary>Состав</summary><ul>${it.map(x => `<li>${esc(x.a)} — ${esc(x.n)} × ${x.q}${x.b != null ? ", " + fmt(x.b * x.q) + " BYN" : ""}</li>`).join("")}</ul></details>` : "") + "</td>"
+            + `<td>${staff ? `<select data-st="${l.id}" aria-label="Состояние заявки №${l.id}">${Object.entries(ST).map(([k, t]) => `<option value="${k}"${k === l.status ? " selected" : ""}>${t}</option>`).join("")}</select>`
+              : `<span class="st ${esc(l.status)}">${ST[l.status] || esc(l.status)}</span>`}</td></tr>`;
+        }).join("") + "</tbody></table></div>";
+      if (staff) panel.onchange = async ev => {
+        const s = ev.target.closest("[data-st]"); if (!s) return;
+        const r = await kabApi("lead_status", { id: +s.dataset.st, status: s.value }).catch(() => ({}));
+        s.classList.toggle("bad", !r.ok);
+      };
+    };
+
+    const tabUsers = async () => {
+      wait();
+      const j = await kabApi("users").catch(() => ({}));
+      if (!j.ok) return failed();
+      panel.innerHTML = `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Кто</th><th>Роль</th><th>Скидка, %</th><th></th></tr></thead><tbody>`
+        + j.users.map(u => {
+          const self = +u.id === +j.me, blocked = u.status === "blocked";
+          const info = [u.phone, u.company, u.unp && "УНП " + u.unp, u.status === "form" && "анкета не заполнена"].filter(Boolean).map(esc).join(" · ");
+          const role = u.wanted ? `<span class="st wait">хочет: ${ROLE[u.wanted]}</span><br><span class="muted small">сейчас: ${ROLE[u.role]}</span>`
+            : `<select data-role aria-label="Роль"${self ? " disabled" : ""}>${Object.entries(ROLE).map(([k, t]) => `<option value="${k}"${k === u.role ? " selected" : ""}>${t}</option>`).join("")}</select>`;
+          const acts = u.wanted ? '<button class="cbtn" type="button" data-do="approve">Подтвердить</button> <button class="cbtn ghost" type="button" data-do="reject">Отклонить</button>'
+            : '<button class="cbtn ghost" type="button" data-do="set">Сохранить</button>' + (self ? "" : ` <button class="cbtn ghost" type="button" data-do="${blocked ? "unblock" : "block"}">${blocked ? "Разблокировать" : "Заблокировать"}</button>`);
+          return `<tr data-id="${u.id}"${blocked ? ' class="blocked"' : ""}><td><b>${esc(u.name || u.tg_name || "—")}</b>${u.tg_username ? ` · @${esc(u.tg_username)}` : ""}${blocked ? " · заблокирован" : ""}<br><span class="muted small">${info}</span></td>`
+            + `<td>${role}</td><td><input class="pct" type="number" min="0" max="50" step="0.5" value="${+u.discount || 0}" data-disc aria-label="Скидка, %"></td><td class="acts">${acts}<p class="msg small"></p></td></tr>`;
+        }).join("") + '</tbody></table></div><p class="muted small">Скидка — процент от розничной цены, до 50 %. Дилер и клиент видят цены с ней на всём сайте и в смете. Сначала — кто ждёт подтверждения.</p>';
+      panel.onclick = async ev => {
+        const b = ev.target.closest("[data-do]"); if (!b) return;
+        const tr = b.closest("tr"), msg = $(".msg", tr), d = b.dataset.do;
+        if (d === "block" && !confirm("Заблокировать? Человек не сможет войти, пока его не разблокируют.")) return;
+        b.disabled = true;
+        const r = await kabApi("user_set", { id: +tr.dataset.id, do: d, discount: +$("[data-disc]", tr).value || 0, role: $("[data-role]", tr)?.value }).catch(() => ({}));
+        b.disabled = false;
+        if (r.ok && d === "set") { msg.className = "msg small ok"; msg.textContent = "Сохранено"; }
+        else if (r.ok) tabUsers();
+        else { msg.className = "msg small bad"; msg.textContent = r.status === 409 ? "Себе так нельзя" : "Не удалось"; }
+      };
+    };
+
+    const tabProfile = () => {
+      panel.innerHTML = "";
+      setupForm(false);
+      panel.appendChild(form);
+      form.hidden = false;
+      if (!staff) panel.insertAdjacentHTML("beforeend", '<p class="kab-del"><button class="cbtn ghost" type="button" data-forget>Удалить мои данные</button></p>');
+      panel.onclick = async ev => {
+        if (!ev.target.closest("[data-forget]") || !confirm("Удалить ваши данные и сметы из кабинета? Отправленные заявки останутся у нас без привязки к вам.")) return;
+        const r = await kabApi("delete_me", {}).catch(() => ({}));
+        if (r.ok) out();
+      };
+    };
+
+    const route = () => {
+      panel.onclick = panel.onchange = null;
+      if (!user) return showLogin();
+      if (user.status === "form") { main.before(form); setupForm(true); return show(form); }
+      show(main); head();
+      const tabs = staff ? [["users", "Пользователи"], ["leads", "Заявки"], ["smetas", "Сметы"], ["profile", "Мои данные"]] : [["smetas", "Сметы"], ["leads", "Заявки"], ["profile", "Мои данные"]];
+      const cur = (tabs.find(t => "#" + t[0] === location.hash) || tabs[0])[0];
+      $("[data-kab-tabs]").innerHTML = tabs.map(([k, t]) => `<a href="#${k}" class="tab${k === cur ? " on" : ""}"${k === cur ? ' aria-current="page"' : ""}>${t}</a>`).join("");
+      ({ users: tabUsers, leads: tabLeads, smetas: tabSmetas, profile: tabProfile })[cur]();
+    };
+    addEventListener("hashchange", () => { if (user && user.status !== "form") route(); });
+    $("[data-kab-logout]").addEventListener("click", async () => { await kabApi("logout", {}).catch(() => {}); out(); });
+    kabApi("me").then(j => { if (j.ok) { user = j.user; staff = !!j.staff; remember(user); setAcc(user); } route(); }).catch(route);
+  }
 
   // ---- снимки в интерьере (data-lb): просмотр поверх страницы вместо нового окна, стрелки листают снимки коллекции по кругу (владелец 03.11.2026).
   // Закрывают крестик, Esc, тёмный фон и «Назад» на телефоне: при открытии — запись в истории, закрытие её снимает ----

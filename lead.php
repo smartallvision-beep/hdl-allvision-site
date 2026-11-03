@@ -18,9 +18,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') reply(405, ['ok' => false]);
 // config.php правят руками на сервере: опечатка в нём не должна терять заявку, она уходит в CSV, причина — в журнал
 $cfg = [];
 $cfgErr = '';
-if (is_file(__DIR__ . '/config.php')) {
+$cfgFile = getenv('HDL_CONFIG') ?: __DIR__ . '/config.php';  // HDL_CONFIG — только для проверки на компьютере
+if (is_file($cfgFile)) {
     try {
-        $cfg = require __DIR__ . '/config.php';
+        $cfg = require $cfgFile;
     } catch (Throwable $e) {
         $cfgErr = 'ошибка в config.php, строка ' . $e->getLine() . ': ' . $e->getMessage();
     }
@@ -44,6 +45,7 @@ if (empty($in['consent'])) reply(422, ['ok' => false, 'error' => 'consent']);
 
 // смета: не больше 100 строк; цены — как их видел посетитель (в BYN), только для справки менеджеру
 $items = [];
+$rows = [];  // те же строки для кабинета
 $sum = 0;
 foreach (array_slice(is_array($in['items'] ?? null) ? $in['items'] : [], 0, 100) as $it) {
     if (!is_array($it)) continue;
@@ -52,6 +54,7 @@ foreach (array_slice(is_array($in['items'] ?? null) ? $in['items'] : [], 0, 100)
     if ($b !== null) $sum += $b * $q;
     $items[] = '• ' . $clean($it['a'] ?? '', 60) . ' — ' . $clean($it['n'] ?? '', 160) . ' × ' . $q
         . ($b !== null ? ' = ' . number_format($b * $q, 0, ',', ' ') . ' BYN' : ' (по запросу)');
+    $rows[] = ['a' => $clean($it['a'] ?? '', 60), 'n' => $clean($it['n'] ?? '', 160), 'q' => $q, 'b' => $b];
 }
 
 // данные — вне папки сайта, чтобы файл заявок нельзя было скачать по ссылке
@@ -71,8 +74,26 @@ if ($fh = @fopen($dir . '/leads.csv', 'a')) {
     fclose($fh);
 }
 
+// заявка — и в кабинет (kab.php): сотрудник видит все заявки, вошедший посетитель — свои. Сбой базы заявку не теряет: она в CSV и в Telegram
+$who = null;
+$leadNo = 0;
+try {
+    require_once __DIR__ . '/_kab.php';
+    $who = kab_user();
+    kab_db()->prepare('INSERT INTO leads (user_id, created_at, name, phone, topic, page, comment, items, total, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        ->execute([$who ? $who['id'] : null, date('Y-m-d H:i:s'), $lead['name'], $lead['phone'], $lead['topic'], $lead['page'], $lead['comment'],
+            json_encode($rows, JSON_UNESCAPED_UNICODE), $rows ? $sum : null, 'new']);
+    $leadNo = (int) kab_db()->lastInsertId();
+    $saved = true;
+} catch (Throwable $e) {
+    @file_put_contents($dir . '/kab-errors.log', date('Y-m-d H:i:s') . ' заявка в базу: ' . $e->getMessage() . "\n", FILE_APPEND);
+}
+
 $text = implode("\n", array_filter([
-    'Заявка с сайта hdl.by' . ($lead['topic'] ? ': ' . $lead['topic'] : ''),
+    'Заявка' . ($leadNo ? ' №' . $leadNo : '') . ' с сайта hdl.by' . ($lead['topic'] ? ': ' . $lead['topic'] : ''),
+    $who ? 'Из кабинета: ' . (KAB_ROLE_NAME[$who['role']] ?? $who['role']) . ($who['company'] ? ', ' . $who['company'] : '')
+        . ((float) $who['discount'] > 0 ? ', скидка ' . rtrim(rtrim(number_format((float) $who['discount'], 1, ',', ''), '0'), ',') . ' % (цены в смете — с ней)' : '')
+        . ($who['tg_username'] ? ', @' . $who['tg_username'] : '') : '',
     $lead['name'] ? 'Имя: ' . $lead['name'] : '',
     'Телефон: ' . $lead['phone'],
     $lead['comment'] ? 'Комментарий: ' . $lead['comment'] : '',
@@ -90,7 +111,7 @@ if (!empty($cfg['tg_token']) && !empty($cfg['tg_chat'])) {
     ]);
     $raw = curl_exec($ch);
     $err = curl_error($ch);
-    curl_close($ch);
+    if (PHP_VERSION_ID < 80000) curl_close($ch);  // с PHP 8.0 не нужен, в 8.5 устарел
     $res = json_decode((string) $raw, true);
     $sent = !empty($res['ok']);
     // причина неудачи — в журнал рядом с заявками (без токена), чтобы было видно, почему не дошло
