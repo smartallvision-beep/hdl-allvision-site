@@ -263,11 +263,11 @@
     const label = x => x.parentElement.querySelector("span").textContent.trim();
     const vals = (c, n) => (c.dataset[n] || "").split("|").filter(Boolean);
     const plural = (n, a, b, c) => { const m10 = n % 10, m100 = n % 100; return n + " " + (m10 === 1 && m100 !== 11 ? a : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? b : c); };
-    const pageGroups = [...new Set(cards.map(c => c.dataset.g))];
-    // строка фильтров категории видна, только когда открыта эта категория; у скрытых — отметки снимаем
+    const groupsOf = c => c.dataset.g.split("|");  // у шлюза DALI две группы: «dimmery|shlyuzy»
+    // строка фильтров категории видна, только когда открыта эта категория: выбраны только её группы или все карточки страницы из неё; у скрытых — отметки снимаем
     const showBars = () => {
-      const gsel = checked("g"), cur = gsel.length ? gsel : pageGroups;
-      const fits = list => cur.length > 0 && cur.every(g => list.includes(g));
+      const gsel = checked("g");
+      const fits = list => gsel.length ? gsel.every(g => list.includes(g)) : cards.length > 0 && cards.every(c => groupsOf(c).some(g => list.includes(g)));
       bars.forEach(b => { const ok = fits(b.dataset.bar.split(" ")); b.hidden = !ok; if (!ok) $$("input", b).forEach(x => x.checked = false); });
     };
     // на телефоне ряды блока фильтров открыты сразу, кнопка их сворачивает
