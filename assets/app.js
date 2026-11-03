@@ -183,7 +183,8 @@
   }));
   const qi = $("[data-qty-input]");
   $$("[data-qty]").forEach(b => b.addEventListener("click", () => { qi.value = Math.max(1, (+qi.value || 1) + +b.dataset.qty); }));
-  let beamOpt = () => "";  // угол и цвет света для строки сметы — задаёт блок «Угол луча» ниже
+  let beamOpt = () => "", beamSync = () => {};  // угол и цвет света для строки сметы — задаёт блок «Угол луча» ниже
+  let ctlNoDrv = () => {};  // карточка на исполнении без драйвера — задаёт блок «Управление» ниже
   if (add) add.addEventListener("click", () => {
     const a = add.dataset.add;
     if (!a) {  // светильник: исполнение ещё не выбрано
@@ -212,11 +213,12 @@
       }
       return;
     }
-    const s = load(), q = Math.max(1, +(qi?.value) || 1), d = add.dataset.add2, key = a + (add.dataset.opt || "");
+    const nodrv = !!add.dataset.nodrv;  // уже согласились без драйвера — та же строка сметы с пометкой
+    const s = load(), q = Math.max(1, +(qi?.value) || 1), d = add.dataset.add2, key = a + (add.dataset.opt || "") + (nodrv ? " · без драйвера" : "");
     s[key] = (s[key] || 0) + q;
     if (d) s[d] = (s[d] || 0) + q;  // драйвер — по одному на светильник
     save(s);
-    add.textContent = d ? "Добавлено с драйвером ✓" : "Добавлено ✓";
+    add.textContent = d ? "Добавлено с драйвером ✓" : nodrv ? "Добавлено без драйвера ✓" : "Добавлено ✓";
     setTimeout(() => { add.textContent = "В смету"; }, 1600);
   });
   // галочка «драйвер у меня есть» открывает выбор светильника и кнопку; «Всё равно в смету без драйвера» — только с выбранным исполнением;
@@ -235,13 +237,14 @@
     $("[data-need-v]", needBox).classList.toggle("bad", !v);
     err.hidden = !!v;
     if (!v) { err.textContent = "Выберите светильник."; return; }
-    const s = load(), q = Math.max(1, +(qi?.value) || 1), key = v.value + beamOpt(v.value) + " · без драйвера";
+    const va = v.value, s = load(), q = Math.max(1, +(qi?.value) || 1), key = va + beamOpt(va) + " · без драйвера";
     s[key] = (s[key] || 0) + q;
     save(s);
     go.textContent = "Добавлено без драйвера ✓"; go.disabled = true;
-    setTimeout(() => {  // подсказка закрывается; в следующий раз выбор и согласие — заново
+    setTimeout(() => {  // подсказка закрывается, карточка остаётся на этом исполнении без драйвера
       needBox.hidden = true; $("[data-need-nd]", needBox).innerHTML = "";
       $(".variants")?.classList.remove("need-pick");
+      ctlNoDrv(va);
     }, 1600);
   });
 
@@ -267,7 +270,7 @@
         pr.textContent = (va ? "" : ctl.dataset.from) + fmt(vb) + " BYN"; sum.hidden = true; delete add.dataset.add2;
       }
     };
-    const pick = o => { opts.forEach(x => x.setAttribute("aria-checked", String(x === o))); show(); };
+    const pick = o => { delete add.dataset.nodrv; opts.forEach(x => x.setAttribute("aria-checked", String(x === o))); show(); };
     const none = opts.find(o => o.dataset.v === "*"), chips = $$(".variants button");
     // «Без драйвера» — как при открытии: исполнение не выбрано, цена «от», модель вместо артикула, в смету — после выбора исполнения
     const reset = () => {
@@ -294,6 +297,21 @@
         clearTimeout(el.hlT); el.hlT = setTimeout(() => el.classList.remove("drv-hl"), 3000);
       }
     }));
+    // после «Всё равно в смету без драйвера» карточка остаётся на этом исполнении без драйвера: «В смету» с другим количеством кладёт
+    // туда же, в строку «без драйвера», а не открывает подсказку снова (владелец 04.11.2026). Другое исполнение, драйвер или «Без драйвера» — как обычно
+    ctlNoDrv = va => {
+      const b = chips.find(x => x.dataset.a === va); if (!b) return;
+      chips.forEach(x => x.setAttribute("aria-checked", String(x === b)));
+      $("[data-art]").textContent = b.dataset.art || b.dataset.a;
+      const lab = $("[data-art-l]"); if (lab) lab.textContent = "Артикул";
+      const noPhoto = $("[data-nophoto]"); if (noPhoto) noPhoto.hidden = !!b.dataset.img;
+      if (main && b.dataset.img) { main.src = b.dataset.img; $$(".thumbs button").forEach(x => x.removeAttribute("aria-current")); }
+      add.dataset.add = va;
+      pick(none);
+      add.dataset.nodrv = "1";
+      sum.textContent = "Без драйвера: вы отметили, что драйвер у вас есть."; sum.hidden = false;
+      beamSync();
+    };
     show();
   }
 
@@ -347,8 +365,9 @@
       const a = d.ang.includes(ang) ? ang : d.ang[d.ang.length - 1], kk = d.k.includes(k) ? k : d.k.includes(3000) ? 3000 : d.k[0];
       return (a ? ` · ${a}°` : "") + (d.k.length ? ` · ${kk} K` : "");
     };
-    // смена исполнения и сброс «Без драйвера» — после обработчиков карточки
-    document.addEventListener("click", ev => { if (ev.target.closest(".variants button, .ctl-opts button:not([data-x])")) setTimeout(() => render(true), 0); });
+    beamSync = () => render(false);  // исполнение выбрано без щелчка (после «без драйвера»): угол и цвет — те же, если они есть у исполнения
+    // смена исполнения и сброс «Без драйвера» — после обработчиков карточки. Выбор драйвера исполнение не меняет: угол и цвет остаются
+    document.addEventListener("click", ev => { if (ev.target.closest('.variants button, .ctl-opts button[data-v="*"]')) setTimeout(() => render(true), 0); });
     render(true);
   }
 
