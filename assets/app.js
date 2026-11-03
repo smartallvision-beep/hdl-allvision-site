@@ -740,7 +740,7 @@
 
     // анкета при первом входе; та же форма — во вкладке «Мои данные». Роль не выбирают: права отмечает сотрудник (владелец 03.11.2026)
     const setupForm = first => {
-      $("h3", form).textContent = first ? "Расскажите о себе" : "Ваши данные";
+      $("h3", form).textContent = first ? "Как с вами связаться" : "Ваши данные";  // проще, без «расскажите о себе» (владелец 04.11.2026)
       $("[data-kab-consent]", form).hidden = !first;
       $("[data-kab-hint]", form).hidden = !first;
       $("button[type=submit]", form).textContent = first ? "Готово" : "Сохранить";
