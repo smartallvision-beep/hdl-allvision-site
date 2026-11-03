@@ -555,4 +555,54 @@
       msg.classList.add("bad");
     } finally { btn.disabled = false; }
   }));
+
+  // ---- снимки в интерьере (data-lb): просмотр поверх страницы вместо нового окна, стрелки листают снимки коллекции по кругу (владелец 03.11.2026).
+  // Закрывают крестик, Esc, тёмный фон и «Назад» на телефоне: при открытии — запись в истории, закрытие её снимает ----
+  const lbLinks = $$("a[data-lb]");
+  if (lbLinks.length) {
+    const box = document.createElement("div");
+    box.className = "lb"; box.hidden = true;
+    box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true"); box.setAttribute("aria-label", "Просмотр фото");
+    box.innerHTML = '<img alt=""><button type="button" class="lb-x" aria-label="Закрыть">✕</button>'
+      + '<button type="button" class="lb-prev" aria-label="Предыдущее фото">‹</button><button type="button" class="lb-next" aria-label="Следующее фото">›</button><p class="lb-n"></p>';
+    document.body.appendChild(box);
+    const img = $("img", box), num = $(".lb-n", box);
+    let list = [], at = 0, back = null;
+    const show = i => {
+      at = (i + list.length) % list.length;
+      img.src = list[at].src; img.alt = list[at].alt;
+      num.textContent = list.length > 1 ? `${at + 1} / ${list.length}` : "";
+      if (list.length > 1) new Image().src = list[(at + 1) % list.length].src;  // следующий снимок — заранее
+    };
+    const open = a => {
+      const seen = new Set();  // обложка коллекции — тот же снимок, что в галерее
+      list = $$("a[data-lb]").filter(x => x.dataset.lb === a.dataset.lb && !seen.has(x.href) && seen.add(x.href)).map(x => ({ src: x.href, alt: $("img", x)?.alt || "" }));
+      $$(".lb-prev, .lb-next", box).forEach(b => b.hidden = list.length < 2);
+      show(list.findIndex(x => x.src === a.href));
+      back = a; box.hidden = false; document.body.classList.add("lb-open");
+      history.pushState({ lb: 1 }, "");
+      $(".lb-x", box).focus();
+    };
+    const close = () => { box.hidden = true; img.removeAttribute("src"); document.body.classList.remove("lb-open"); back?.focus(); };
+    const shut = () => { if (!box.hidden) history.back(); };
+    addEventListener("popstate", () => { if (!box.hidden) close(); });
+    lbLinks.forEach(a => a.addEventListener("click", ev => { ev.preventDefault(); open(a); }));
+    $(".lb-x", box).addEventListener("click", shut);
+    $(".lb-prev", box).addEventListener("click", () => show(at - 1));
+    $(".lb-next", box).addEventListener("click", () => show(at + 1));
+    box.addEventListener("click", ev => { if (ev.target === box) shut(); });
+    document.addEventListener("keydown", ev => {
+      if (box.hidden) return;
+      if (ev.key === "Escape") shut();
+      else if (ev.key === "ArrowLeft") show(at - 1);
+      else if (ev.key === "ArrowRight") show(at + 1);
+    });
+    let x0 = null;  // на телефоне — листать пальцем
+    box.addEventListener("touchstart", ev => { x0 = ev.touches.length === 1 ? ev.touches[0].clientX : null; }, { passive: true });
+    box.addEventListener("touchend", ev => {
+      if (x0 === null || list.length < 2) return;
+      const dx = ev.changedTouches[0].clientX - x0; x0 = null;
+      if (Math.abs(dx) > 40) show(at + (dx < 0 ? 1 : -1));
+    });
+  }
 })();
