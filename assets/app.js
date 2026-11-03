@@ -22,6 +22,11 @@
   });
   const hit = (hay, ts) => ts.every(alts => alts.some(a => hay.includes(a)));
 
+  // ---- высота шапки для перехода к форме по ссылке (style.css, section[id]): на компьютере шапка в две строки, на телефоне в одну ----
+  const topH = () => { const t = $(".top"); if (t) document.documentElement.style.setProperty("--top-h", t.offsetHeight + "px"); };
+  topH();
+  addEventListener("resize", topH);
+
   // ---- cookie: окно, пока не выбрали «Принять» или «Отклонить»; выбор в памяти браузера, после «no» Метрика не грузится ----
   const CK = "hdl-cookie";
   const ckBox = $("#cookie");
@@ -254,6 +259,8 @@
   // ---- каталог: галочки (система, группа, коллекция, цвет, тип…), поиск, сортировка, плитка/список ----
   const search = $("[data-search]");
   if (search) {
+    // браузер при смене списка держит на экране ту же карточку: сняли отметку — над ней появились сотни карточек, и страницу уносит вниз
+    document.documentElement.style.overflowAnchor = "none";
     const grid = $(".cat-main .grid"), cards = $$(".card", grid);
     const found = $("[data-found]"), title = $("[data-cat-title]"), empty = $("[data-empty]"), bars = $$("[data-bar]");
     const intro = found.textContent, title0 = title.textContent;
@@ -292,12 +299,13 @@
         const k = cards.filter(c => pass(c, nm) && vals(c, nm).includes(x.value) &&
           (nm === "col" ? combo(c, sel.mat, [x.value]) : nm === "mat" ? combo(c, [x.value], sel.col) : true)).length;
         x.parentElement.classList.toggle("zero", k === 0 && !x.checked);
+        x.disabled = k === 0 && !x.checked;  // система без товаров видна серой (см. style.css), выбрать её нельзя
       }));
       // варианты с нулём спрятаны; ряд или блок, где не осталось вариантов, прячем целиком
       $$("[data-sys]").forEach(b => {
         const v = b.dataset.sys, x = v && boxes("p").find(i => i.value === v);
         b.setAttribute("aria-pressed", String(v ? sel.p.length === 1 && sel.p[0] === v : !sel.p.length));
-        if (x) b.hidden = x.parentElement.classList.contains("zero");
+        if (x) b.disabled = x.parentElement.classList.contains("zero");  // кнопка остаётся на месте серой: ряд не перестраивается, «Группа» не сдвигается
       });
       $$(".bar-row, .cat-side fieldset, .cat-side .ff").forEach(r => { r.hidden = !$$(".chip:not(.all):not(.zero), .fbox:not(.zero)", r).length; });
       bars.forEach(b => {
@@ -340,10 +348,23 @@
         history.replaceState(null, "", location.pathname + (u.toString() ? "?" + u : ""));
       }
     };
-    $$("[data-fl] input").forEach(x => x.addEventListener("change", () => apply()));
-    $$("[data-clear]").forEach(b => b.addEventListener("click", () => { boxes(b.dataset.clear).forEach(x => x.checked = false); apply(); }));
+    // после щелчка по фильтру: страница прокручена ниже начала списка — возвращаем к началу (иначе короткий список уводит к подвалу),
+    // боковая панель на компьютере «прилипает» на 140 px и остаётся на месте. Иначе то, по чему щёлкнули, остаётся под пальцем:
+    // на телефоне над панелью заголовок меняет число строк и кнопки систем
+    const keep = (el, fn) => {
+      const y = el.getBoundingClientRect().top;
+      fn();
+      if (grid.getBoundingClientRect().top < 0) {
+        const st = getComputedStyle($("#cat-side")), at = st.position === "sticky" ? parseFloat(st.top) : $(".top").offsetHeight + 8;
+        window.scrollTo({ top: scrollY + $(".cat-layout").getBoundingClientRect().top - at, behavior: "instant" });
+      } else if (el.getClientRects().length && el.getBoundingClientRect().top !== y) {
+        window.scrollBy({ top: el.getBoundingClientRect().top - y, behavior: "instant" });
+      }
+    };
+    $$("[data-fl] input").forEach(x => x.addEventListener("change", () => keep(x, apply)));
+    $$("[data-clear]").forEach(b => b.addEventListener("click", () => keep(b, () => { boxes(b.dataset.clear).forEach(x => x.checked = false); apply(); })));
     search.addEventListener("input", () => apply());
-    $("[data-reset]").addEventListener("click", () => { $$("[data-fl] input").forEach(x => x.checked = false); search.value = ""; apply(); });
+    $("[data-reset]").addEventListener("click", ev => keep(ev.currentTarget, () => { $$("[data-fl] input").forEach(x => x.checked = false); search.value = ""; apply(); }));
     // сортировка
     $("[data-sort]").addEventListener("change", ev => {
       const v = ev.target.value, k = v.replace("-", ""), dir = v.startsWith("-") ? -1 : 1;
@@ -363,7 +384,7 @@
       barOpen(bar, on);
     }));
     // переключатель систем: где на странице все системы, работает как фильтр; где одна, это ссылки, выбранные фильтры едут с собой
-    $$("[data-sys]").forEach(b => b.addEventListener("click", () => { boxes("p").forEach(x => { x.checked = x.value === b.dataset.sys; }); apply(); }));
+    $$("[data-sys]").forEach(b => b.addEventListener("click", () => { keep(b, () => { boxes("p").forEach(x => { x.checked = x.value === b.dataset.sys; }); apply(); }); }));
     $$(".sys-switch a").forEach(a => a.addEventListener("click", () => {
       a.dataset.base = a.dataset.base || a.getAttribute("href");
       const u = new URL(a.dataset.base, location.href);

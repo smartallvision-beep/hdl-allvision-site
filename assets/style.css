@@ -6,6 +6,9 @@
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
+/* переход к форме по ссылке (#podbor, #zayavka, #vopros): начало формы под шапкой, а не за ней. --top-h — высота шапки, её ставит app.js */
+section[id] { scroll-margin-top: calc(var(--top-h, 128px) + 12px); }
+@media (max-width: 980px) { section[id] { scroll-margin-top: calc(var(--top-h, 60px) + 12px); } }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 var(--font); -webkit-text-size-adjust: 100%; }
 img { max-width: 100%; height: auto; }
 a { color: var(--brand); }
@@ -103,7 +106,6 @@ h3 { font-size: 18px; margin: 20px 0 8px; }
 .hero2 .eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; font-weight: 600; }
 .hero2 h1 { color: var(--dark); max-width: 620px; font-size: clamp(30px, 4.2vw, 50px); margin: 10px 0 16px; }
 .hero-sub { max-width: 540px; font-size: 18px; color: #3d343b; margin: 0 0 22px; }
-.hero-cap { position: absolute; right: 12px; bottom: 8px; z-index: 2; font-size: 11px; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.7); }
 .hero2 .cta { margin-top: 0; }
 .hero2 .btn { background: var(--dark); padding: 15px 26px; } .hero2 .btn:hover { background: var(--brand); }
 .hero2 .btn.ghost { background: rgba(255,255,255,.8); color: var(--dark); box-shadow: inset 0 0 0 2px var(--dark); }
@@ -119,7 +121,6 @@ h3 { font-size: 18px; margin: 20px 0 8px; }
   .hero2-in { padding: 16px 16px 20px; background: #fff; }
   .hero2 h1 { margin: 6px 0 10px; }
   .hero-sub { font-size: 16px; margin-bottom: 14px; }
-  .hero-cap { bottom: auto; top: 176px; }
   .hero2 .btn { padding: 13px 18px; }
   .hero2 .cta { flex-wrap: nowrap; }
   .hero2 .cta .btn { flex: 1; text-align: center; white-space: nowrap; font-size: 15px; padding-left: 8px; padding-right: 8px; }
@@ -370,6 +371,7 @@ table.specs { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-s
 .ff { margin: 0 0 10px; }
 .ff summary { font-weight: 700; cursor: pointer; padding: 4px 0; }
 .fbox.zero { display: none; }
+.cat-side .fs-sys .fbox.zero { display: flex; opacity: .4; cursor: default; }  /* система без товаров остаётся на месте, серой: блок «Группа» под ней не сдвигается */
 .dots { display: inline-flex; gap: 3px; align-items: center; vertical-align: middle; margin-right: 4px; }
 .dots i { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0,0,0,.18); display: inline-block; }
 .dots b { font-size: 11px; color: var(--muted); font-weight: 500; }
@@ -557,6 +559,7 @@ body[data-page=catalog] .hsearch { display: none; }
 .sys-switch a:hover, .sys-switch button:hover { border-color: var(--brand); }
 .sys-switch [aria-current=page], .sys-switch [aria-pressed=true] { background: var(--brand); border-color: var(--brand); color: #fff; }
 .sys-switch [hidden] { display: none; }
+.sys-switch button:disabled { opacity: .4; cursor: default; border-color: var(--line); }
 .sys-switch.with-side { display: none; }
 @media (max-width: 980px) {
   .cat-main > .sys-switch { max-width: none; order: 0; }
