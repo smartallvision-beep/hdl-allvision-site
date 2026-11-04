@@ -867,11 +867,7 @@ body[data-page=catalog] .hsearch { display: none; }
 .cfg-eq { margin-top: 10px; } .cfg-eq tfoot td { font-weight: 700; border-top: 2px solid var(--line); border-bottom: 0; }
 .cfg-house { margin: 10px 0 4px; padding: 8px 12px 4px; border-radius: var(--r); background: var(--bg2); }
 .cfg-house .cfg-q { margin-top: 0; }
-.cfg-area { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; }
-.cfg-area input { width: 96px; height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; font: 600 16px var(--font); color: var(--ink); background: #fff; }
-.cfg-area input:focus { outline: none; border-color: var(--brand); }
 .cfg-tk { background: #fff; border: 1px solid var(--brand); }
-.cfg-tk details { margin-top: 6px; } .cfg-tk summary { cursor: pointer; font-size: 14px; color: var(--brand); }
 .cfg-tk ul { list-style: none; margin: 6px 0 0; padding: 0; } .cfg-tk li { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-top: 1px solid var(--line); font-size: 14px; }
 .cfg-tk li b { font-size: 14px; white-space: nowrap; }
 .cfg-btns [data-cfg-lead] { flex: 1 0 100%; text-align: center; }  /* «Перенести в смету» и «Посмотреть комплект» — рядом, строкой ниже */
