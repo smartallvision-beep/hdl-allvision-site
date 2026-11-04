@@ -1016,13 +1016,16 @@
   const cfgBox = $("[data-cfg]");
   if (cfgBox) {
     const C = JSON.parse(cfgBox.dataset.cfg), out = $("[data-cfg-out]", cfgBox), I = C.items;
-    const st = { home: "flat", rooms: 2, baths: 1, n: {}, light: "dim", ac: 0, curt: 0, street: 0, water: 0, w: { heat: 1, leak: 1, pir: 1 } };
+    const st = { home: "flat", rooms: 2, baths: 1, area: 60, areaSet: false, n: {}, light: "dim", ac: 0, curt: 0, street: 0, water: 0, w: { heat: 1, leak: 1, pir: 1 } };
+    const T = C.tk, areaIn = $("[data-area]", cfgBox);
     // два вопроса, как в объявлении (владелец 04.11.2026: «легко запутаться… проще»): N комнат = гостиная + (N − 1) спален,
     // санузлов сколько указали, кухня и прихожая всегда; у дома ещё котельная и блок «Для дома и участка»
     const pick = (attr, v) => $$(`[data-${attr}]`, cfgBox).forEach(x => x.setAttribute("aria-checked", String(x.dataset[attr] === String(v))));
     const rooms = () => {
       st.n = { gost: 1, spal: st.rooms - 1, kuh: 1, van: st.baths, prih: 1, kot: st.home === "house" ? 1 : 0 };
       pick("rooms", st.rooms); pick("baths", st.baths);
+      // площадь подставляется по комнатам, пока человек не ввёл свою (guide.py TURNKEY.area)
+      if (!st.areaSet) { const [a, b] = T.area[st.home]; st.area = a + b * st.rooms; areaIn.value = st.area; }
     };
     // дом отличается участком (владелец 04.11.2026: «в доме уличный свет группы, автополив и т. д.»): по умолчанию 3 группы уличного света
     const setHome = h => {
@@ -1089,13 +1092,22 @@
         return `<tr><td>${x.u ? `<a href="${x.u}">${esc(x.n || I[role])}</a>` : esc(I[role])}</td><td>${q}</td><td>${p0 != null ? fmt(p * q) + " BYN" : p != null ? "≈ " + fmt(p * q) + " BYN, по запросу" : "по запросу"}</td></tr>`;
       }).join("");
       const lo = Math.round(total * .9 / 100) * 100, hi = Math.round(total * 1.2 / 100) * 100;
+      // «под ключ» от площади: оборудование + монтаж и настройка HDL 30 % + мелкие материалы 10 % + кабель и щит по площади (числа и источники — guide.py TURNKEY)
+      const A = st.area, ln = A * T.lines, pw = ln * T.power, cab = A * T.cable;
+      const tk = [["Оборудование HDL", total], ["Монтаж и настройка HDL", total * T.mont], ["Мелкие материалы", total * T.mat],
+        [`Кабель, около ${fmt(Math.round(cab / 10) * 10)} м`, cab * T.cable_byn],
+        ["Прокладка кабеля и подключение в щите", (cab * T.lay_usd + ln * T.line_usd + pw * T.cores * T.core_usd) * D.rate],
+        ["Щит: автоматы и сборка", pw * (T.breaker_byn + T.pole_usd * D.rate) + T.shield_usd * D.rate]];
+      const all = tk.reduce((s, [, v]) => s + v, 0), tlo = Math.round(all * .9 / 100) * 100, thi = Math.round(all * 1.2 / 100) * 100;
       out.innerHTML = `<p class="cfg-h"><span>✓</span>Ваш умный дом</p><ul class="cfg-list">${list}</ul>`
         + (yard ? `<p class="cfg-sub">Участок</p><ul class="cfg-list">${yard}</ul>` : "")
         + (st.curt ? `<p class="small">Шторы на моторе: ${st.curt}, открываются по кнопке, расписанию и в сценариях.</p>` : "")
         + (st.ac ? `<p class="small">Кондиционеры: ${st.ac}, управление с панелей и телефона.</p>` : "")
         + `<p class="cfg-sub">Ваши сценарии</p><div class="cfg-sc">${sc.map(([a, b]) => `<span><b>${esc(a)}</b>${esc(b)}</span>`).join("")}</div>`
         + (total ? `<div class="cfg-sum"><span>Ориентир по оборудованию HDL</span><b>${fmt(lo)} – ${fmt(hi)} BYN</b>${ask ? "<small>Шлюз для Siri и Apple Home — цена по запросу, в ориентире — как у обычного шлюза.</small>" : ""}</div>` : "")
-        + `<p class="muted small">Не входят: щит с автоматами, кабель, монтаж и настройка, светильники и драйверы, термоприводы, датчики протечки и краны, карнизы и кондиционеры${H && st.water ? ", клапаны полива" : ""}${H && W("gate") ? ", приводы ворот" : ""}${H && W("paths") ? ", греющий кабель" : ""}. Цены каталога в BYN с НДС.</p>`
+        + (total ? `<div class="cfg-sum cfg-tk"><span>Под ключ ориентировочно, ${A} м²</span><b>${fmt(tlo)} – ${fmt(thi)} BYN</b>`
+          + `<details><summary>Из чего складывается</summary><ul>${tk.map(([a, v]) => `<li><span>${esc(a)}</span><b>${fmt(Math.round(v / 10) * 10)} BYN</b></li>`).join("")}</ul></details></div>` : "")
+        + `<p class="muted small">Под ключ не входят: проект, корпус щита, штробы в стенах, обычные розетки, светильники и драйверы, термоприводы, датчики протечки и краны, карнизы и кондиционеры${H ? ", кабель по участку" : ""}${H && st.water ? ", клапаны полива" : ""}${H && W("gate") ? ", приводы ворот" : ""}${H && W("paths") ? ", греющий кабель" : ""}. Оборудование — по ценам каталога в BYN с НДС, работы — по прайсу для физических лиц.</p>`
         // «Посмотреть комплект» — рядом с «Перенести в смету», открывает в новой вкладке страницу комплекта с фото и правкой количества (владелец 04.11.2026)
         + `<p class="cfg-btns"><button class="btn" type="button" data-cfg-lead>Получить точную смету</button> <button class="btn ghost" type="button" data-cfg-smeta>Перенести в смету</button>`
         + ` <a class="btn ghost" href="/umnyj-dom/komplekt/?k=${encodeURIComponent(R.L.map(([k, q]) => k + "*" + q).join(","))}" target="_blank" rel="noopener">Посмотреть комплект</a></p>`;
@@ -1104,7 +1116,7 @@
         + [["heat", "климат по комнатам"], ["leak", "протечка"], ["pir", "свет по движению"], ["screen", "экран"], ["voice", "голос: Алиса или Siri, Apple Home"]].filter(([k]) => W(k)).map(([, t]) => " " + t[0].toUpperCase() + t.slice(1) + ".").join("")
         + (st.curt ? ` Штор на моторе: ${st.curt}.` : "") + (st.ac ? ` Кондиционеров: ${st.ac}.` : "")
         + (H ? `${st.street ? ` Уличный свет: ${grp(st.street)}.` : ""}${st.water ? ` Автополив: ${zon(st.water)}.` : ""}${W("gate") ? " Ворота и калитка." : ""}${W("paths") ? " Подогрев дорожек." : ""}` : "")
-        + (total ? ` Ориентир по оборудованию: ${fmt(lo)}–${fmt(hi)} BYN.` : "");
+        + (total ? ` Ориентир по оборудованию: ${fmt(lo)}–${fmt(hi)} BYN. Площадь: ${A} м², под ключ ориентировочно: ${fmt(tlo)}–${fmt(thi)} BYN.` : "");
       cfgBox._L = R.L;
     };
     cfgBox.addEventListener("click", ev => {
@@ -1128,6 +1140,7 @@
       render();
     });
     cfgBox.addEventListener("change", ev => { const x = ev.target.closest("[data-w]"); if (x) { st.w[x.dataset.w] = x.checked; render(); } });
+    areaIn.addEventListener("input", () => { const v = Math.round(+areaIn.value); if (v >= 20 && v <= 2000) { st.area = v; st.areaSet = true; render(); } });
     setHome("flat"); render();
   }
 
