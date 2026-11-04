@@ -1089,10 +1089,11 @@
         const x = it(role), p0 = pr(role), p = p0 ?? (role === "gwhk" ? pr("gw") : null); if (p != null) total += p * q; if (p0 == null) ask++;
         return `<tr><td>${x.u ? `<a href="${x.u}">${esc(x.n || I[role])}</a>` : esc(I[role])}</td><td>${q}</td><td>${p0 != null ? fmt(p * q) + " BYN" : p != null ? "≈ " + fmt(p * q) + " BYN, по запросу" : "по запросу"}</td></tr>`;
       }).join("");
-      // одна сумма, без коридора −10…+20 % (владелец 04.11.2026: «Да, одну сумму»): строки расшифровки округлены до 10 BYN,
-      // «под ключ» — их сумма, ориентир по оборудованию — первая строка, чтобы числа сходились
+      // одна сумма, без коридора −10…+20 % (владелец 04.11.2026: «Да, одну сумму»): «под ключ» — сумма строк расшифровки,
+      // ориентир по оборудованию — первая строка, чтобы числа сходились
       // «под ключ»: оборудование + работы и материалы 50 % от него (по опыту AllVision, guide.py TURNKEY)
-      const tk = [["Оборудование HDL", total], ["Монтаж, кабель, щит с автоматами, настройка", total * T.works]].map(([a, v]) => [a, Math.round(v / 10) * 10]);
+      // оборудование — точная сумма по каталогу (как на странице комплекта), работы и материалы округлены до 10 BYN
+      const tk = [["Оборудование HDL", Math.round(total)], ["Монтаж, кабель, щит с автоматами, настройка", Math.round(total * T.works / 10) * 10]];
       const eq = tk[0][1], all = tk.reduce((s, [, v]) => s + v, 0);
       out.innerHTML = `<p class="cfg-h"><span>✓</span>Ваш умный дом</p><ul class="cfg-list">${list}</ul>`
         + (yard ? `<p class="cfg-sub">Участок</p><ul class="cfg-list">${yard}</ul>` : "")
@@ -1152,15 +1153,22 @@
       list.innerHTML = K.groups.map(([title, roles]) => {
         const rs = roles.filter(r => r in q); if (!rs.length) return "";
         return `<h2 class="kitp-h">${esc(title)}</h2><div class="kitp-rows">` + rs.map(r => {
-          const a = K.items[r], it = D.items[a] || {}, p = it.b, n = q[r]; if (p != null) total += p * n; else ask++;
+          // шлюз HomeKit — цена по запросу: в итоге — как обычный IP-шлюз, как в конфигураторе (владелец 04.11.2026: «непонятно, что по запросу за плюс»)
+          const a = K.items[r], it = D.items[a] || {}, p0 = it.b, p = p0 ?? (r === "gwhk" ? (D.items[K.items.gw] || {}).b : null), n = q[r];
+          if (p != null) total += p * n; if (p0 == null && n > 0) ask++;
           return `<div class="kitp-row" data-r="${r}"><a class="kitp-img" href="${esc(it.u || "#")}" target="_blank" rel="noopener">${it.t ? `<img src="${esc(it.t)}" alt="" width="72" height="72" loading="lazy">` : ""}</a>`
             + `<div class="kitp-name"><a href="${esc(it.u || "#")}" target="_blank" rel="noopener">${esc(it.n || a)}</a><small>${esc(a.split(" · ")[0])}${lock(r) ? " · нужен всегда" : ""}</small></div>`
-            + `<div class="kitp-price">${p != null ? fmt(p) + " BYN" : "по запросу"}</div>`
+            + `<div class="kitp-price">${p0 != null ? fmt(p) + " BYN" : p != null ? "≈ " + fmt(p) + " BYN<br>по запросу" : "по запросу"}</div>`
             + `<div class="cfg-step"><button type="button" data-kq="-1" aria-label="Меньше"${n <= min(r) ? " disabled" : ""}>−</button><input type="number" min="${min(r)}" max="999" value="${n}" data-kn aria-label="Количество"><button type="button" data-kq="1" aria-label="Больше">+</button></div>`
-            + `<div class="kitp-sum">${p != null ? fmt(p * n) + " BYN" : "—"}</div></div>`;
+            + `<div class="kitp-sum">${p != null ? (p0 == null ? "≈ " : "") + fmt(p * n) + " BYN" : "—"}</div></div>`;
         }).join("") + "</div>";
       }).join("");
-      $("[data-kit-total]", kitp).textContent = fmt(total) + " BYN" + (ask ? " + по запросу" : "");
+      // под ключ — как в конфигураторе: оборудование + 50 % на монтаж, кабель, щит с автоматами и настройку (guide.py TURNKEY)
+      total = Math.round(total); const works = Math.round(total * K.tk.works / 10) * 10;
+      $("[data-kit-total]", kitp).textContent = fmt(total) + " BYN";
+      $("[data-kit-ask]", kitp).hidden = !ask;
+      $("[data-kit-tk]", kitp).textContent = fmt(total + works) + " BYN";
+      $("[data-kit-works]", kitp).textContent = `Оборудование + ${fmt(works)} BYN: монтаж, кабель, щит с автоматами, настройка`;
       $("[data-kit-empty]", kitp).hidden = Object.values(q).some(n => n > 0);
     };
     kitp.addEventListener("click", ev => {

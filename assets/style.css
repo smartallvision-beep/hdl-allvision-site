@@ -888,6 +888,9 @@ body[data-page=catalog] .hsearch { display: none; }
 .kitp-foot { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin: 18px 0 8px; padding: 14px 16px; border-radius: var(--r); background: var(--brand-soft); }
 .kitp-total span { display: block; font-size: 14px; color: #3d343b; } .kitp-total b { font-size: 26px; color: var(--dark); }
 .kitp-btns { display: flex; gap: 8px; flex-wrap: wrap; margin: 0; }
+.kitp-foot .kitp-total { flex: 1 1 260px; } .kitp-foot .kitp-btns { flex: 1 0 100%; }
+.kitp-total small { display: block; font-size: 13px; color: var(--muted); margin-top: 2px; } .kitp-total small[hidden] { display: none; }
+.kitp-tk { padding: 10px 14px; border-radius: var(--r); background: #fff; border: 1px solid var(--brand); }
 @media (max-width: 760px) {
   .kitp-row { grid-template-columns: 56px minmax(0, 1fr); grid-template-areas: "img name" "img price" "step sum"; row-gap: 6px; }
   .kitp-img { grid-area: img; } .kitp-name { grid-area: name; } .kitp-price { grid-area: price; text-align: left; }
