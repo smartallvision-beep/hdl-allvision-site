@@ -688,6 +688,8 @@ body[data-page=catalog] .hsearch { display: none; }
 .kab-box h2 { margin-top: 0; }
 .kab-tg { min-height: 48px; margin: 16px 0 8px; }
 .kab-alt { font-size: 14px; color: var(--muted); margin: 0 0 8px; } .kab-alt[hidden] { display: none; }
+.tg-login { display: inline-flex; align-items: center; gap: 10px; background: #54a9eb; color: #fff; font-weight: 600; font-size: 16px; padding: 11px 22px; border-radius: 10px; text-decoration: none; }
+.tg-login:hover { background: #4a9cdc; color: #fff; } .tg-login svg { width: 22px; height: 22px; fill: currentColor; }
 .kab-form fieldset { border: 0; padding: 0; margin: 0 0 12px; }
 .kab-form legend { font-size: 14px; color: var(--muted); margin-bottom: 6px; padding: 0; }
 .kab-who { display: flex; gap: 8px; flex-wrap: wrap; }

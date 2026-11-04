@@ -719,6 +719,11 @@
     const wait = () => { panel.innerHTML = '<p class="muted">Загружаем…</p>'; };
     const failed = () => { panel.innerHTML = '<p class="msg bad">Не удалось загрузить. Обновите страницу или войдите заново.</p>'; };
     const done = j => { user = j.user; staff = !!j.staff; remember(user); setAcc(user); route(); };
+    // возврат с нового входа Telegram без входа: tg.php → /kabinet/#tg=<причина>; метку из адреса убираем сразу
+    const TG_ERR = { cancel: "Вход отменён. Нажмите «Войти через Telegram» ещё раз.", again: "Вход не завершён. Нажмите «Войти через Telegram» ещё раз.",
+      fail: "Не получилось войти. Попробуйте ещё раз или позвоните: +375 29 370-20-20.", blocked: "Доступ закрыт. Позвоните: +375 29 370-20-20." };
+    const tgErr = (location.hash.match(/^#tg=(\w+)$/) || [])[1];
+    if (tgErr) history.replaceState(null, "", location.pathname);
     const out = () => { remember(null); setAcc(null); user = null; staff = false; history.replaceState(null, "", location.pathname); route(); };
 
     const showLogin = async () => {
@@ -727,7 +732,13 @@
       if (slot.childElementCount) return;
       const j = await kabApi("bot").catch(() => ({}));
       if (!j.ok) { bad(msg, "Вход временно недоступен. Позвоните: +375 29 370-20-20."); return; }
-      // кнопка Telegram открывает отдельное окно; браузеры внутри Telegram, Viber, Instagram и блокировщики его не открывают, и вход «зависает»
+      if (tgErr && TG_ERR[tgErr]) bad(msg, TG_ERR[tgErr]);
+      // новый вход Telegram (tg.php, OpenID Connect): страница Telegram в этой же вкладке, без окон и рамок — включён, когда в config.php есть tg_secret
+      if (j.oidc) {
+        slot.innerHTML = '<a class="tg-login" href="/tg.php"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.9 4.3 18.6 19.8c-.2 1.1-.9 1.4-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.2-8.3c.4-.4-.1-.6-.6-.2L6 13.4l-4.9-1.5c-1.1-.3-1.1-1.1.2-1.6L20.5 2.9c.9-.3 1.7.2 1.4 1.4z"/></svg>Войти через Telegram</a>';
+        return;
+      }
+      // прежняя кнопка Telegram открывает отдельное окно; браузеры внутри Telegram, Viber, Instagram и блокировщики его не открывают, и вход «зависает»
       // (владелец 04.11.2026). Запасной вход — страница Telegram в этой же вкладке: она возвращает на кабинет с #tgAuthResult, его разбирает скрипт кнопки
       if (j.id) {
         $("a", alt).href = `https://oauth.telegram.org/auth?bot_id=${j.id}&origin=${encodeURIComponent(location.origin)}&request_access=write&return_to=${encodeURIComponent(location.origin + location.pathname)}`;

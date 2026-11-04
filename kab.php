@@ -43,10 +43,9 @@ switch ($a) {
 case 'me':
     reply(200, ['ok' => true, 'user' => pub($me), 'staff' => $staff]);
 
-case 'bot':  // имя бота для кнопки «Войти через Telegram»; номер бота (начало токена до двоеточия, он не секрет) — для входа в этой вкладке
+case 'bot':  // имя бота для кнопки «Войти через Telegram», номер бота — для входа в этой вкладке; oidc — включён новый вход (tg.php)
     $name = kab_bot_name();
-    $botId = (int) strstr((string) (kab_cfg()['tg_token'] ?? ''), ':', true);
-    reply($name !== '' ? 200 : 503, ['ok' => $name !== '', 'bot' => $name, 'id' => $botId]);
+    reply($name !== '' ? 200 : 503, ['ok' => $name !== '', 'bot' => $name, 'id' => kab_bot_id(), 'oidc' => kab_oidc_on()]);
 
 case 'login':
     $need($post, 405);
@@ -58,24 +57,8 @@ case 'login':
     @file_put_contents($rl, implode("\n", $times));
     $tg = kab_tg_check(array_map('strval', array_filter($in, 'is_scalar')));
     if (!$tg) reply(401, ['ok' => false, 'error' => 'telegram']);
-    $tgName = kab_clean(($tg['first_name'] ?? '') . ' ' . ($tg['last_name'] ?? ''), 80);
-    $q = $db->prepare('SELECT * FROM users WHERE tg_id = ?');
-    $q->execute([(int) $tg['id']]);
-    $u = $q->fetch();
-    if ($u && $u['status'] === 'blocked') reply(403, ['ok' => false, 'error' => 'blocked']);
-    if ($u) {
-        $db->prepare('UPDATE users SET tg_username = ?, tg_name = ?, seen_at = ? WHERE id = ?')->execute([kab_clean($tg['username'] ?? '', 64), $tgName, kab_now(), $u['id']]);
-        $id = (int) $u['id'];
-    } else {
-        $db->prepare("INSERT INTO users (tg_id, tg_username, tg_name, role, created_at, seen_at) VALUES (?, ?, ?, 'user', ?, ?)")
-            ->execute([(int) $tg['id'], kab_clean($tg['username'] ?? '', 64), $tgName, kab_now(), kab_now()]);
-        $id = (int) $db->lastInsertId();
-    }
-    if (in_array((int) $tg['id'], kab_staff_ids(), true)) $db->prepare("UPDATE users SET role = 'staff', wanted = '' WHERE id = ?")->execute([$id]);
-    kab_start_session($id);
-    $q = $db->prepare('SELECT * FROM users WHERE id = ?');
-    $q->execute([$id]);
-    $u = $q->fetch();
+    $u = kab_tg_enter((int) $tg['id'], (string) ($tg['username'] ?? ''), ($tg['first_name'] ?? '') . ' ' . ($tg['last_name'] ?? ''));
+    if (!$u) reply(403, ['ok' => false, 'error' => 'blocked']);
     reply(200, ['ok' => true, 'user' => pub($u), 'staff' => kab_is_staff($u)]);
 
 case 'logout':

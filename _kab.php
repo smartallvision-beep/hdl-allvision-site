@@ -148,6 +148,37 @@ function kab_tg_check(array $d): ?array {
     return $d;
 }
 
+// вход по проверенным данным Telegram (прежняя кнопка — kab.php, новый вход — tg.php): найти или завести пользователя, отметить сотрудника,
+// начать сессию. Заблокированный — null
+function kab_tg_enter(int $tgId, string $username, string $name): ?array {
+    $db = kab_db();
+    $q = $db->prepare('SELECT * FROM users WHERE tg_id = ?');
+    $q->execute([$tgId]);
+    $u = $q->fetch();
+    if ($u && $u['status'] === 'blocked') return null;
+    $username = kab_clean($username, 64);
+    $name = kab_clean($name, 80);
+    if ($u) {
+        $db->prepare('UPDATE users SET tg_username = ?, tg_name = ?, seen_at = ? WHERE id = ?')->execute([$username, $name, kab_now(), $u['id']]);
+        $id = (int) $u['id'];
+    } else {
+        $db->prepare("INSERT INTO users (tg_id, tg_username, tg_name, role, created_at, seen_at) VALUES (?, ?, ?, 'user', ?, ?)")
+            ->execute([$tgId, $username, $name, kab_now(), kab_now()]);
+        $id = (int) $db->lastInsertId();
+    }
+    if (in_array($tgId, kab_staff_ids(), true)) $db->prepare("UPDATE users SET role = 'staff', wanted = '' WHERE id = ?")->execute([$id]);
+    kab_start_session($id);
+    $q = $db->prepare('SELECT * FROM users WHERE id = ?');
+    $q->execute([$id]);
+    return $q->fetch() ?: null;
+}
+
+// номер бота — начало токена до двоеточия (не секрет). Новый вход Telegram (tg.php) включается, когда в config.php есть tg_secret;
+// Client ID — номер бота, если @BotFather показывает другой — tg_client в config.php
+function kab_bot_id(): int { return (int) strstr((string) (kab_cfg()['tg_token'] ?? ''), ':', true); }
+function kab_oidc_client(): string { return (string) ((int) (kab_cfg()['tg_client'] ?? 0) ?: kab_bot_id()); }
+function kab_oidc_on(): bool { return kab_oidc_client() !== '0' && (string) (kab_cfg()['tg_secret'] ?? '') !== ''; }
+
 // имя бота для кнопки входа: из config.php (tg_bot) или у Telegram по токену, запоминается в папке данных
 function kab_bot_name(): string {
     $c = kab_cfg();
