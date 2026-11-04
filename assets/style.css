@@ -861,3 +861,6 @@ body[data-page=catalog] .hsearch { display: none; }
 .g-rel { background: rgba(255, 255, 255, .07); border-radius: var(--r); padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
 .g-rel b { font-size: 17px; } .g-rel span { font-size: 14px; color: #e9dfe6; }
 @media (max-width: 900px) { .g-rel-row { grid-template-columns: 1fr; } }
+/* «Умный дом», 04.11.2026: размер жилья — два вопроса кнопками-цифрами */
+.cfg-num button { min-width: 46px; text-align: center; font-size: 16px; }
+.cfg-q .muted.small { font-weight: 400; margin-left: 6px; }

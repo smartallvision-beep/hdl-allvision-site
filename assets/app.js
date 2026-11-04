@@ -1016,9 +1016,16 @@
   const cfgBox = $("[data-cfg]");
   if (cfgBox) {
     const C = JSON.parse(cfgBox.dataset.cfg), out = $("[data-cfg-out]", cfgBox), I = C.items;
-    const st = { home: "flat", n: {}, light: "dim", ac: 0, curt: 0, w: { heat: 1, leak: 1, pir: 1 } };
-    // котельная и улица — только у дома (владелец 04.11.2026): у квартиры этих строк нет
-    const setHome = h => { st.home = h; C.rooms.forEach(r => { st.n[r.k] = C.start[h][r.k] || 0; }); $$("[data-house]", cfgBox).forEach(x => { x.hidden = h !== "house"; }); };
+    const st = { home: "flat", rooms: 2, baths: 1, n: {}, light: "dim", ac: 0, curt: 0, w: { heat: 1, leak: 1, pir: 1 } };
+    // два вопроса, как в объявлении (владелец 04.11.2026: «легко запутаться… проще»): N комнат = гостиная + (N − 1) спален,
+    // санузлов сколько указали, кухня и прихожая всегда; котельная и улица — только у дома
+    const pick = (attr, v) => $$(`[data-${attr}]`, cfgBox).forEach(x => x.setAttribute("aria-checked", String(x.dataset[attr] === String(v))));
+    const rooms = () => {
+      const h = st.home === "house" ? 1 : 0;
+      st.n = { gost: 1, spal: st.rooms - 1, kuh: 1, van: st.baths, prih: 1, kot: h, ul: h };
+      pick("rooms", st.rooms); pick("baths", st.baths);
+    };
+    const setHome = h => { st.home = h; Object.assign(st, C.start[h]); rooms(); };
     const it = role => D.items[I[role]] || {}, pr = role => it(role).b;
     const LIGHT = { relay: "вкл/выкл", dim: "с регулировкой яркости", dali: "с яркостью и оттенком" };
     const grp = n => n + " " + (n % 10 === 1 && n % 100 !== 11 ? "группа" : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? "группы" : "групп");
@@ -1042,18 +1049,17 @@
     };
     const render = () => {
       const R = calc(), W = k => !!st.w[k];
-      $$("[data-room]", cfgBox).forEach(x => { $("[data-n]", x).textContent = st.n[x.dataset.room]; });
       $("[data-acn]", cfgBox).textContent = st.ac; $("[data-curtn]", cfgBox).textContent = st.curt;
-      $("[data-total]", cfgBox).textContent = C.rooms.reduce((s, r) => s + st.n[r.k], 0);
-      const rooms = R.rs.map(r => {
+      const name = r => r.k === "gost" && st.rooms === 1 ? "Комната" : r.n;  // однокомнатная — одна «Комната»
+      const list = R.rs.map(r => {
         const f = [grp(r.g) + " света " + (r.live ? LIGHT[st.light] : "вкл/выкл") + (W("pir") && r.m ? ", по движению" : "")];
         if (r.p) f.push(r.k === "gost" && R.screen ? "панель с экраном" : r.p === 2 ? "две панели: у входа и у кровати" : "кнопочная панель");
         if (W("heat") && r.h) f.push(r.k === "van" ? "тёплый пол к подъёму" : "своя температура");
         if (W("leak") && r.l) f.push("датчик протечки");
-        return `<li><b>${esc(r.n)}${st.n[r.k] > 1 ? " × " + st.n[r.k] : ""}</b>: ${esc(f.join(", "))}</li>`;
+        return `<li><b>${esc(name(r))}${st.n[r.k] > 1 ? " × " + st.n[r.k] : ""}</b>: ${esc(f.join(", "))}</li>`;
       }).join("");
       const sc = [["Ушёл — пришёл", "Кнопка у двери выключает всё лишнее, вернулись — всё как было"], ["Отпуск", "Свет включается по расписанию, будто вы дома"]];
-      if (st.n.spal) sc.push(["Ночь", "Кнопка у кровати: днём полный свет, ночью мягкий"]);
+      sc.push(["Ночь", "Кнопка у кровати: днём полный свет, ночью мягкий"]);
       if (st.light !== "relay") sc.push(["Вечер", "Мягкий приглушённый свет одной кнопкой"]);
       if (st.curt || st.light !== "relay") sc.push(["Кино", st.curt ? "Шторы закрываются, свет приглушается" : "Свет приглушается до нужного уровня"]);
       if (W("heat") && st.n.van) sc.push(["Утро", "Тёплый пол в ванной к подъёму, свет мягко нарастает"]);
@@ -1067,7 +1073,7 @@
         return `<tr><td>${x.u ? `<a href="${x.u}">${esc(x.n || I[role])}</a>` : esc(I[role])}</td><td>${q}</td><td>${p0 != null ? fmt(p * q) + " BYN" : p != null ? "≈ " + fmt(p * q) + " BYN, по запросу" : "по запросу"}</td></tr>`;
       }).join("");
       const lo = Math.round(total * .9 / 100) * 100, hi = Math.round(total * 1.2 / 100) * 100;
-      out.innerHTML = `<p class="cfg-h"><span>✓</span>Ваш умный дом</p>${rooms ? `<ul class="cfg-list">${rooms}</ul>` : '<p class="muted">Добавьте комнаты.</p>'}`
+      out.innerHTML = `<p class="cfg-h"><span>✓</span>Ваш умный дом</p><ul class="cfg-list">${list}</ul>`
         + (st.curt ? `<p class="small">Шторы на моторе: ${st.curt}, открываются по кнопке, расписанию и в сценариях.</p>` : "")
         + (st.ac ? `<p class="small">Кондиционеры: ${st.ac}, управление с панелей и телефона.</p>` : "")
         + `<p class="cfg-sub">Ваши сценарии</p><div class="cfg-sc">${sc.map(([a, b]) => `<span><b>${esc(a)}</b>${esc(b)}</span>`).join("")}</div>`
@@ -1075,7 +1081,7 @@
         + `<p class="muted small">Не входят: щит с автоматами, кабель, монтаж и настройка, светильники и драйверы, термоприводы, датчики протечки и краны, карнизы и кондиционеры. Цены каталога в BYN с НДС.</p>`
         + (rows ? `<details class="cfg-eq"><summary>Из чего складывается</summary><div class="tablewrap"><table><tbody>${rows}</tbody></table></div></details>` : "")
         + `<p class="cfg-btns"><button class="btn" type="button" data-cfg-lead>Получить точную смету</button> <button class="btn ghost" type="button" data-cfg-smeta>Перенести в смету</button></p>`;
-      out.dataset.sum = `${R.rs.map(r => r.n + (st.n[r.k] > 1 ? " × " + st.n[r.k] : "")).join(", ")}. Свет: ${LIGHT[st.light]}.`
+      out.dataset.sum = `${st.home === "house" ? "Дом" : "Квартира"}, комнат: ${st.rooms}${st.rooms === 6 ? "+" : ""}, санузлов: ${st.baths}. Свет: ${LIGHT[st.light]}.`
         + [["heat", "климат по комнатам"], ["leak", "протечка"], ["pir", "свет по движению"], ["screen", "экран"], ["voice", "голос: Алиса или Siri, Apple Home"]].filter(([k]) => W(k)).map(([, t]) => " " + t[0].toUpperCase() + t.slice(1) + ".").join("")
         + (st.curt ? ` Штор на моторе: ${st.curt}.` : "") + (st.ac ? ` Кондиционеров: ${st.ac}.` : "") + (total ? ` Ориентир по оборудованию: ${fmt(lo)}–${fmt(hi)} BYN.` : "");
       cfgBox._L = R.L;
@@ -1084,7 +1090,8 @@
       const b = ev.target.closest("button"); if (!b) return;
       if (b.dataset.home) { $$("[data-home]", cfgBox).forEach(x => x.setAttribute("aria-checked", String(x === b))); setHome(b.dataset.home); }
       else if (b.dataset.light) { $$("[data-light]", cfgBox).forEach(x => x.setAttribute("aria-checked", String(x === b))); st.light = b.dataset.light; }
-      else if (b.dataset.d) { const k = b.closest("[data-room]").dataset.room; st.n[k] = Math.max(0, Math.min(9, st.n[k] + +b.dataset.d)); }
+      else if (b.dataset.rooms) { st.rooms = +b.dataset.rooms; rooms(); }
+      else if (b.dataset.baths) { st.baths = +b.dataset.baths; rooms(); }
       else if (b.dataset.ac) st.ac = Math.max(0, Math.min(12, st.ac + +b.dataset.ac));
       else if (b.dataset.curt) st.curt = Math.max(0, Math.min(20, st.curt + +b.dataset.curt));
       else if (b.hasAttribute("data-cfg-smeta")) {
