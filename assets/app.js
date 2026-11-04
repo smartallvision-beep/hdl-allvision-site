@@ -1016,15 +1016,16 @@
   const cfgBox = $("[data-cfg]");
   if (cfgBox) {
     const C = JSON.parse(cfgBox.dataset.cfg), out = $("[data-cfg-out]", cfgBox), I = C.items;
-    const st = { home: "flat", n: {}, light: "dim", ac: 0, w: { heat: 1, leak: 1, pir: 1 } };
-    const setHome = h => { st.home = h; C.rooms.forEach(r => { st.n[r.k] = C.start[h][r.k] || 0; }); };
+    const st = { home: "flat", n: {}, light: "dim", ac: 0, curt: 0, w: { heat: 1, leak: 1, pir: 1 } };
+    // котельная и улица — только у дома (владелец 04.11.2026): у квартиры этих строк нет
+    const setHome = h => { st.home = h; C.rooms.forEach(r => { st.n[r.k] = C.start[h][r.k] || 0; }); $$("[data-house]", cfgBox).forEach(x => { x.hidden = h !== "house"; }); };
     const it = role => D.items[I[role]] || {}, pr = role => it(role).b;
     const LIGHT = { relay: "вкл/выкл", dim: "с регулировкой яркости", dali: "с яркостью и оттенком" };
     const grp = n => n + " " + (n % 10 === 1 && n % 100 !== 11 ? "группа" : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? "группы" : "групп");
     const calc = () => {
       const rs = C.rooms.filter(r => st.n[r.k] > 0), sum = f => rs.reduce((s, r) => s + f(r) * st.n[r.k], 0), W = k => !!st.w[k];
       const live = sum(r => r.live ? r.g : 0), serv = sum(r => r.live ? 0 : r.g);
-      const heat = W("heat") ? sum(r => r.h) : 0, curt = W("curt") ? sum(r => r.c) : 0, leak = W("leak") ? sum(r => r.l) : 0, pir = W("pir") ? sum(r => r.m) : 0;
+      const heat = W("heat") ? sum(r => r.h) : 0, curt = st.curt, leak = W("leak") ? sum(r => r.l) : 0, pir = W("pir") ? sum(r => r.m) : 0;  // штор — сколько выбрали (владелец 04.11.2026)
       const screen = W("screen") && st.n.gost > 0 ? 1 : 0, panels = Math.max(0, sum(r => r.p) - screen);
       const L = [], add = (role, q) => { if (q > 0) L.push([role, q]); };
       let ch = Math.ceil((serv + (st.light === "relay" ? live : 0) + (leak ? 1 : 0)) * 1.1);  // + кран на вводе воды
@@ -1042,19 +1043,19 @@
     const render = () => {
       const R = calc(), W = k => !!st.w[k];
       $$("[data-room]", cfgBox).forEach(x => { $("[data-n]", x).textContent = st.n[x.dataset.room]; });
-      $("[data-acn]", cfgBox).textContent = st.ac;
+      $("[data-acn]", cfgBox).textContent = st.ac; $("[data-curtn]", cfgBox).textContent = st.curt;
+      $("[data-total]", cfgBox).textContent = C.rooms.reduce((s, r) => s + st.n[r.k], 0);
       const rooms = R.rs.map(r => {
         const f = [grp(r.g) + " света " + (r.live ? LIGHT[st.light] : "вкл/выкл") + (W("pir") && r.m ? ", по движению" : "")];
         if (r.p) f.push(r.k === "gost" && R.screen ? "панель с экраном" : r.p === 2 ? "две панели: у входа и у кровати" : "кнопочная панель");
         if (W("heat") && r.h) f.push(r.k === "van" ? "тёплый пол к подъёму" : "своя температура");
-        if (W("curt") && r.c) f.push("штора на моторе");
         if (W("leak") && r.l) f.push("датчик протечки");
         return `<li><b>${esc(r.n)}${st.n[r.k] > 1 ? " × " + st.n[r.k] : ""}</b>: ${esc(f.join(", "))}</li>`;
       }).join("");
       const sc = [["Ушёл — пришёл", "Кнопка у двери выключает всё лишнее, вернулись — всё как было"], ["Отпуск", "Свет включается по расписанию, будто вы дома"]];
       if (st.n.spal) sc.push(["Ночь", "Кнопка у кровати: днём полный свет, ночью мягкий"]);
       if (st.light !== "relay") sc.push(["Вечер", "Мягкий приглушённый свет одной кнопкой"]);
-      if (W("curt") || st.light !== "relay") sc.push(["Кино", W("curt") ? "Шторы закрываются, свет приглушается" : "Свет приглушается до нужного уровня"]);
+      if (st.curt || st.light !== "relay") sc.push(["Кино", st.curt ? "Шторы закрываются, свет приглушается" : "Свет приглушается до нужного уровня"]);
       if (W("heat") && st.n.van) sc.push(["Утро", "Тёплый пол в ванной к подъёму, свет мягко нарастает"]);
       if (W("leak") && R.leak) sc.push(["Протечка", "Вода перекрыта, на телефоне — где именно"]);
       if (st.light === "dali" && R.live) sc.push(["Циркадный свет", "Днём бодрящий холодный свет, вечером тёплый"]);
@@ -1067,15 +1068,16 @@
       }).join("");
       const lo = Math.round(total * .9 / 100) * 100, hi = Math.round(total * 1.2 / 100) * 100;
       out.innerHTML = `<p class="cfg-h"><span>✓</span>Ваш умный дом</p>${rooms ? `<ul class="cfg-list">${rooms}</ul>` : '<p class="muted">Добавьте комнаты.</p>'}`
+        + (st.curt ? `<p class="small">Шторы на моторе: ${st.curt}, открываются по кнопке, расписанию и в сценариях.</p>` : "")
         + (st.ac ? `<p class="small">Кондиционеры: ${st.ac}, управление с панелей и телефона.</p>` : "")
         + `<p class="cfg-sub">Ваши сценарии</p><div class="cfg-sc">${sc.map(([a, b]) => `<span><b>${esc(a)}</b>${esc(b)}</span>`).join("")}</div>`
         + (total ? `<div class="cfg-sum"><span>Ориентир по оборудованию HDL</span><b>${fmt(lo)} – ${fmt(hi)} BYN</b>${ask ? "<small>Шлюз для Siri и Apple Home — цена по запросу, в ориентире — как у обычного шлюза.</small>" : ""}</div>` : "")
-        + `<p class="muted small">Не входят: щит с автоматикой, кабель, монтаж и настройка, светильники и драйверы, термоприводы, датчики протечки и краны, карнизы и кондиционеры. Цены каталога в BYN с НДС.</p>`
+        + `<p class="muted small">Не входят: щит с автоматами, кабель, монтаж и настройка, светильники и драйверы, термоприводы, датчики протечки и краны, карнизы и кондиционеры. Цены каталога в BYN с НДС.</p>`
         + (rows ? `<details class="cfg-eq"><summary>Из чего складывается</summary><div class="tablewrap"><table><tbody>${rows}</tbody></table></div></details>` : "")
         + `<p class="cfg-btns"><button class="btn" type="button" data-cfg-lead>Получить точную смету</button> <button class="btn ghost" type="button" data-cfg-smeta>Перенести в смету</button></p>`;
       out.dataset.sum = `${R.rs.map(r => r.n + (st.n[r.k] > 1 ? " × " + st.n[r.k] : "")).join(", ")}. Свет: ${LIGHT[st.light]}.`
-        + [["heat", "климат по комнатам"], ["leak", "протечка"], ["pir", "свет по движению"], ["curt", "шторы"], ["screen", "экран"], ["voice", "голос: Алиса или Siri, Apple Home"]].filter(([k]) => W(k)).map(([, t]) => " " + t[0].toUpperCase() + t.slice(1) + ".").join("")
-        + (st.ac ? ` Кондиционеров: ${st.ac}.` : "") + (total ? ` Ориентир по оборудованию: ${fmt(lo)}–${fmt(hi)} BYN.` : "");
+        + [["heat", "климат по комнатам"], ["leak", "протечка"], ["pir", "свет по движению"], ["screen", "экран"], ["voice", "голос: Алиса или Siri, Apple Home"]].filter(([k]) => W(k)).map(([, t]) => " " + t[0].toUpperCase() + t.slice(1) + ".").join("")
+        + (st.curt ? ` Штор на моторе: ${st.curt}.` : "") + (st.ac ? ` Кондиционеров: ${st.ac}.` : "") + (total ? ` Ориентир по оборудованию: ${fmt(lo)}–${fmt(hi)} BYN.` : "");
       cfgBox._L = R.L;
     };
     cfgBox.addEventListener("click", ev => {
@@ -1084,6 +1086,7 @@
       else if (b.dataset.light) { $$("[data-light]", cfgBox).forEach(x => x.setAttribute("aria-checked", String(x === b))); st.light = b.dataset.light; }
       else if (b.dataset.d) { const k = b.closest("[data-room]").dataset.room; st.n[k] = Math.max(0, Math.min(9, st.n[k] + +b.dataset.d)); }
       else if (b.dataset.ac) st.ac = Math.max(0, Math.min(12, st.ac + +b.dataset.ac));
+      else if (b.dataset.curt) st.curt = Math.max(0, Math.min(20, st.curt + +b.dataset.curt));
       else if (b.hasAttribute("data-cfg-smeta")) {
         const s = load(); (cfgBox._L || []).forEach(([role, q]) => { s[I[role]] = (s[I[role]] || 0) + q; }); save(s);
         b.outerHTML = '<a class="btn ghost" href="/smeta/">В смете ✓ Открыть</a>'; return;
