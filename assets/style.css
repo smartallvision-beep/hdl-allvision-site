@@ -687,6 +687,7 @@ body[data-page=catalog] .hsearch { display: none; }
 .kab-box { background: var(--bg2); border-radius: 16px; padding: 22px; max-width: 560px; margin: 16px 0 32px; }
 .kab-box h2 { margin-top: 0; }
 .kab-tg { min-height: 48px; margin: 16px 0 8px; }
+.kab-alt { font-size: 14px; color: var(--muted); margin: 0 0 8px; } .kab-alt[hidden] { display: none; }
 .kab-form fieldset { border: 0; padding: 0; margin: 0 0 12px; }
 .kab-form legend { font-size: 14px; color: var(--muted); margin-bottom: 6px; padding: 0; }
 .kab-who { display: flex; gap: 8px; flex-wrap: wrap; }

@@ -43,9 +43,10 @@ switch ($a) {
 case 'me':
     reply(200, ['ok' => true, 'user' => pub($me), 'staff' => $staff]);
 
-case 'bot':  // имя бота для кнопки «Войти через Telegram»
+case 'bot':  // имя бота для кнопки «Войти через Telegram»; номер бота (начало токена до двоеточия, он не секрет) — для входа в этой вкладке
     $name = kab_bot_name();
-    reply($name !== '' ? 200 : 503, ['ok' => $name !== '', 'bot' => $name]);
+    $botId = (int) strstr((string) (kab_cfg()['tg_token'] ?? ''), ':', true);
+    reply($name !== '' ? 200 : 503, ['ok' => $name !== '', 'bot' => $name, 'id' => $botId]);
 
 case 'login':
     $need($post, 405);

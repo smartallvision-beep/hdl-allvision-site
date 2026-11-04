@@ -723,10 +723,24 @@
 
     const showLogin = async () => {
       show(loginBox);
-      const msg = $("[data-kab-msg]"), slot = $("[data-tg-btn]");
+      const msg = $("[data-kab-msg]"), slot = $("[data-tg-btn]"), alt = $("[data-kab-alt]");
       if (slot.childElementCount) return;
       const j = await kabApi("bot").catch(() => ({}));
       if (!j.ok) { bad(msg, "Вход временно недоступен. Позвоните: +375 29 370-20-20."); return; }
+      // кнопка Telegram открывает отдельное окно; браузеры внутри Telegram, Viber, Instagram и блокировщики его не открывают, и вход «зависает»
+      // (владелец 04.11.2026). Запасной вход — страница Telegram в этой же вкладке: она возвращает на кабинет с #tgAuthResult, его разбирает скрипт кнопки
+      if (j.id) {
+        $("a", alt).href = `https://oauth.telegram.org/auth?bot_id=${j.id}&origin=${encodeURIComponent(location.origin)}&request_access=write&return_to=${encodeURIComponent(location.origin + location.pathname)}`;
+        alt.hidden = false;
+      }
+      const unfocus = () => { if (document.activeElement?.tagName === "IFRAME") document.activeElement.blur(); };  // следующее нажатие снова даст blur
+      // нажатие уводит фокус в рамку кнопки; если через 1,5 с он всё ещё на странице — окно Telegram не открылось
+      addEventListener("blur", () => setTimeout(() => {
+        if (user || loginBox.hidden || !slot.contains(document.activeElement) || !document.hasFocus()) return;
+        bad(msg, "Окно Telegram не открылось. Нажмите «Войти в этой вкладке».");
+        unfocus();
+      }, 1500));
+      window.hdlTgUnauth = () => { if (!user) { bad(msg, "Вход не завершён. Нажмите кнопку ещё раз или «Войти в этой вкладке»."); unfocus(); } };
       window.hdlTgAuth = async tg => {
         msg.className = "msg"; msg.textContent = "Входим…";
         const r = await kabApi("login", tg).catch(() => ({}));
@@ -735,9 +749,14 @@
       };
       const s = document.createElement("script");
       s.async = true; s.src = "https://telegram.org/js/telegram-widget.js?22";
-      Object.assign(s.dataset, { telegramLogin: j.bot, size: "large", radius: "10", requestAccess: "write", onauth: "hdlTgAuth(user)" });
+      Object.assign(s.dataset, { telegramLogin: j.bot, size: "large", radius: "10", requestAccess: "write", onauth: "hdlTgAuth(user)", onunauth: "hdlTgUnauth()" });
       slot.appendChild(s);
     };
+    // вход завершился в другой вкладке или окне (Telegram вернул на сайт туда): эта вкладка подхватывает его, когда к ней возвращаются
+    const recheck = () => { if (!user && loggedIn()) kabApi("me").then(j => { if (j.ok && j.user && !user) done(j); }).catch(() => {}); };
+    addEventListener("storage", ev => { if (ev.key === ME_KEY) recheck(); });
+    addEventListener("focus", recheck);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) recheck(); });
 
     // анкета при первом входе; та же форма — во вкладке «Мои данные». Роль не выбирают: права отмечает сотрудник (владелец 03.11.2026)
     const setupForm = first => {
