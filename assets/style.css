@@ -66,8 +66,10 @@ h3 { font-size: 18px; margin: 20px 0 8px; }
 .mt-plats a { color: var(--muted); text-decoration: none; } .mt-plats a:hover { color: var(--brand); text-decoration: underline; }
 @media (max-width: 1180px) { .tagline, .contacts-top a + a { display: none; } }
 /* девять пунктов меню и поиск в одну строку до перехода на мобильное меню (980 px); мобильное меню не трогаем */
+@media (min-width: 1241px) { .nav a, .nav-cat { padding: 13px 8px; font-size: 15px; } }  /* десять пунктов с «Умным домом» (04.11.2026) */
 @media (max-width: 1240px) and (min-width: 981px) { .nav a, .nav-cat { padding: 13px 7px; font-size: 15px; } }
 @media (max-width: 1100px) and (min-width: 981px) { .nav a, .nav-cat { padding: 13px 6px; font-size: 14px; } .navbar .hsearch { min-width: 140px; } }
+@media (max-width: 1060px) and (min-width: 981px) { .nav a, .nav-cat { padding: 13px 4px; font-size: 13px; } .navbar .hsearch { min-width: 120px; } }  /* десять пунктов с «Умным домом» (04.11.2026) */
 @media (max-width: 980px) {
   .top-in { min-height: 60px; gap: 10px; }
   .contacts-top, .sup { display: none; }
@@ -774,3 +776,78 @@ body[data-page=catalog] .hsearch { display: none; }
 .circ-src b { color: var(--ink); font-weight: 600; }
 .circ-src li { margin: 4px 0; overflow-wrap: anywhere; color: var(--muted); }
 .circ-src li:target { background: var(--brand-soft); }
+
+/* «Умный дом: с чего начать» (владелец 04.11.2026): проводник для новичка и конфигуратор жилья */
+.g-hero { background: var(--bg2); border-bottom: 1px solid var(--line); padding: 28px 0 22px; margin-bottom: 8px; }
+.g-hero h1 { margin: 0 0 10px; }
+.g-exs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 18px 0 6px; }
+.g-ex { background: #fff; border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.g-ex i { font-style: normal; font-size: 24px; line-height: 1; } .g-ex b { font-size: 16px; } .g-ex span { font-size: 14px; color: #3d343b; }
+.g-gets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.g-get { display: flex; flex-direction: column; gap: 4px; }
+.g-get img { width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; border-radius: var(--r); margin-bottom: 4px; }
+.g-get b { font-size: 16px; } .g-get span { font-size: 14px; color: #3d343b; }
+.g-fit { display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; align-items: start; }
+.g-fit ul { padding-left: 20px; } .g-fit li { margin: 6px 0; }
+.g-when { background: var(--brand-soft); border-radius: var(--r); padding: 14px 16px; margin-top: 22px; }
+.g-when h3 { margin: 0 0 6px; } .g-when p { margin: 0 0 6px; }
+.g-cmp { border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; margin: 0 0 14px; }
+.g-cmp h3 { margin: 0 0 10px; }
+.g-two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.g-two figure { margin: 0; display: flex; gap: 14px; align-items: center; }
+.g-two img, .g-two svg { flex: 0 0 120px; width: 120px; height: 120px; object-fit: contain; }
+.g-two figcaption { font-size: 14px; color: #3d343b; }
+.g-lamps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.g-lamp { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; background: var(--bg2); border-radius: var(--r); padding: 14px 12px; }
+.g-lamp i { width: 64px; height: 64px; border-radius: 50%; background: #e9e3e7; border: 1px solid var(--line); margin: 6px 0; transition: background .2s, box-shadow .2s; }
+.g-lamp input[type=range] { width: 100%; accent-color: var(--brand); }
+.g-lamp span { font-size: 13px; color: #3d343b; }
+.g-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: center; } .g-row p { margin: 0; }
+.g-temps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.g-temps span { border-radius: 8px; padding: 10px 8px; text-align: center; font-size: 13px; background: #fff4e0; display: flex; flex-direction: column; }
+.g-temps .cold { background: #e7eefc; } .g-temps .warm { background: #ffe2c2; }
+.g-temps b { font-size: 22px; } .g-temps small { font-size: 11px; color: var(--muted); }
+.cfg { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 10px; }
+.cfg-blk { border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; margin: 0 0 12px; }
+.cfg-h { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-weight: 700; font-size: 17px; }
+.cfg-h span { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--brand); color: #fff; font-size: 14px; }
+.cfg-seg { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.cfg-seg button { border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 8px 14px; font: 500 15px var(--font); color: var(--ink); cursor: pointer; }
+.cfg-seg button[aria-checked=true] { border-color: var(--brand); background: var(--brand-soft); box-shadow: inset 0 0 0 1px var(--brand); }
+.cfg-rooms { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; }
+.cfg-room { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 15px; padding: 3px 0; }
+.cfg-step { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.cfg-step button { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: #fff; font-size: 18px; line-height: 1; cursor: pointer; color: var(--ink); }
+.cfg-step button:hover, .cfg-seg button:hover { border-color: var(--brand); }
+.cfg-step b { min-width: 22px; text-align: center; }
+.cfg-q { margin: 2px 0 6px; font-weight: 600; } .cfg-q a { font-weight: 400; font-size: 14px; margin-left: 6px; }
+.cfg-ch { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; font-size: 15px; cursor: pointer; }
+.cfg-ch input { margin-top: 3px; width: 17px; height: 17px; accent-color: var(--brand); flex: none; }
+.cfg-ac { margin-top: 6px; }
+.cfg-out { position: sticky; top: calc(var(--top-h, 120px) + 12px); border: 2px solid var(--brand); border-radius: var(--r); padding: 16px 18px; background: #fff; }
+.cfg-list { padding-left: 18px; margin: 0 0 10px; font-size: 15px; } .cfg-list li { margin: 5px 0; }
+.cfg-sub { font-weight: 700; margin: 12px 0 6px; }
+.cfg-sc { display: flex; flex-wrap: wrap; gap: 6px; }
+.cfg-sc span { background: var(--bg2); border-radius: 8px; padding: 6px 10px; font-size: 13px; color: #3d343b; max-width: 100%; }
+.cfg-sc span b { display: block; color: var(--ink); font-size: 14px; }
+.cfg-sum { margin: 14px 0 6px; padding: 12px 14px; border-radius: var(--r); background: var(--brand-soft); display: flex; flex-direction: column; gap: 2px; }
+.cfg-sum span { font-size: 14px; color: #3d343b; } .cfg-sum b { font-size: 24px; color: var(--dark); } .cfg-sum small { font-size: 12px; color: var(--muted); }
+.cfg-eq summary { cursor: pointer; color: var(--brand); font-weight: 600; font-size: 14px; }
+.cfg-eq table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+.cfg-eq td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; } .cfg-eq td:nth-child(2) { text-align: center; } .cfg-eq td:last-child { text-align: right; white-space: nowrap; }
+.cfg-btns { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+@media (max-width: 900px) {
+  .g-exs, .g-gets { grid-template-columns: 1fr 1fr; }
+  .cfg { grid-template-columns: 1fr; } .cfg-out { position: static; }
+  .g-fit, .g-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .g-exs, .g-gets, .g-two, .g-lamps, .cfg-rooms { grid-template-columns: 1fr; }
+  .g-two figure { align-items: flex-start; } .g-two img, .g-two svg { flex-basis: 84px; width: 84px; height: 84px; }
+}
+
+/* главная: вход на «Умный дом: с чего начать» */
+.g-home { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 22px 0 0; padding: 18px 20px; border-radius: var(--r); background: var(--brand-soft); border: 1px solid #ecd3e3; color: var(--ink); text-decoration: none; }
+.g-home b { display: block; font-size: 20px; color: var(--dark); margin-bottom: 4px; } .g-home > span:first-child { font-size: 15px; } .g-home .btn { flex: none; }
+.g-home:hover { border-color: var(--brand); }
+@media (max-width: 640px) { .g-home { flex-direction: column; align-items: flex-start; } }
