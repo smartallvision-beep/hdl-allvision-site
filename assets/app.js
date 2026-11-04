@@ -1096,10 +1096,10 @@
         + `<p class="cfg-sub">Ваши сценарии</p><div class="cfg-sc">${sc.map(([a, b]) => `<span><b>${esc(a)}</b>${esc(b)}</span>`).join("")}</div>`
         + (total ? `<div class="cfg-sum"><span>Ориентир по оборудованию HDL</span><b>${fmt(lo)} – ${fmt(hi)} BYN</b>${ask ? "<small>Шлюз для Siri и Apple Home — цена по запросу, в ориентире — как у обычного шлюза.</small>" : ""}</div>` : "")
         + `<p class="muted small">Не входят: щит с автоматами, кабель, монтаж и настройка, светильники и драйверы, термоприводы, датчики протечки и краны, карнизы и кондиционеры${H && st.water ? ", клапаны полива" : ""}${H && W("gate") ? ", приводы ворот" : ""}${H && W("paths") ? ", греющий кабель" : ""}. Цены каталога в BYN с НДС.</p>`
-        // «Посмотреть комплект» — рядом с «Перенести в смету» (владелец 04.11.2026), список оборудования раскрывается под кнопками
+        // «Посмотреть комплект» — рядом с «Перенести в смету», открывает в новой вкладке страницу комплекта с фото и правкой количества (владелец 04.11.2026)
         + `<p class="cfg-btns"><button class="btn" type="button" data-cfg-lead>Получить точную смету</button> <button class="btn ghost" type="button" data-cfg-smeta>Перенести в смету</button>`
-        + ` <button class="btn ghost" type="button" data-cfg-kit aria-expanded="${st.kit ? "true" : "false"}">${st.kit ? "Скрыть комплект" : "Посмотреть комплект"}</button></p>`
-        + `<div class="cfg-eq"${st.kit ? "" : " hidden"}><p class="cfg-sub">Комплект оборудования HDL</p><div class="tablewrap"><table><tbody>${rows}</tbody><tfoot><tr><td>Итого по ценам каталога</td><td></td><td>${fmt(total)} BYN</td></tr></tfoot></table></div></div>`;
+        + ` <a class="btn ghost" href="/umnyj-dom/komplekt/?k=${encodeURIComponent(R.L.map(([k, q]) => k + "*" + q).join(","))}" target="_blank" rel="noopener">Посмотреть комплект</a></p>`;
+      void rows;
       out.dataset.sum = `${st.home === "house" ? "Дом" : "Квартира"}, комнат: ${st.rooms}${st.rooms === 6 ? "+" : ""}, санузлов: ${st.baths}. Свет: ${LIGHT[st.light]}.`
         + [["heat", "климат по комнатам"], ["leak", "протечка"], ["pir", "свет по движению"], ["screen", "экран"], ["voice", "голос: Алиса или Siri, Apple Home"]].filter(([k]) => W(k)).map(([, t]) => " " + t[0].toUpperCase() + t.slice(1) + ".").join("")
         + (st.curt ? ` Штор на моторе: ${st.curt}.` : "") + (st.ac ? ` Кондиционеров: ${st.ac}.` : "")
@@ -1117,7 +1117,6 @@
       else if (b.dataset.curt) st.curt = Math.max(0, Math.min(20, st.curt + +b.dataset.curt));
       else if (b.dataset.street) st.street = Math.max(0, Math.min(20, st.street + +b.dataset.street));
       else if (b.dataset.water) st.water = Math.max(0, Math.min(20, st.water + +b.dataset.water));
-      else if (b.hasAttribute("data-cfg-kit")) st.kit = !st.kit;
       else if (b.hasAttribute("data-cfg-smeta")) {
         const s = load(); (cfgBox._L || []).forEach(([role, q]) => { s[I[role]] = (s[I[role]] || 0) + q; }); save(s);
         b.outerHTML = '<a class="btn ghost" href="/smeta/">В смете ✓ Открыть</a>'; return;
@@ -1130,6 +1129,47 @@
     });
     cfgBox.addEventListener("change", ev => { const x = ev.target.closest("[data-w]"); if (x) { st.w[x.dataset.w] = x.checked; render(); } });
     setHome("flat"); render();
+  }
+
+  // ---- комплект из конфигуратора (/umnyj-dom/komplekt/?k=роль*кол-во): фото, количество правится, блок питания и IP-шлюз не убираются,
+  // перенос в смету (владелец 04.11.2026). Цены — каталога (D.items, со скидкой дилера) ----
+  const kitp = $("[data-kitp]");
+  if (kitp) {
+    const K = JSON.parse(kitp.dataset.kitp), list = $("[data-kit-list]", kitp), q = {};
+    (new URLSearchParams(location.search).get("k") || "").split(",").forEach(x => { const [r, n] = x.split("*"); if (K.items[r] && +n > 0) q[r] = Math.min(999, Math.round(+n)); });
+    const lock = r => K.locked.includes(r), min = r => lock(r) ? 1 : 0;
+    // к каждой панели — свой соединитель и рамка: меняем их вместе с числом панелей (отдельно их тоже можно поправить)
+    const LINK = { panel: ["panel_k", "panel_fr"], screen: ["screen_k", "screen_fr"] };
+    const set = (r, n) => { q[r] = Math.max(min(r), Math.min(999, n)); (LINK[r] || []).forEach(x => { if (x in q || q[r]) q[x] = q[r]; }); };
+    const draw = () => {
+      let total = 0, ask = 0;
+      list.innerHTML = K.groups.map(([title, roles]) => {
+        const rs = roles.filter(r => r in q); if (!rs.length) return "";
+        return `<h2 class="kitp-h">${esc(title)}</h2><div class="kitp-rows">` + rs.map(r => {
+          const a = K.items[r], it = D.items[a] || {}, p = it.b, n = q[r]; if (p != null) total += p * n; else ask++;
+          return `<div class="kitp-row" data-r="${r}"><a class="kitp-img" href="${esc(it.u || "#")}" target="_blank" rel="noopener">${it.t ? `<img src="${esc(it.t)}" alt="" width="72" height="72" loading="lazy">` : ""}</a>`
+            + `<div class="kitp-name"><a href="${esc(it.u || "#")}" target="_blank" rel="noopener">${esc(it.n || a)}</a><small>${esc(a.split(" · ")[0])}${lock(r) ? " · нужен всегда" : ""}</small></div>`
+            + `<div class="kitp-price">${p != null ? fmt(p) + " BYN" : "по запросу"}</div>`
+            + `<div class="cfg-step"><button type="button" data-kq="-1" aria-label="Меньше"${n <= min(r) ? " disabled" : ""}>−</button><input type="number" min="${min(r)}" max="999" value="${n}" data-kn aria-label="Количество"><button type="button" data-kq="1" aria-label="Больше">+</button></div>`
+            + `<div class="kitp-sum">${p != null ? fmt(p * n) + " BYN" : "—"}</div></div>`;
+        }).join("") + "</div>";
+      }).join("");
+      $("[data-kit-total]", kitp).textContent = fmt(total) + " BYN" + (ask ? " + по запросу" : "");
+      $("[data-kit-empty]", kitp).hidden = Object.values(q).some(n => n > 0);
+    };
+    kitp.addEventListener("click", ev => {
+      const b = ev.target.closest("button"); if (!b) return;
+      if (b.dataset.kq) { const r = b.closest("[data-r]").dataset.r; set(r, q[r] + +b.dataset.kq); draw(); }
+      else if (b.hasAttribute("data-kit-smeta")) {
+        const s = load(); Object.entries(q).forEach(([r, n]) => { if (n > 0) s[K.items[r]] = (s[K.items[r]] || 0) + n; }); save(s);
+        b.outerHTML = '<a class="btn" href="/smeta/">В смете ✓ Открыть смету</a>';
+      }
+    });
+    kitp.addEventListener("change", ev => {
+      const x = ev.target.closest("[data-kn]"); if (!x) return;
+      const r = x.closest("[data-r]").dataset.r; set(r, Math.round(+x.value) || 0); draw();
+    });
+    draw();
   }
 
 })();

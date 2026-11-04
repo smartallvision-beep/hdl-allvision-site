@@ -868,3 +868,26 @@ body[data-page=catalog] .hsearch { display: none; }
 .cfg-house { margin: 10px 0 4px; padding: 8px 12px 4px; border-radius: var(--r); background: var(--bg2); }
 .cfg-house .cfg-q { margin-top: 0; }
 .cfg-btns [data-cfg-lead] { flex: 1 0 100%; text-align: center; }  /* «Перенести в смету» и «Посмотреть комплект» — рядом, строкой ниже */
+/* комплект из конфигуратора (/umnyj-dom/komplekt/, владелец 04.11.2026): фото, количество, перенос в смету */
+.kitp-back { margin: 0 0 6px; }
+.kitp-h { font-size: 19px; margin: 22px 0 8px; }
+.kitp-rows { border: 1px solid var(--line); border-radius: var(--r); }
+.kitp-row { display: grid; grid-template-columns: 72px minmax(0, 1fr) 110px 140px 120px; gap: 14px; align-items: center; padding: 10px 14px; }
+.kitp-row + .kitp-row { border-top: 1px solid var(--line); }
+.kitp-img img { width: 72px; height: 72px; object-fit: contain; border-radius: 8px; background: var(--bg2); }
+.kitp-name a { color: var(--ink); font-weight: 600; text-decoration: none; } .kitp-name a:hover { color: var(--brand); }
+.kitp-name small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+.kitp-price { color: #3d343b; font-size: 14px; text-align: right; } .kitp-sum { font-weight: 700; text-align: right; white-space: nowrap; }
+.kitp-row .cfg-step { justify-content: center; }
+.kitp-row .cfg-step input { width: 52px; height: 30px; text-align: center; border: 1px solid var(--line); border-radius: 8px; font: 600 15px var(--font); -moz-appearance: textfield; }
+.kitp-row .cfg-step input::-webkit-inner-spin-button { -webkit-appearance: none; }
+.kitp-row .cfg-step button:disabled { opacity: .35; cursor: default; }
+.kitp-foot { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin: 18px 0 8px; padding: 14px 16px; border-radius: var(--r); background: var(--brand-soft); }
+.kitp-total span { display: block; font-size: 14px; color: #3d343b; } .kitp-total b { font-size: 26px; color: var(--dark); }
+.kitp-btns { display: flex; gap: 8px; flex-wrap: wrap; margin: 0; }
+@media (max-width: 760px) {
+  .kitp-row { grid-template-columns: 56px minmax(0, 1fr); grid-template-areas: "img name" "img price" "step sum"; row-gap: 6px; }
+  .kitp-img { grid-area: img; } .kitp-name { grid-area: name; } .kitp-price { grid-area: price; text-align: left; }
+  .kitp-row .cfg-step { grid-area: step; justify-content: flex-start; } .kitp-sum { grid-area: sum; }
+  .kitp-img img { width: 56px; height: 56px; }
+}
