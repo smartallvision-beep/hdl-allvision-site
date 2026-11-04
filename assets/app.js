@@ -1061,19 +1061,20 @@
       if (W("heat") && st.ac) sc.push(["Климат заодно", "Батареи и кондиционер не спорят друг с другом"]);
       let total = 0, ask = 0;
       const rows = R.L.map(([role, q]) => {
-        const x = it(role), p = pr(role); if (p != null) total += p * q; else ask++;
-        return `<tr><td>${x.u ? `<a href="${x.u}">${esc(x.n || I[role])}</a>` : esc(I[role])}</td><td>${q}</td><td>${p != null ? fmt(p * q) + " BYN" : "по запросу"}</td></tr>`;
+        // шлюз HomeKit — цена по запросу: в ориентире считаем как обычный IP-шлюз, иначе галочка «Голосом» удешевляла бы ориентир
+        const x = it(role), p0 = pr(role), p = p0 ?? (role === "gwhk" ? pr("gw") : null); if (p != null) total += p * q; if (p0 == null) ask++;
+        return `<tr><td>${x.u ? `<a href="${x.u}">${esc(x.n || I[role])}</a>` : esc(I[role])}</td><td>${q}</td><td>${p0 != null ? fmt(p * q) + " BYN" : p != null ? "≈ " + fmt(p * q) + " BYN, по запросу" : "по запросу"}</td></tr>`;
       }).join("");
       const lo = Math.round(total * .9 / 100) * 100, hi = Math.round(total * 1.2 / 100) * 100;
       out.innerHTML = `<p class="cfg-h"><span>✓</span>Ваш умный дом</p>${rooms ? `<ul class="cfg-list">${rooms}</ul>` : '<p class="muted">Добавьте комнаты.</p>'}`
         + (st.ac ? `<p class="small">Кондиционеры: ${st.ac}, управление с панелей и телефона.</p>` : "")
         + `<p class="cfg-sub">Ваши сценарии</p><div class="cfg-sc">${sc.map(([a, b]) => `<span><b>${esc(a)}</b>${esc(b)}</span>`).join("")}</div>`
-        + (total ? `<div class="cfg-sum"><span>Ориентир по оборудованию HDL</span><b>${fmt(lo)} – ${fmt(hi)} BYN</b>${ask ? "<small>Шлюз для Siri — цена по запросу, в ориентир не вошёл.</small>" : ""}</div>` : "")
+        + (total ? `<div class="cfg-sum"><span>Ориентир по оборудованию HDL</span><b>${fmt(lo)} – ${fmt(hi)} BYN</b>${ask ? "<small>Шлюз для Siri и Apple Home — цена по запросу, в ориентире — как у обычного шлюза.</small>" : ""}</div>` : "")
         + `<p class="muted small">Не входят: щит с автоматикой, кабель, монтаж и настройка, светильники и драйверы, термоприводы, датчики протечки и краны, карнизы и кондиционеры. Цены каталога в BYN с НДС.</p>`
         + (rows ? `<details class="cfg-eq"><summary>Из чего складывается</summary><div class="tablewrap"><table><tbody>${rows}</tbody></table></div></details>` : "")
         + `<p class="cfg-btns"><button class="btn" type="button" data-cfg-lead>Получить точную смету</button> <button class="btn ghost" type="button" data-cfg-smeta>Перенести в смету</button></p>`;
       out.dataset.sum = `${R.rs.map(r => r.n + (st.n[r.k] > 1 ? " × " + st.n[r.k] : "")).join(", ")}. Свет: ${LIGHT[st.light]}.`
-        + [["heat", "климат по комнатам"], ["leak", "протечка"], ["pir", "свет по движению"], ["curt", "шторы"], ["screen", "экран"], ["voice", "Siri"]].filter(([k]) => W(k)).map(([, t]) => " " + t[0].toUpperCase() + t.slice(1) + ".").join("")
+        + [["heat", "климат по комнатам"], ["leak", "протечка"], ["pir", "свет по движению"], ["curt", "шторы"], ["screen", "экран"], ["voice", "голос: Алиса или Siri, Apple Home"]].filter(([k]) => W(k)).map(([, t]) => " " + t[0].toUpperCase() + t.slice(1) + ".").join("")
         + (st.ac ? ` Кондиционеров: ${st.ac}.` : "") + (total ? ` Ориентир по оборудованию: ${fmt(lo)}–${fmt(hi)} BYN.` : "");
       cfgBox._L = R.L;
     };
