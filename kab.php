@@ -36,12 +36,13 @@ try {
 }
 $me = kab_user();
 $staff = kab_is_staff($me);
+$admin = kab_is_admin($me);
 $need = function (bool $cond, int $code = 403) { if (!$cond) reply($code, ['ok' => false, 'error' => 'access']); };
 
 try {
 switch ($a) {
 case 'me':
-    reply(200, ['ok' => true, 'user' => pub($me), 'staff' => $staff]);
+    reply(200, ['ok' => true, 'user' => pub($me), 'staff' => $staff, 'admin' => $admin]);
 
 case 'bot':  // имя бота для кнопки «Войти через Telegram», номер бота — для входа в этой вкладке; oidc — включён новый вход (tg.php)
     $name = kab_bot_name();
@@ -59,7 +60,7 @@ case 'login':
     if (!$tg) reply(401, ['ok' => false, 'error' => 'telegram']);
     $u = kab_tg_enter((int) $tg['id'], (string) ($tg['username'] ?? ''), ($tg['first_name'] ?? '') . ' ' . ($tg['last_name'] ?? ''));
     if (!$u) reply(403, ['ok' => false, 'error' => 'blocked']);
-    reply(200, ['ok' => true, 'user' => pub($u), 'staff' => kab_is_staff($u)]);
+    reply(200, ['ok' => true, 'user' => pub($u), 'staff' => kab_is_staff($u), 'admin' => kab_is_admin($u)]);
 
 case 'logout':
     $need($post, 405);
@@ -92,7 +93,7 @@ case 'profile':  // анкета при первом входе и правка 
     $q = $db->prepare('SELECT * FROM users WHERE id = ?');
     $q->execute([$me['id']]);
     $u = $q->fetch();
-    reply(200, ['ok' => true, 'user' => pub($u), 'staff' => kab_is_staff($u)]);
+    reply(200, ['ok' => true, 'user' => pub($u), 'staff' => kab_is_staff($u), 'admin' => kab_is_admin($u)]);
 
 case 'delete_me':  // удалить свои данные: пользователь, сметы, вход; заявки остаются без привязки к человеку
     $need($post, 405);
@@ -108,7 +109,7 @@ case 'delete_me':  // удалить свои данные: пользовате
 case 'smetas':  // свои сметы; сотрудник — все (all=1)
     $need((bool) $me, 401);
     $all = $staff && !empty($in['all']);
-    $q = $db->prepare('SELECT s.id, s.user_id, s.title, s.items, s.updated_at, u.name, u.company, u.role FROM smetas s JOIN users u ON u.id = s.user_id'
+    $q = $db->prepare('SELECT s.id, s.user_id, s.title, s.doc, s.items, s.updated_at, u.name, u.company, u.role FROM smetas s JOIN users u ON u.id = s.user_id'
         . ($all ? '' : ' WHERE s.user_id = ?') . ' ORDER BY s.updated_at DESC LIMIT 300');
     $q->execute($all ? [] : [$me['id']]);
     $rows = array_map(function ($r) { $r['items'] = json_decode((string) $r['items']) ?: new stdClass(); $r['id'] = (int) $r['id']; $r['user_id'] = (int) $r['user_id']; return $r; }, $q->fetchAll());
@@ -124,17 +125,21 @@ case 'smeta_save':
     }
     if (!$items) reply(422, ['ok' => false, 'error' => 'empty']);
     $title = kab_clean($in['title'] ?? '', 120) ?: 'Смета от ' . date('d.m.Y');
+    $doc = kab_clean($in['doc'] ?? '', 80);  // название документа — только из списка сотрудников
+    $q = $db->prepare('SELECT 1 FROM doc_titles WHERE title = ?');
+    $q->execute([$doc]);
+    if (!$q->fetchColumn()) $doc = '';
     $id = (int) ($in['id'] ?? 0);
     if ($id) {
-        $q = $db->prepare('UPDATE smetas SET title = ?, items = ?, updated_at = ? WHERE id = ? AND user_id = ?');
-        $q->execute([$title, json_encode($items, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT), kab_now(), $id, $me['id']]);
+        $q = $db->prepare('UPDATE smetas SET title = ?, doc = ?, items = ?, updated_at = ? WHERE id = ? AND user_id = ?');
+        $q->execute([$title, $doc, json_encode($items, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT), kab_now(), $id, $me['id']]);
         $need($q->rowCount() > 0, 404);
     } else {
         $n = $db->prepare('SELECT COUNT(*) FROM smetas WHERE user_id = ?');
         $n->execute([$me['id']]);
         if ((int) $n->fetchColumn() >= 100) reply(422, ['ok' => false, 'error' => 'limit']);
-        $db->prepare('INSERT INTO smetas (user_id, title, items, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
-            ->execute([$me['id'], $title, json_encode($items, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT), kab_now(), kab_now()]);
+        $db->prepare('INSERT INTO smetas (user_id, title, doc, items, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+            ->execute([$me['id'], $title, $doc, json_encode($items, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT), kab_now(), kab_now()]);
         $id = (int) $db->lastInsertId();
     }
     reply(200, ['ok' => true, 'id' => $id, 'title' => $title]);
@@ -145,6 +150,23 @@ case 'smeta_del':
     $q = $db->prepare('DELETE FROM smetas WHERE id = ? AND user_id = ?');
     $q->execute([(int) ($in['id'] ?? 0), $me['id']]);
     reply(200, ['ok' => $q->rowCount() > 0]);
+
+case 'doc_titles':  // названия документа для печати сметы («Коммерческое предложение», «Заказ покупателя»…): читает любой — клиент сверяет название
+case 'doc_title_add':  // из ссылки со списком; добавить и убрать может любой сотрудник
+case 'doc_title_del':
+    if ($a !== 'doc_titles') {
+        $need($staff);
+        $need($post, 405);
+        if ($a === 'doc_title_add') {
+            $t = kab_clean($in['title'] ?? '', 80);
+            $need($t !== '' && mb_strtolower($t) !== 'список для сметы', 422);
+            $db->prepare('INSERT OR IGNORE INTO doc_titles (title, created_by, created_at) VALUES (?, ?, ?)')->execute([$t, $me['id'], kab_now()]);
+        } else {
+            $db->prepare('DELETE FROM doc_titles WHERE id = ?')->execute([(int) ($in['id'] ?? 0)]);
+        }
+    }
+    $rows = array_map(function ($r) { return ['id' => (int) $r['id'], 'title' => $r['title']]; }, $db->query('SELECT id, title FROM doc_titles ORDER BY id')->fetchAll());
+    reply(200, ['ok' => true, 'titles' => $rows]);
 
 case 'leads':  // свои заявки; сотрудник — все заявки с сайта
     $need((bool) $me, 401);
@@ -166,12 +188,19 @@ case 'lead_status':
 
 case 'users':  // сотрудник: все пользователи, сначала ждущие подтверждения
     $need($staff);
-    $rows = $db->query("SELECT id, tg_username, tg_name, name, phone, company, unp, role, wanted, discount, status, created_at, seen_at
+    $rows = $db->query("SELECT id, tg_id, tg_username, tg_name, name, phone, company, unp, role, wanted, discount, status, admin, created_at, seen_at
         FROM users ORDER BY (wanted <> '') DESC, (role = 'user' AND status = 'active') DESC, (status = 'blocked'), created_at DESC LIMIT 1000")->fetchAll();  // сначала — кому ещё не отмечены права
-    $rows = array_map(function ($r) { $r['id'] = (int) $r['id']; $r['discount'] = (float) $r['discount']; return $r; }, $rows);  // числа числами при любой версии PHP
-    reply(200, ['ok' => true, 'users' => $rows, 'me' => (int) $me['id']]);
+    $rows = array_map(function ($r) {  // числа числами при любой версии PHP; суперадмин и владелец — флажками, номер Telegram наружу не отдаём
+        $r['admin'] = kab_is_admin($r);
+        $r['owner'] = kab_is_owner($r);
+        $r['id'] = (int) $r['id'];
+        $r['discount'] = (float) $r['discount'];
+        unset($r['tg_id']);
+        return $r;
+    }, $rows);
+    reply(200, ['ok' => true, 'users' => $rows, 'me' => (int) $me['id'], 'admin' => $admin]);
 
-case 'user_set':  // сотрудник: подтвердить или отклонить запрос, поменять роль и скидку, заблокировать
+case 'user_set':  // сотрудник: скидка; суперадмин ещё — подтвердить или отклонить запрос, категория (роль), суперадмин, блокировка
     $need($post, 405);
     $need($staff);
     $q = $db->prepare('SELECT * FROM users WHERE id = ?');
@@ -179,9 +208,11 @@ case 'user_set':  // сотрудник: подтвердить или откл�
     $u = $q->fetch();
     $need((bool) $u, 404);
     $self = (int) $u['id'] === (int) $me['id'];
+    $owner = kab_is_owner($u);
     $do = (string) ($in['do'] ?? '');
     $disc = max(0.0, min(50.0, round((float) ($in['discount'] ?? $u['discount']), 1)));
     $note = '';
+    if ($do !== 'set') $need($admin);  // подтверждать, назначать суперадмина и блокировать — только суперадмин
     if ($do === 'approve' && $u['wanted'] !== '') {
         $db->prepare("UPDATE users SET role = wanted, wanted = '', discount = ?, approved_by = ?, approved_at = ? WHERE id = ?")->execute([$disc, $me['id'], kab_now(), $u['id']]);
         $note = 'Доступ на hdl.by открыт: вы — ' . KAB_ROLE_NAME[$u['wanted']] . ($disc > 0 ? ', ваша скидка ' . rtrim(rtrim(number_format($disc, 1, ',', ''), '0'), ',') . ' %' : '') . '. ' . kab_site() . '/kabinet/';
@@ -189,14 +220,20 @@ case 'user_set':  // сотрудник: подтвердить или откл�
         $db->prepare("UPDATE users SET wanted = '' WHERE id = ?")->execute([$u['id']]);
         $note = 'Запрос статуса «' . KAB_ROLE_NAME[$u['wanted']] . '» на hdl.by не подтверждён. Вопросы — +375 29 370-20-20.';
     } elseif ($do === 'set') {
-        $role = in_array($in['role'] ?? '', KAB_ROLES, true) ? $in['role'] : $u['role'];
-        $need(!$self || $role === 'staff', 409);  // себя из сотрудников не убрать — иначе некому подтверждать
-        $db->prepare('UPDATE users SET role = ?, discount = ?, approved_by = ?, approved_at = ? WHERE id = ?')->execute([$role, $disc, $me['id'], kab_now(), $u['id']]);
+        $role = $admin && in_array($in['role'] ?? '', KAB_ROLES, true) ? $in['role'] : $u['role'];  // категорию меняет суперадмин, сотрудник — только скидку
+        $need((!$self && !$owner) || $role === 'staff', 409);  // себя и владельца из сотрудников не убрать — иначе некому подтверждать
+        $db->prepare("UPDATE users SET role = ?, discount = ?, admin = CASE WHEN ? = 'staff' THEN admin ELSE 0 END, approved_by = ?, approved_at = ? WHERE id = ?")
+            ->execute([$role, $disc, $role, $me['id'], kab_now(), $u['id']]);
         if (!$self && ($role !== $u['role'] || $disc !== (float) $u['discount'])) {  // человеку — какие права ему отметили
             $note = 'Ваши права на hdl.by: ' . KAB_ROLE_NAME[$role] . ($disc > 0 ? ', скидка ' . rtrim(rtrim(number_format($disc, 1, ',', ''), '0'), ',') . ' % от розничных цен' : '') . '. ' . kab_site() . '/kabinet/';
         }
+    } elseif ($do === 'admin' || $do === 'unadmin') {  // суперадмином делают только действующего сотрудника; владельца и себя не меняют
+        $need(kab_is_staff($u) && !$owner && !$self, 409);
+        $db->prepare('UPDATE users SET admin = ? WHERE id = ?')->execute([$do === 'admin' ? 1 : 0, $u['id']]);
+        $note = $do === 'admin' ? 'Вы — суперадмин на hdl.by: можете блокировать пользователей и назначать категории. ' . kab_site() . '/kabinet/'
+            : 'Права суперадмина на hdl.by сняты, вы — сотрудник AllVision.';
     } elseif ($do === 'block' || $do === 'unblock') {
-        $need(!$self, 409);
+        $need(!$self && !$owner, 409);
         $db->prepare('UPDATE users SET status = ? WHERE id = ?')->execute([$do === 'block' ? 'blocked' : 'active', $u['id']]);
         if ($do === 'block') $db->prepare('DELETE FROM sessions WHERE user_id = ?')->execute([$u['id']]);
     } else {

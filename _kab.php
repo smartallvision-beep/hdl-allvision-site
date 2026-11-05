@@ -46,11 +46,19 @@ function kab_db(): PDO {
         name TEXT DEFAULT '', phone TEXT DEFAULT '', company TEXT DEFAULT '', unp TEXT DEFAULT '',
         role TEXT DEFAULT 'client', wanted TEXT DEFAULT '', discount REAL DEFAULT 0, status TEXT DEFAULT 'form',
         consent_at TEXT DEFAULT '', created_at TEXT, seen_at TEXT, approved_by INTEGER, approved_at TEXT)");
+    // суперадмин (владелец 05.11.2026): столбец добавляется и в уже созданную базу
+    if (!in_array('admin', array_column($db->query('PRAGMA table_info(users)')->fetchAll(), 'name'), true)) $db->exec('ALTER TABLE users ADD COLUMN admin INTEGER DEFAULT 0');
     $db->exec("CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires INTEGER NOT NULL)");
     $db->exec("CREATE TABLE IF NOT EXISTS smetas (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         title TEXT, items TEXT, created_at TEXT, updated_at TEXT)");
     $db->exec("CREATE TABLE IF NOT EXISTS leads (id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, created_at TEXT,
         name TEXT, phone TEXT, topic TEXT, page TEXT, comment TEXT, items TEXT, total INTEGER, status TEXT DEFAULT 'new', status_at TEXT)");
+    // названия документа для печати сметы — общий список сотрудников (владелец 05.11.2026); при создании таблицы — два частых
+    $newTitles = !$db->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'doc_titles'")->fetchColumn();
+    $db->exec("CREATE TABLE IF NOT EXISTS doc_titles (id INTEGER PRIMARY KEY, title TEXT UNIQUE NOT NULL, created_by INTEGER, created_at TEXT)");
+    if ($newTitles) foreach (['Коммерческое предложение', 'Заказ покупателя'] as $t) $db->prepare('INSERT OR IGNORE INTO doc_titles (title, created_at) VALUES (?, ?)')->execute([$t, date('Y-m-d H:i:s')]);
+    // название документа идёт вместе со сметой: «Открыть» в кабинете показывает его и клиенту
+    if (!in_array('doc', array_column($db->query('PRAGMA table_info(smetas)')->fetchAll(), 'name'), true)) $db->exec("ALTER TABLE smetas ADD COLUMN doc TEXT DEFAULT ''");
     // kind: doc — документ клиента (user_id, object — объект), mat — материал сотрудников (object — раздел). path — относительно папки данных
     $db->exec("CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY, kind TEXT NOT NULL, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         object TEXT DEFAULT '', title TEXT, name TEXT, path TEXT, size INTEGER, uploaded_by INTEGER, created_at TEXT)");
@@ -123,6 +131,12 @@ function kab_user(): ?array {
 }
 
 function kab_is_staff(?array $u): bool { return $u && $u['role'] === 'staff' && $u['status'] === 'active'; }
+
+// суперадмин (владелец 05.11.2026): блокирует, назначает категории и других суперадминов. Владелец (tg_chat — его личный id) — всегда,
+// другие — сотрудники, которых отметил суперадмин. Остальные сотрудники видят всё, ставят скидки, ведут заявки и документы
+function kab_owner_id(): int { $c = (string) (kab_cfg()['tg_chat'] ?? ''); return preg_match('/^\d+$/', $c) ? (int) $c : 0; }
+function kab_is_owner(?array $u): bool { return $u && kab_owner_id() > 0 && (int) $u['tg_id'] === kab_owner_id(); }
+function kab_is_admin(?array $u): bool { return kab_is_staff($u) && ((int) ($u['admin'] ?? 0) === 1 || kab_is_owner($u)); }
 
 // сотрудники без подтверждения: владелец (tg_chat в config.php — его личный id) и список staff_ids
 function kab_staff_ids(): array {

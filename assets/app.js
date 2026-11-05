@@ -33,7 +33,7 @@
   const disc = b => DISC ? Math.round(b * (1 - DISC / 100)) : b;
   const pct = d => String(d).replace(".", ",") + " %";
   if (DISC) {
-    Object.values(D.items).forEach(it => { if (it.b != null) it.b = disc(it.b); });
+    Object.values(D.items).forEach(it => { if (it.b != null) { it.rb = it.b; it.b = disc(it.b); } });  // rb — розничная, для расшифровки скидки в смете
     $$("[data-byn]").forEach(x => { x.dataset.byn = disc(+x.dataset.byn); });
     $$(".ctl [data-b]").forEach(x => { x.dataset.b = disc(+x.dataset.b); });
     $$("[data-b0]").forEach(x => { x.dataset.b0 = disc(+x.dataset.b0); });
@@ -93,6 +93,10 @@
 
   // ---- смета: { артикул: количество } ----
   const KEY = "hdl-smeta";
+  // название документа сметы («Коммерческое предложение»…) — идёт вместе со списком: по ссылке, из кабинета (владелец 05.11.2026)
+  const DOC_KEY = "hdl-doc", DOC0 = "Список для сметы";
+  const docGet = () => { try { return localStorage.getItem(DOC_KEY) || DOC0; } catch { return DOC0; } };
+  const docSet = d => { try { if (d && d !== DOC0) localStorage.setItem(DOC_KEY, d); else localStorage.removeItem(DOC_KEY); } catch {} };
   const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } };
   const save = s => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} count(); };
   const count = () => { const n = Object.values(load()).reduce((a, b) => a + b, 0); $$("[data-smeta-count]").forEach(el => el.textContent = n); };
@@ -570,20 +574,29 @@
     $("[data-smeta-tools]").hidden = !r.length;
     renderHints(r);
     if (!r.length) { box.innerHTML = '<p>Список пуст. Добавляйте позиции кнопкой «В смету» в <a href="/katalog/">каталоге</a> или загрузите готовый список артикулов.</p>'; return; }
-    let sum = 0, ask = 0;
+    // скидка — расшифровкой (владелец 05.11.2026): розничная цена, процент, сумма скидки по позиции и всего; цена со скидкой — за штуку,
+    // до целого рубля, как в каталоге, поэтому «без скидки − скидка = итого» сходится до рубля
+    let sum = 0, full = 0, ask = 0;
     const tr = r.map(({ a, q, it }) => {
-      const t = it.b != null ? it.b * q : null;
-      if (t != null) sum += t; else ask++;
+      const rb = it.rb ?? it.b, t = it.b != null ? it.b * q : null, off = t != null ? rb * q - t : 0;
+      if (t != null) { sum += t; full += rb * q; } else ask++;
       return `<tr><td class="hide-m">${it.t ? `<img src="${esc(it.t)}" alt="">` : ""}</td>
         <td><a href="${esc(it.u)}">${esc(it.n)}</a><br><span class="muted small">${esc(a)}</span></td>
         <td><div class="qty"><button type="button" data-d="-1" data-a="${esc(a)}" aria-label="Меньше">−</button><input type="number" min="1" value="${q}" data-set="${esc(a)}" aria-label="Количество"><button type="button" data-d="1" data-a="${esc(a)}" aria-label="Больше">+</button></div></td>
-        <td class="num hide-m">${it.b != null ? fmt(it.b) + " BYN" : "по запросу"}</td>
-        <td class="num">${t != null ? fmt(t) + " BYN" : "по запросу"}</td>
+        <td class="num hide-m">${rb != null ? fmt(rb) + " BYN" : "по запросу"}</td>`
+        + (DISC ? `<td class="num hide-m">${t != null ? pct(DISC) : ""}</td><td class="num off">${t != null ? "−" + fmt(off) + " BYN" : ""}</td>` : "")
+        + `<td class="num">${t != null ? fmt(t) + " BYN" : "по запросу"}</td>
         <td class="no-print"><button class="rm" type="button" data-rm="${esc(a)}" aria-label="Убрать">×</button></td></tr>`;
     }).join("");
-    box.innerHTML = `<table class="smeta-tbl"><thead><tr><th class="hide-m"></th><th>Позиция</th><th>Кол-во</th><th class="num hide-m">Цена</th><th class="num">Сумма</th><th class="no-print"></th></tr></thead>
-      <tbody>${tr}</tbody><tfoot><tr><td class="hide-m"></td><td colspan="3">Итого с НДС${DISC ? `<br><span class="muted small">цены со скидкой ${pct(DISC)}</span>` : ""}${ask ? `<br><span class="muted small">без ${ask} поз. по запросу</span>` : ""}</td><td class="num">${fmt(sum)} BYN</td><td class="no-print"></td></tr></tfoot></table>
-      <p class="muted small">Цены по курсу НБРБ ${String(D.rate).replace(".", ",")} на ${D.rateDate.split("-").reverse().join(".")}. Монтаж и настройка считаем отдельно.</p>`;
+    const span = DISC ? 5 : 3, note = ask ? `<br><span class="muted small">без ${ask} поз. по запросу</span>` : "";
+    const foot = (DISC ? `<tr class="sub"><td class="hide-m"></td><td colspan="${span}">Сумма без скидки</td><td class="num">${fmt(full)} BYN</td><td class="no-print"></td></tr>`
+      + `<tr class="sub"><td class="hide-m"></td><td colspan="${span}">Скидка ${pct(DISC)}</td><td class="num off">−${fmt(full - sum)} BYN</td><td class="no-print"></td></tr>` : "")
+      + `<tr><td class="hide-m"></td><td colspan="${span}">Итого с НДС${DISC ? " со скидкой" : ""}${note}</td><td class="num">${fmt(sum)} BYN</td><td class="no-print"></td></tr>`;
+    box.innerHTML = `<table class="smeta-tbl${DISC ? " with-disc" : ""}"><thead><tr><th class="hide-m"></th><th>Позиция</th><th>Кол-во</th><th class="num hide-m">Цена</th>`
+      + (DISC ? '<th class="num hide-m">Скидка, %</th><th class="num">Скидка</th>' : "")
+      + `<th class="num">Сумма</th><th class="no-print"></th></tr></thead>
+      <tbody>${tr}</tbody><tfoot>${foot}</tfoot></table>
+      <p class="muted small">Цены по курсу НБРБ ${String(D.rate).replace(".", ",")} на ${D.rateDate.split("-").reverse().join(".")}${DISC ? `; «Цена» — розничная, скидка ${pct(DISC)} от неё` : ""}. Монтаж и настройка считаем отдельно.</p>`;
   };
   if (box) {
     $("[data-today]").textContent = new Date().toLocaleDateString("ru-RU");
@@ -595,14 +608,58 @@
       const tail = near.filter(k => /^\d\d$/.test(k.slice(c.length)));
       return keyOf[c] || keyOf[near.find(k => k.length === c.length + 1)] || keyOf[c + "пластик"] || (tail.length === 1 ? keyOf[tail[0]] : undefined);
     };
-    // открыта ссылка на чужую смету: ?s=артикул*количество,…
-    const shared = new URLSearchParams(location.search).get("s");
+    const sp = new URLSearchParams(location.search), shared = sp.get("s"), sharedDoc = sp.get("d") || "";
+    // название документа: сотрудник выбирает из общего списка («Коммерческое предложение», «Заказ покупателя»…) и может его пополнять,
+    // клиенту оно приходит со сметой (владелец 05.11.2026). Заголовок на экране и в печати, с датой — имя файла PDF. Показываем только
+    // название из списка: ссылку с придуманным заголовком («Счёт на оплату») сайт не примет
+    const docBox = $("[data-doc]"), docH = $("[data-doc-h]"), title0 = document.title, staffMe = !!(ME && ME.role === "staff");
+    let docs = null;  // названия с сервера; пока не пришли — «Список для сметы»
+    const docShow = () => {
+      const c = docs && docs.some(x => x.title === docGet()) ? docGet() : DOC0;
+      docH.textContent = c;
+      document.title = c === DOC0 ? title0 : `${c} от ${new Date().toLocaleDateString("ru-RU")}`;
+      if (staffMe && docs) drawDocs(c);
+      return c;
+    };
+    const drawDocs = c => {
+      const one = docs.find(x => x.title === c);
+      docBox.innerHTML = `<label>Название документа <select data-doc-sel>${[DOC0, ...docs.map(x => x.title)].map(t => `<option value="${esc(t)}"${t === c ? " selected" : ""}>${esc(t)}</option>`).join("")}<option value="+">+ Новое название…</option></select></label>`
+        + (one ? ` <button class="cbtn ghost" type="button" data-doc-del="${one.id}">Убрать из списка</button>` : "")
+        + '<span class="doc-new" data-doc-new hidden><input maxlength="80" placeholder="Например: Спецификация к договору" data-doc-in aria-label="Новое название"> <button class="cbtn" type="button" data-doc-add>Добавить</button></span><span class="msg small" data-doc-msg role="status"></span>';
+      docBox.hidden = false;
+    };
+    const docSend = async (a, body) => {
+      const r = await kabApi(a, body).catch(() => ({}));
+      if (r.ok) { docs = r.titles; return true; }
+      const m = $("[data-doc-msg]", docBox);
+      m.className = "msg small bad"; m.textContent = r.status === 403 ? "Нужен вход сотрудника." : "Не удалось сохранить.";
+      return false;
+    };
+    if (staffMe || sharedDoc || docGet() !== DOC0) kabApi("doc_titles").then(j => { if (j.ok) { docs = j.titles; docShow(); } }).catch(() => {});
+    if (staffMe) {
+      docBox.addEventListener("change", ev => {
+        const s = ev.target.closest("[data-doc-sel]"); if (!s) return;
+        if (s.value === "+") { $("[data-doc-new]", docBox).hidden = false; $("[data-doc-in]", docBox).focus(); return; }
+        docSet(s.value); docShow();
+      });
+      docBox.addEventListener("click", async ev => {
+        if (ev.target.closest("[data-doc-add]")) {
+          const t = $("[data-doc-in]", docBox).value.trim().replace(/\s+/g, " ");
+          if (!t) return $("[data-doc-in]", docBox).focus();
+          if (await docSend("doc_title_add", { title: t })) { docSet(docs.some(x => x.title === t) ? t : DOC0); docShow(); }
+        }
+        const d = ev.target.closest("[data-doc-del]");
+        if (d && confirm(`Убрать «${docH.textContent}» из списка названий для всех сотрудников?`) && await docSend("doc_title_del", { id: +d.dataset.docDel })) { docSet(DOC0); docShow(); }
+      });
+      docBox.addEventListener("keydown", ev => { if (ev.key === "Enter" && ev.target.closest("[data-doc-in]")) { ev.preventDefault(); $("[data-doc-add]", docBox).click(); } });
+    }
+    // открыта ссылка на чужую смету: ?s=артикул*количество,…&d=название документа
     if (shared) {
       const got = {};
       shared.split(",").forEach(x => { const [a, q] = x.split("*"); if (D.items[a] || D.items[a.split(" · ")[0]]) got[a] = Math.max(1, +q || 1); });
       const n = Object.keys(got).length, shareBox = $("[data-smeta-share]");
       history.replaceState(null, "", location.pathname);
-      if (n && !Object.keys(load()).length) { save(got); shareBox.textContent = `Смета открыта по ссылке: ${n} поз.`; shareBox.hidden = false; }
+      if (n && !Object.keys(load()).length) { save(got); docSet(sharedDoc); shareBox.textContent = `Смета открыта по ссылке: ${n} поз.`; shareBox.hidden = false; }
       else if (n) {
         shareBox.innerHTML = `По ссылке передана смета: ${n} поз. <button class="cbtn" type="button" data-share="replace">Заменить мой список</button> <button class="cbtn ghost" type="button" data-share="add">Добавить к моему</button>`;
         shareBox.hidden = false;
@@ -610,6 +667,7 @@
           const m = ev.target.dataset.share; if (!m) return;
           const s = m === "add" ? load() : {};
           Object.entries(got).forEach(([a, q]) => { s[a] = (s[a] || 0) + q; });
+          if (m === "replace") { docSet(sharedDoc); docShow(); }
           save(s); shareBox.hidden = true; renderSmeta();
         });
       }
@@ -641,12 +699,13 @@
       keep.addEventListener("click", async () => {
         const title = window.prompt("Название сметы, например «Квартира, ул. Притыцкого»:", "");
         if (title === null) return;
-        const j = await kabApi("smeta_save", { title, items: load() }).catch(() => ({}));
+        const j = await kabApi("smeta_save", { title, doc: docH.textContent === DOC0 ? "" : docH.textContent, items: load() }).catch(() => ({}));
         tmsg.textContent = j.ok ? `Сохранено в кабинете: «${j.title}»` : j.status === 401 ? "Войдите в кабинет заново, затем сохраните." : "Не удалось сохранить.";
         setTimeout(() => { tmsg.textContent = ""; }, 5000);
       });
     }
-    $("[data-copy-link]").addEventListener("click", () => copy(location.origin + "/smeta/?s=" + Object.entries(load()).map(([a, q]) => encodeURIComponent(a) + "*" + q).join(","), "Ссылка скопирована"));
+    $("[data-copy-link]").addEventListener("click", () => copy(location.origin + "/smeta/?s=" + Object.entries(load()).map(([a, q]) => encodeURIComponent(a) + "*" + q).join(",")
+      + (docH.textContent !== DOC0 ? "&d=" + encodeURIComponent(docH.textContent) : ""), "Ссылка скопирована"));
     $("[data-copy-text]").addEventListener("click", () => copy(rows().map(({ a, q, it }) => `${a}\t${it.n}\t${q}\t${it.b != null ? it.b * q + " BYN" : "по запросу"}`).join("\n"), "Список скопирован"));
     // загрузка списка: «артикул количество» в строке
     $("[data-import-go]").addEventListener("click", () => {
@@ -698,7 +757,7 @@
       msg.textContent = "Спасибо! Заявка принята, перезвоним в рабочее время."; msg.classList.add("ok");
       f.reset();
       prefill(f);
-      if (box) { save({}); renderSmeta(); }
+      if (box) { save({}); docSet(""); renderSmeta(); }
     } catch (e) {
       msg.innerHTML = 'Не удалось отправить. Позвоните: <a href="tel:+375293702020">+375 29 370-20-20</a> или напишите на <a href="mailto:info@allvision.by">info@allvision.by</a>.';
       msg.classList.add("bad");
@@ -713,7 +772,7 @@
     const ST = { new: "Новая", work: "В работе", kp: "КП отправлено", closed: "Закрыта" };
     const day = s => (s || "").slice(0, 10).split("-").reverse().join(".");
     const loginBox = $("[data-kab-login]"), form = $("[data-kab-form]"), main = $("[data-kab-main]"), panel = $("[data-kab-panel]"), E = form.elements;
-    let user = null, staff = false;
+    let user = null, staff = false, admin = false;  // admin — суперадмин: блокирует, назначает категории (владелец 05.11.2026)
     const show = el => [loginBox, form, main].forEach(x => { x.hidden = x !== el; });
     const bad = (el, t) => { el.className = "msg bad"; el.textContent = t; };
     // пока вкладка грузится, панель держит высоту прежней: подвал не подскакивает и не падает обратно (владелец 05.11.2026).
@@ -727,13 +786,13 @@
       hold.observe(panel, { childList: true });
     };
     const failed = () => { panel.innerHTML = '<p class="msg bad">Не удалось загрузить. Обновите страницу или войдите заново.</p>'; };
-    const done = j => { user = j.user; staff = !!j.staff; remember(user); setAcc(user); route(); };
+    const done = j => { user = j.user; staff = !!j.staff; admin = !!j.admin; remember(user); setAcc(user); route(); };
     // возврат с нового входа Telegram без входа: tg.php → /kabinet/#tg=<причина>; метку из адреса убираем сразу
     const TG_ERR = { cancel: "Вход отменён. Нажмите «Войти через Telegram» ещё раз.", again: "Вход не завершён. Нажмите «Войти через Telegram» ещё раз.",
       fail: "Не получилось войти. Попробуйте ещё раз или позвоните: +375 29 370-20-20.", blocked: "Доступ закрыт. Позвоните: +375 29 370-20-20." };
     const tgErr = (location.hash.match(/^#tg=(\w+)$/) || [])[1];
     if (tgErr) history.replaceState(null, "", location.pathname);
-    const out = () => { remember(null); setAcc(null); user = null; staff = false; history.replaceState(null, "", location.pathname); route(); };
+    const out = () => { remember(null); setAcc(null); user = null; staff = admin = false; history.replaceState(null, "", location.pathname); route(); };
 
     const showLogin = async () => {
       show(loginBox);
@@ -802,7 +861,7 @@
 
     const head = () => {
       $("[data-kab-name]").textContent = user.name || user.tg_name;
-      $("[data-kab-role]").textContent = " · " + ROLE[user.role] + (user.discount > 0 ? " · скидка " + pct(user.discount) : "");
+      $("[data-kab-role]").textContent = " · " + (admin ? "суперадмин AllVision" : ROLE[user.role]) + (user.discount > 0 ? " · скидка " + pct(user.discount) : "");
       const p = $("[data-kab-pending]");
       p.hidden = !user.wanted;
       p.textContent = user.wanted ? `Запрос статуса «${ROLE[user.wanted]}» на рассмотрении. Когда сотрудник подтвердит, придёт сообщение в Telegram`
@@ -816,7 +875,7 @@
       if (!j.smetas.length) { panel.innerHTML = '<p>Сохранённых смет пока нет. Соберите список в <a href="/katalog/">каталоге</a>, затем на странице <a href="/smeta/">«Смета»</a> нажмите «Сохранить в кабинет».</p>'; return; }
       const sum = items => Object.entries(items).reduce((s, [a, q]) => { const it = D.items[a] || D.items[a.split(" · ")[0]]; return it && it.b != null ? s + it.b * q : s; }, 0);
       panel.innerHTML = `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Смета</th>${staff ? "<th>Чья</th>" : ""}<th class="num">Позиций</th><th class="num">Сумма*</th><th>Обновлена</th><th></th></tr></thead><tbody>`
-        + j.smetas.map(s => `<tr><td>${esc(s.title)}</td>${staff ? `<td>${esc(s.name)}${s.company ? `<br><span class="muted small">${esc(s.company)}</span>` : ""}</td>` : ""}`
+        + j.smetas.map(s => `<tr><td>${esc(s.title)}${s.doc ? `<br><span class="muted small">${esc(s.doc)}</span>` : ""}</td>${staff ? `<td>${esc(s.name)}${s.company ? `<br><span class="muted small">${esc(s.company)}</span>` : ""}</td>` : ""}`
           + `<td class="num">${Object.keys(s.items).length}</td><td class="num">${fmt(sum(s.items))} BYN</td><td>${day(s.updated_at)}</td>`
           + `<td class="acts"><button class="cbtn" type="button" data-open="${s.id}">Открыть</button>${+s.user_id === +user.id ? ` <button class="cbtn ghost" type="button" data-del="${s.id}">Удалить</button>` : ""}</td></tr>`).join("")
         + `</tbody></table></div><p class="muted small">* По сегодняшним ценам${DISC ? ` со скидкой ${pct(DISC)}` : ""}, без позиций «по запросу». «Открыть» заменяет текущий список для сметы.</p>`;
@@ -825,7 +884,7 @@
         if (o) {
           const s = j.smetas.find(x => String(x.id) === o.dataset.open);
           if (Object.keys(load()).length && !confirm("Заменить текущий список для сметы этой сметой?")) return;
-          save(s.items); location.href = "/smeta/";
+          save(s.items); docSet(s.doc); location.href = "/smeta/";
         }
         if (d && confirm("Удалить смету из кабинета?")) { await kabApi("smeta_del", { id: +d.dataset.del }).catch(() => {}); tabSmetas(); }
       };
@@ -858,29 +917,45 @@
       wait();
       const j = await kabApi("users").catch(() => ({}));
       if (!j.ok) return failed();
-      panel.innerHTML = `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Кто</th><th>Роль</th><th>Скидка, %</th><th></th></tr></thead><tbody>`
+      // категорию, суперадмина, подтверждение запросов и блокировку меняет суперадмин; сотрудник — только скидку (владелец 05.11.2026)
+      const who = u => u.owner ? "суперадмин, владелец" : u.admin ? "суперадмин" : ROLE[u.role];
+      panel.innerHTML = `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Кто</th><th>Категория</th><th>Скидка, %</th><th></th></tr></thead><tbody>`
         + j.users.map(u => {
-          const self = +u.id === +j.me, blocked = u.status === "blocked";
+          const self = +u.id === +j.me, blocked = u.status === "blocked", edit = admin && !self && !u.owner;
           const info = [u.phone, u.company, u.unp && "УНП " + u.unp, u.status === "form" && "анкета не заполнена"].filter(Boolean).map(esc).join(" · ");
           const role = u.wanted ? `<span class="st wait">хочет: ${ROLE[u.wanted]}</span><br><span class="muted small">сейчас: ${ROLE[u.role]}</span>`
-            : `<select data-role aria-label="Роль"${self ? " disabled" : ""}>${Object.entries(ROLE).map(([k, t]) => `<option value="${k}"${k === u.role ? " selected" : ""}>${t}</option>`).join("")}</select>`;
-          const acts = u.wanted ? '<button class="cbtn" type="button" data-do="approve">Подтвердить</button> <button class="cbtn ghost" type="button" data-do="reject">Отклонить</button>'
-            : '<button class="cbtn ghost" type="button" data-do="set">Сохранить</button>' + (self ? "" : ` <button class="cbtn ghost" type="button" data-do="${blocked ? "unblock" : "block"}">${blocked ? "Разблокировать" : "Заблокировать"}</button>`);
+            : edit ? `<select data-role aria-label="Категория">${Object.entries(ROLE).map(([k, t]) => `<option value="${k}"${k === u.role ? " selected" : ""}>${t}</option>`).join("")}</select>`
+              + (u.role === "staff" && !blocked ? `<label class="kab-adm"><input type="checkbox" data-adm${u.admin ? " checked" : ""}> суперадмин</label>` : "")
+            : esc(who(u));
+          const acts = u.wanted ? (admin ? '<button class="cbtn" type="button" data-do="approve">Подтвердить</button> <button class="cbtn ghost" type="button" data-do="reject">Отклонить</button>'
+              : '<span class="muted small">Подтверждает суперадмин</span>')
+            : '<button class="cbtn ghost" type="button" data-do="set">Сохранить</button>' + (edit ? ` <button class="cbtn ghost" type="button" data-do="${blocked ? "unblock" : "block"}">${blocked ? "Разблокировать" : "Заблокировать"}</button>` : "");
           return `<tr data-id="${u.id}"${blocked ? ' class="blocked"' : ""}><td><b>${esc(u.name || u.tg_name || "—")}</b>${u.tg_username ? ` · @${esc(u.tg_username)}` : ""}${blocked ? " · заблокирован" : ""}${u.role === "user" && !u.wanted && !blocked ? ' <span class="st new">без прав</span>' : ""}<br><span class="muted small">${info}</span></td>`
             + `<td>${role}</td><td><input class="pct" type="number" min="0" max="50" step="0.5" value="${+u.discount || 0}" data-disc aria-label="Скидка, %"></td><td class="acts">${acts}<p class="msg small"></p></td></tr>`;
-        }).join("") + '</tbody></table></div><p class="muted small">Все регистрируются пользователями — им доступны сметы и заявки. Права отмечаете вы: роль и скидку, затем «Сохранить»; человеку придёт сообщение в Telegram. Клиент — ещё документы по объекту, дилер — цены дилера. Скидка — процент от розничной цены, до 50 %, действует на всём сайте и в смете. Вверху — кому права ещё не отмечены.</p>';
-      panel.onclick = async ev => {
-        const b = ev.target.closest("[data-do]"); if (!b) return;
-        const tr = b.closest("tr"), msg = $(".msg", tr), d = b.dataset.do;
-        if (d === "block" && !confirm("Заблокировать? Человек не сможет войти, пока его не разблокируют.")) return;
-        b.disabled = true;
+        }).join("") + '</tbody></table></div><p class="muted small">'
+        + (admin ? "Все регистрируются пользователями — им доступны сметы и заявки. Категорию и скидку отмечаете вы, затем «Сохранить»; человеку придёт сообщение в Telegram. Клиент — ещё документы по объекту, дилер — цены дилера. Суперадмин — сотрудник, который тоже может блокировать и назначать категории."
+          : "Вы можете менять скидку: впишите процент и нажмите «Сохранить», человеку придёт сообщение в Telegram. Категорию, блокировку и подтверждение запросов меняет суперадмин.")
+        + " Скидка — процент от розничной цены, до 50 %, действует на всём сайте и в смете. Вверху — кому права ещё не отмечены.</p>";
+      const send = async (tr, d, b) => {
+        const msg = $(".msg", tr);
+        if (b) b.disabled = true;
         const r = await kabApi("user_set", { id: +tr.dataset.id, do: d, discount: +$("[data-disc]", tr).value || 0, role: $("[data-role]", tr)?.value }).catch(() => ({}));
-        b.disabled = false;
-        if (!r.ok) { msg.className = "msg small bad"; msg.textContent = r.status === 409 ? "Себе так нельзя" : "Не удалось"; return; }
+        if (b) b.disabled = false;
+        if (!r.ok) { msg.className = "msg small bad"; msg.textContent = r.status === 409 ? "Так нельзя" : r.status === 403 ? "Нужны права суперадмина" : "Не удалось"; return; }
         const id = tr.dataset.id;
-        await tabUsers();  // метка «без прав» и порядок — по новой роли
+        await tabUsers();  // метка «без прав» и порядок — по новой категории
         const m = $(`tr[data-id="${id}"] .msg`, panel);
-        if (m && d === "set") { m.className = "msg small ok"; m.textContent = "Сохранено"; }
+        if (m && d !== "block" && d !== "unblock") { m.className = "msg small ok"; m.textContent = "Сохранено"; }
+      };
+      panel.onclick = ev => {
+        const b = ev.target.closest("[data-do]"); if (!b) return;
+        if (b.dataset.do === "block" && !confirm("Заблокировать? Человек не сможет войти, пока его не разблокируют.")) return;
+        send(b.closest("tr"), b.dataset.do, b);
+      };
+      panel.onchange = ev => {  // отметка «суперадмин» сохраняется сразу
+        const c = ev.target.closest("[data-adm]"); if (!c) return;
+        if (!confirm(c.checked ? "Сделать суперадмином? Он сможет блокировать пользователей и назначать категории." : "Снять права суперадмина?")) { c.checked = !c.checked; return; }
+        send(c.closest("tr"), c.checked ? "admin" : "unadmin");
       };
     };
 
@@ -984,7 +1059,7 @@
     };
     addEventListener("hashchange", () => { if (user && user.status !== "form") route(); });
     $("[data-kab-logout]").addEventListener("click", async () => { await kabApi("logout", {}).catch(() => {}); out(); });
-    kabApi("me").then(j => { if (j.ok) { user = j.user; staff = !!j.staff; remember(user); setAcc(user); } route(); }).catch(route);
+    kabApi("me").then(j => { if (j.ok) { user = j.user; staff = !!j.staff; admin = !!j.admin; remember(user); setAcc(user); } route(); }).catch(route);
   }
 
   // ---- снимки в интерьере (data-lb): просмотр поверх страницы вместо нового окна, стрелки листают снимки коллекции по кругу (владелец 03.11.2026).

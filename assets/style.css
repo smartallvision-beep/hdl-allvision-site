@@ -311,16 +311,21 @@ table.specs { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-s
 /* смета */
 .smeta-tbl { width: 100%; border-collapse: collapse; margin: 16px 0; }
 .smeta-tbl th, .smeta-tbl td { padding: 10px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
-.smeta-tbl th { color: var(--muted); font-weight: 500; font-size: 14px; }
+.smeta-tbl th { color: var(--muted); font-weight: 500; font-size: 14px; white-space: nowrap; }
 .smeta-tbl img { width: 56px; height: 56px; object-fit: contain; }
 .smeta-tbl .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .smeta-tbl tfoot td { font-weight: 700; font-size: 18px; border-bottom: 0; }
 .smeta-tbl .rm { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 20px; }
+/* скидка в смете: сумма скидки, строки «без скидки» и «скидка» над итогом (владелец 05.11.2026) */
+.smeta-tbl .off { color: var(--brand); }
+.smeta-tbl tfoot tr.sub td { font-weight: 500; font-size: 15px; padding-top: 4px; padding-bottom: 4px; }
+.smeta-tbl tfoot tr.sub + tr:not(.sub) td { padding-top: 8px; }
 @media (max-width: 640px) {
   .smeta-tbl .hide-m { display: none; }
   .smeta-tbl thead { display: none; }
   .smeta-tbl, .smeta-tbl tbody, .smeta-tbl tfoot { display: block; }
   .smeta-tbl tbody tr { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .smeta-tbl.with-disc tbody tr { grid-template-columns: auto 1fr auto auto; }
   .smeta-tbl td { padding: 0; border: 0; }
   .smeta-tbl tbody td:nth-child(2) { grid-column: 1 / -1; }
   .smeta-tbl tbody .num { text-align: right; }
@@ -332,6 +337,10 @@ table.specs { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-s
 .smeta-hints h3 { margin: 0 0 8px; }
 .smeta-hints ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .smeta-hints li { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.smeta-doc { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 15px; color: var(--muted); }
+.smeta-doc label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.smeta-doc select, .smeta-doc input { font: 15px var(--font); padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); color: var(--ink); background: #fff; }
+.smeta-doc .doc-new { display: inline-flex; gap: 8px; flex-wrap: wrap; } .smeta-doc .doc-new[hidden] { display: none; } .smeta-doc .msg { margin: 0; }
 .smeta-import { margin: 16px 0; max-width: 760px; }
 .smeta-import summary { cursor: pointer; color: var(--brand); font-weight: 600; }
 .smeta-import textarea { width: 100%; font: 15px/1.5 var(--font); padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); }
@@ -686,6 +695,7 @@ body[data-page=catalog] .hsearch { display: none; }
 @media (max-width: 980px) { .acc-link { padding: 6px; background: none; } .acc-link span { display: none; } }
 /* после входа кабинет не короче экрана: подвал начинается ниже края и не ездит вслед за вкладками разной длины (владелец 05.11.2026) */
 .kab [data-kab-main] { min-height: calc(100vh - 200px); }
+.kab-adm { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 14px; color: var(--muted); cursor: pointer; }
 .kab-box { background: var(--bg2); border-radius: 16px; padding: 22px; max-width: 560px; margin: 16px 0 32px; }
 .kab-box h2 { margin-top: 0; }
 .kab-tg { min-height: 48px; margin: 16px 0 8px; }
