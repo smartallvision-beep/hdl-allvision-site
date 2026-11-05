@@ -716,7 +716,16 @@
     let user = null, staff = false;
     const show = el => [loginBox, form, main].forEach(x => { x.hidden = x !== el; });
     const bad = (el, t) => { el.className = "msg bad"; el.textContent = t; };
-    const wait = () => { panel.innerHTML = '<p class="muted">Загружаем…</p>'; };
+    // пока вкладка грузится, панель держит высоту прежней: подвал не подскакивает и не падает обратно (владелец 05.11.2026).
+    // Высоту отпускает первое же новое содержимое; следующая загрузка до него — отменяет прежнюю «отпускалку»
+    let hold = null;
+    const wait = () => {
+      hold?.disconnect();
+      panel.style.minHeight = panel.offsetHeight + "px";
+      panel.innerHTML = '<p class="muted">Загружаем…</p>';
+      hold = new MutationObserver(() => { panel.style.minHeight = ""; hold.disconnect(); });
+      hold.observe(panel, { childList: true });
+    };
     const failed = () => { panel.innerHTML = '<p class="msg bad">Не удалось загрузить. Обновите страницу или войдите заново.</p>'; };
     const done = j => { user = j.user; staff = !!j.staff; remember(user); setAcc(user); route(); };
     // возврат с нового входа Telegram без входа: tg.php → /kabinet/#tg=<причина>; метку из адреса убираем сразу
