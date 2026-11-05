@@ -106,18 +106,37 @@ case 'delete_me':  // удалить свои данные: пользовате
     $db->prepare('DELETE FROM users WHERE id = ?')->execute([$me['id']]);
     reply(200, ['ok' => true]);
 
-case 'smetas':  // свои сметы; сотрудник — все (all=1)
+case 'smetas':  // свои сметы (и подготовленные для меня сотрудником); сотрудник — все (all=1)
     $need((bool) $me, 401);
     $all = $staff && !empty($in['all']);
-    $q = $db->prepare('SELECT s.id, s.user_id, s.title, s.doc, s.items, s.updated_at, u.name, u.company, u.role FROM smetas s JOIN users u ON u.id = s.user_id'
-        . ($all ? '' : ' WHERE s.user_id = ?') . ' ORDER BY s.updated_at DESC LIMIT 300');
+    $q = $db->prepare('SELECT s.id, s.user_id, s.title, s.doc, s.disc, s.made_by, s.items, s.updated_at, u.name, u.company, u.role, m.name AS made_name, m.tg_name AS made_tg
+        FROM smetas s JOIN users u ON u.id = s.user_id LEFT JOIN users m ON m.id = s.made_by' . ($all ? '' : ' WHERE s.user_id = ?') . ' ORDER BY s.updated_at DESC LIMIT 300');
     $q->execute($all ? [] : [$me['id']]);
-    $rows = array_map(function ($r) { $r['items'] = json_decode((string) $r['items']) ?: new stdClass(); $r['id'] = (int) $r['id']; $r['user_id'] = (int) $r['user_id']; return $r; }, $q->fetchAll());
+    $rows = array_map(function ($r) use ($staff) {
+        $r['items'] = json_decode((string) $r['items']) ?: new stdClass();
+        $r['id'] = (int) $r['id'];
+        $r['user_id'] = (int) $r['user_id'];
+        $r['disc'] = $r['disc'] === null ? null : (float) $r['disc'];
+        $r['made_by'] = $r['made_by'] === null ? null : (int) $r['made_by'];
+        $r['made_name'] = $staff && $r['made_by'] ? ($r['made_name'] ?: $r['made_tg']) : null;  // клиенту — только что смету подготовила AllVision
+        unset($r['made_tg']);
+        return $r;
+    }, $q->fetchAll());
     reply(200, ['ok' => true, 'smetas' => $rows]);
 
-case 'smeta_save':
+case 'smeta_save':  // своя смета в кабинет
+case 'smeta_for':   // сотрудник: смета клиенту или дилеру — у человека в кабинете, со скидкой в смете вместо личной, сообщение в Telegram (владелец 05.11.2026)
     $need($post, 405);
     $need((bool) $me, 401);
+    $for = $a === 'smeta_for';
+    $owner = $me;
+    if ($for) {
+        $need($staff);
+        $q = $db->prepare('SELECT * FROM users WHERE id = ?');
+        $q->execute([(int) ($in['user_id'] ?? 0)]);
+        $owner = $q->fetch();
+        $need($owner && $owner['status'] !== 'blocked', 404);
+    }
     $items = [];
     foreach (array_slice(is_array($in['items'] ?? null) ? $in['items'] : [], 0, 300, true) as $art => $qty) {
         $art = kab_clean($art, 80);
@@ -129,26 +148,36 @@ case 'smeta_save':
     $q = $db->prepare('SELECT 1 FROM doc_titles WHERE title = ?');
     $q->execute([$doc]);
     if (!$q->fetchColumn()) $doc = '';
+    $disc = $for ? max(0.0, min(50.0, round((float) ($in['disc'] ?? 0), 1))) : null;
+    $json = json_encode($items, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT);
     $id = (int) ($in['id'] ?? 0);
-    if ($id) {
-        $q = $db->prepare('UPDATE smetas SET title = ?, doc = ?, items = ?, updated_at = ? WHERE id = ? AND user_id = ?');
-        $q->execute([$title, $doc, json_encode($items, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT), kab_now(), $id, $me['id']]);
+    if ($id) {  // своя — только своя; клиенту — смета этого человека (сотрудник правит открытую из кабинета)
+        $q = $for ? $db->prepare('UPDATE smetas SET title = ?, doc = ?, items = ?, disc = ?, made_by = ?, updated_at = ? WHERE id = ? AND user_id = ?')
+            : $db->prepare('UPDATE smetas SET title = ?, doc = ?, items = ?, updated_at = ? WHERE id = ? AND user_id = ?');
+        $q->execute($for ? [$title, $doc, $json, $disc, $me['id'], kab_now(), $id, $owner['id']] : [$title, $doc, $json, kab_now(), $id, $me['id']]);
         $need($q->rowCount() > 0, 404);
     } else {
         $n = $db->prepare('SELECT COUNT(*) FROM smetas WHERE user_id = ?');
-        $n->execute([$me['id']]);
+        $n->execute([$owner['id']]);
         if ((int) $n->fetchColumn() >= 100) reply(422, ['ok' => false, 'error' => 'limit']);
-        $db->prepare('INSERT INTO smetas (user_id, title, doc, items, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
-            ->execute([$me['id'], $title, $doc, json_encode($items, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT), kab_now(), kab_now()]);
+        $db->prepare('INSERT INTO smetas (user_id, title, doc, items, disc, made_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+            ->execute([$owner['id'], $title, $doc, $json, $disc, $for ? $me['id'] : null, kab_now(), kab_now()]);
         $id = (int) $db->lastInsertId();
     }
-    reply(200, ['ok' => true, 'id' => $id, 'title' => $title]);
+    $sent = false;
+    if ($for && !empty($in['notify'])) {  // написать боту можно, только если человек разрешил при входе
+        $what = $doc !== '' ? mb_strtolower(mb_substr($doc, 0, 1)) . mb_substr($doc, 1) : 'смету';
+        $sent = kab_say($owner['tg_id'], 'AllVision подготовил для вас ' . $what . ' «' . $title . '» на hdl.by: ' . count($items) . ' поз.'
+            . ($disc > 0 ? ', скидка ' . rtrim(rtrim(number_format($disc, 1, ',', ''), '0'), ',') . ' %' : '') . '. Открыть: ' . kab_site() . '/kabinet/#smetas');
+    }
+    reply(200, ['ok' => true, 'id' => $id, 'title' => $title, 'sent' => $sent]);
 
 case 'smeta_del':
     $need($post, 405);
     $need((bool) $me, 401);
-    $q = $db->prepare('DELETE FROM smetas WHERE id = ? AND user_id = ?');
-    $q->execute([(int) ($in['id'] ?? 0), $me['id']]);
+    // свою — человек, подготовленную клиенту — и сотрудник, кто её сделал
+    $q = $db->prepare('DELETE FROM smetas WHERE id = ? AND ' . ($staff ? '(user_id = ? OR made_by = ?)' : 'user_id = ?'));
+    $q->execute($staff ? [(int) ($in['id'] ?? 0), $me['id'], $me['id']] : [(int) ($in['id'] ?? 0), $me['id']]);
     reply(200, ['ok' => $q->rowCount() > 0]);
 
 case 'doc_titles':  // названия документа для печати сметы («Коммерческое предложение», «Заказ покупателя»…): читает любой — клиент сверяет название

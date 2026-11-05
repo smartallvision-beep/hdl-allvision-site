@@ -43,7 +43,11 @@ $lead = [
 if (preg_match_all('/\d/', $lead['phone']) < 7) reply(422, ['ok' => false, 'error' => 'phone']);
 if (empty($in['consent'])) reply(422, ['ok' => false, 'error' => 'consent']);
 
-// смета: не больше 100 строк; цены — как их видел посетитель (в BYN), только для справки менеджеру
+// смета: не больше 100 строк; цены — как их видел посетитель (в BYN), только для справки менеджеру. Смета от сотрудника — со своей
+// скидкой (sdisc, вместо личной) и названием документа; оба только для справки, цены посетитель видел уже с ней
+$sdisc = is_numeric($in['sdisc'] ?? null) ? max(0.0, min(50.0, round((float) $in['sdisc'], 1))) : null;
+$doc = $clean($in['doc'] ?? '', 80);
+$pct = fn(float $d) => rtrim(rtrim(number_format($d, 1, ',', ''), '0'), ',') . ' %';
 $items = [];
 $rows = [];  // те же строки для кабинета
 $sum = 0;
@@ -92,11 +96,12 @@ try {
 $text = implode("\n", array_filter([
     'Заявка' . ($leadNo ? ' №' . $leadNo : '') . ' с сайта hdl.by' . ($lead['topic'] ? ': ' . $lead['topic'] : ''),
     $who ? 'Из кабинета: ' . (array_key_exists($who['role'], KAB_ROLE_NAME) ? KAB_ROLE_NAME[$who['role']] : $who['role']) . ($who['company'] ? ', ' . $who['company'] : '')
-        . ((float) $who['discount'] > 0 ? ', скидка ' . rtrim(rtrim(number_format((float) $who['discount'], 1, ',', ''), '0'), ',') . ' % (цены в смете — с ней)' : '')
+        . ($sdisc === null && (float) $who['discount'] > 0 ? ', скидка ' . $pct((float) $who['discount']) . ' (цены в смете — с ней)' : '')
         . ($who['tg_username'] ? ', @' . $who['tg_username'] : '') : '',
     $lead['name'] ? 'Имя: ' . $lead['name'] : '',
     'Телефон: ' . $lead['phone'],
     $lead['comment'] ? 'Комментарий: ' . $lead['comment'] : '',
+    $items && ($doc !== '' || $sdisc !== null) ? ($doc !== '' ? $doc : 'Смета') . ($sdisc !== null ? ', скидка в смете ' . $pct($sdisc) . ' (цены — с ней)' : '') : '',
     $items ? "Смета:\n" . implode("\n", $items) . "\nИтого: " . number_format($sum, 0, ',', ' ') . ' BYN' : '',
     $lead['page'] ? 'Страница: ' . $lead['page'] : '',
 ]));

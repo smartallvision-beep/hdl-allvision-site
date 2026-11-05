@@ -341,6 +341,13 @@ table.specs { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-s
 .smeta-doc label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .smeta-doc select, .smeta-doc input { font: 15px var(--font); padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); color: var(--ink); background: #fff; }
 .smeta-doc .doc-new { display: inline-flex; gap: 8px; flex-wrap: wrap; } .smeta-doc .doc-new[hidden] { display: none; } .smeta-doc .msg { margin: 0; }
+/* «Смета для клиента» — сотруднику (этап 2): как форма загрузки в кабинете */
+.smeta-for { max-width: none; margin: 8px 0 20px; }
+.smeta-for .row3 { display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 12px; }
+.smeta-for select { font: 16px var(--font); padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); color: var(--ink); background: #fff; }
+.smeta-for label { min-width: 0; } .smeta-for select, .smeta-for input:not([type=checkbox]) { width: 100%; min-width: 0; }
+.smeta-for .consent { color: var(--ink); } .smeta-for .consent[hidden] { display: none; }
+@media (max-width: 760px) { .smeta-for .row3 { grid-template-columns: 1fr; gap: 0; } }
 .smeta-import { margin: 16px 0; max-width: 760px; }
 .smeta-import summary { cursor: pointer; color: var(--brand); font-weight: 600; }
 .smeta-import textarea { width: 100%; font: 15px/1.5 var(--font); padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); }

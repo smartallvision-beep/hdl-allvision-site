@@ -58,7 +58,11 @@ function kab_db(): PDO {
     $db->exec("CREATE TABLE IF NOT EXISTS doc_titles (id INTEGER PRIMARY KEY, title TEXT UNIQUE NOT NULL, created_by INTEGER, created_at TEXT)");
     if ($newTitles) foreach (['Коммерческое предложение', 'Заказ покупателя'] as $t) $db->prepare('INSERT OR IGNORE INTO doc_titles (title, created_at) VALUES (?, ?)')->execute([$t, date('Y-m-d H:i:s')]);
     // название документа идёт вместе со сметой: «Открыть» в кабинете показывает его и клиенту
-    if (!in_array('doc', array_column($db->query('PRAGMA table_info(smetas)')->fetchAll(), 'name'), true)) $db->exec("ALTER TABLE smetas ADD COLUMN doc TEXT DEFAULT ''");
+    // смета клиенту от сотрудника (этап 2, владелец 05.11.2026): disc — скидка в смете вместо личной (NULL — личная), made_by — кто подготовил
+    $smCols = array_column($db->query('PRAGMA table_info(smetas)')->fetchAll(), 'name');
+    if (!in_array('doc', $smCols, true)) $db->exec("ALTER TABLE smetas ADD COLUMN doc TEXT DEFAULT ''");
+    if (!in_array('disc', $smCols, true)) $db->exec('ALTER TABLE smetas ADD COLUMN disc REAL');
+    if (!in_array('made_by', $smCols, true)) $db->exec('ALTER TABLE smetas ADD COLUMN made_by INTEGER');
     // kind: doc — документ клиента (user_id, object — объект), mat — материал сотрудников (object — раздел). path — относительно папки данных
     $db->exec("CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY, kind TEXT NOT NULL, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         object TEXT DEFAULT '', title TEXT, name TEXT, path TEXT, size INTEGER, uploaded_by INTEGER, created_at TEXT)");

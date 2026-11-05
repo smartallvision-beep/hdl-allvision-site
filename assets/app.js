@@ -97,6 +97,13 @@
   const DOC_KEY = "hdl-doc", DOC0 = "Список для сметы";
   const docGet = () => { try { return localStorage.getItem(DOC_KEY) || DOC0; } catch { return DOC0; } };
   const docSet = d => { try { if (d && d !== DOC0) localStorage.setItem(DOC_KEY, d); else localStorage.removeItem(DOC_KEY); } catch {} };
+  // смета из кабинета (этап 2): { d — скидка в смете вместо личной (null — личная), id, uid — чья, title }. Приходит только из кабинета:
+  // ссылкой скидку не передать. Список опустел или пришёл по ссылке — сбрасывается
+  const SM_KEY = "hdl-sm";
+  const smGet = () => { try { return JSON.parse(localStorage.getItem(SM_KEY)) || null; } catch { return null; } };
+  const smSet = m => { try { if (m) localStorage.setItem(SM_KEY, JSON.stringify(m)); else localStorage.removeItem(SM_KEY); } catch {} };
+  const effD = () => { const m = smGet(); return m && m.d != null ? +m.d : DISC; };  // скидка, по которой считается смета
+  const unitB = (it, d) => { const r = it.rb ?? it.b; return r == null ? null : d ? Math.round(r * (1 - d / 100)) : r; };  // цена за штуку со скидкой d
   const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } };
   const save = s => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} count(); };
   const count = () => { const n = Object.values(load()).reduce((a, b) => a + b, 0); $$("[data-smeta-count]").forEach(el => el.textContent = n); };
@@ -573,12 +580,14 @@
     $("[data-smeta-form]").hidden = !r.length;
     $("[data-smeta-tools]").hidden = !r.length;
     renderHints(r);
-    if (!r.length) { box.innerHTML = '<p>Список пуст. Добавляйте позиции кнопкой «В смету» в <a href="/katalog/">каталоге</a> или загрузите готовый список артикулов.</p>'; return; }
+    if (!r.length) { smSet(null); box.innerHTML = '<p>Список пуст. Добавляйте позиции кнопкой «В смету» в <a href="/katalog/">каталоге</a> или загрузите готовый список артикулов.</p>'; return; }
     // скидка — расшифровкой (владелец 05.11.2026): розничная цена, процент, сумма скидки по позиции и всего; цена со скидкой — за штуку,
     // до целого рубля, как в каталоге, поэтому «без скидки − скидка = итого» сходится до рубля
+    // скидка сметы от сотрудника заменяет личную (этап 2)
+    const DISC = effD();
     let sum = 0, full = 0, ask = 0;
     const tr = r.map(({ a, q, it }) => {
-      const rb = it.rb ?? it.b, t = it.b != null ? it.b * q : null, off = t != null ? rb * q - t : 0;
+      const rb = it.rb ?? it.b, u = unitB(it, DISC), t = u != null ? u * q : null, off = t != null ? rb * q - t : 0;
       if (t != null) { sum += t; full += rb * q; } else ask++;
       return `<tr><td class="hide-m">${it.t ? `<img src="${esc(it.t)}" alt="">` : ""}</td>
         <td><a href="${esc(it.u)}">${esc(it.n)}</a><br><span class="muted small">${esc(a)}</span></td>
@@ -659,7 +668,7 @@
       shared.split(",").forEach(x => { const [a, q] = x.split("*"); if (D.items[a] || D.items[a.split(" · ")[0]]) got[a] = Math.max(1, +q || 1); });
       const n = Object.keys(got).length, shareBox = $("[data-smeta-share]");
       history.replaceState(null, "", location.pathname);
-      if (n && !Object.keys(load()).length) { save(got); docSet(sharedDoc); shareBox.textContent = `Смета открыта по ссылке: ${n} поз.`; shareBox.hidden = false; }
+      if (n && !Object.keys(load()).length) { save(got); docSet(sharedDoc); smSet(null); shareBox.textContent = `Смета открыта по ссылке: ${n} поз.`; shareBox.hidden = false; }
       else if (n) {
         shareBox.innerHTML = `По ссылке передана смета: ${n} поз. <button class="cbtn" type="button" data-share="replace">Заменить мой список</button> <button class="cbtn ghost" type="button" data-share="add">Добавить к моему</button>`;
         shareBox.hidden = false;
@@ -667,7 +676,7 @@
           const m = ev.target.dataset.share; if (!m) return;
           const s = m === "add" ? load() : {};
           Object.entries(got).forEach(([a, q]) => { s[a] = (s[a] || 0) + q; });
-          if (m === "replace") { docSet(sharedDoc); docShow(); }
+          if (m === "replace") { docSet(sharedDoc); smSet(null); docShow(); }
           save(s); shareBox.hidden = true; renderSmeta();
         });
       }
@@ -704,9 +713,73 @@
         setTimeout(() => { tmsg.textContent = ""; }, 5000);
       });
     }
+    // этап 2 (владелец 05.11.2026): сотрудник сохраняет смету клиенту или дилеру — у человека в кабинете, со скидкой в смете вместо личной,
+    // названием документа и сообщением в Telegram. Пока меняют скидку, таблица считает с ней — видно то, что увидит человек; закрыли без
+    // сохранения — как было. Смета, открытая из кабинета, по умолчанию заменяет ту же смету человека
+    const forBtn = $("[data-smeta-for]"), forBox = $("[data-for-box]");
+    if (forBtn && staffMe) {
+      forBtn.hidden = false;
+      const ROLE_N = { user: "пользователь", client: "клиент", dealer: "дилер" }, F = forBox.elements;
+      let people = null, before = null, saved = false;
+      const pctIn = () => Math.max(0, Math.min(50, Math.round((+String(F.disc.value).replace(",", ".") || 0) * 10) / 10));
+      const preview = () => { smSet({ ...(smGet() || {}), d: pctIn() }); renderSmeta(); };
+      const syncReplace = () => {
+        const same = !!(before && before.id && +F.user.value === +before.uid), l = $("[data-for-replace]", forBox);
+        l.innerHTML = `<input type="checkbox" name="replace"${same ? " checked" : ""}> Заменить смету «${esc(before?.title || "")}» у этого человека`;
+        l.hidden = !same;
+      };
+      forBtn.addEventListener("click", async () => {
+        if (!forBox.hidden) return forBox.scrollIntoView({ block: "center" });
+        if (!people) {
+          const j = await kabApi("users").catch(() => ({}));
+          if (!j.ok) { tmsg.textContent = "Не удалось загрузить список клиентов."; return; }
+          people = j.users.filter(u => u.status !== "blocked" && u.role !== "staff");
+        }
+        before = smGet(); saved = false;
+        const order = { client: 0, dealer: 1, user: 2 }, nm = u => u.name || u.tg_name || "—";
+        const opts = people.slice().sort((a, b) => (order[a.role] - order[b.role]) || nm(a).localeCompare(nm(b), "ru"))
+          .map(u => `<option value="${u.id}" data-d="${+u.discount || 0}"${before && +before.uid === u.id ? " selected" : ""}>${esc(nm(u))}${u.company ? " · " + esc(u.company) : ""} — ${ROLE_N[u.role] || ""}${+u.discount ? ", скидка " + pct(+u.discount) : ""}</option>`).join("");
+        forBox.innerHTML = `<h3>Смета для клиента</h3><div class="row3"><label>Кому *<select name="user"><option value="">— выберите клиента или дилера —</option>${opts}</select></label>`
+          + `<label>Название сметы<input name="title" maxlength="120" placeholder="Например: квартира, ул. Притыцкого" value="${esc(before?.title || "")}"></label>`
+          + `<label>Скидка в смете, %<input name="disc" type="number" min="0" max="50" step="0.5" value="${before?.d ?? ""}"></label></div>`
+          + '<label class="consent" data-for-replace hidden></label><label class="consent"><input type="checkbox" name="notify" checked> Сообщить в Telegram</label>'
+          + `<p class="muted small">Скидка в смете заменяет личную скидку человека. Название документа — «${esc(docH.textContent)}», меняется выше. Человек увидит смету в кабинете, во вкладке «Сметы».</p>`
+          + '<button class="btn" type="submit">Сохранить для клиента</button> <button class="btn ghost" type="button" data-for-close>Закрыть</button><p class="msg" role="status"></p>';
+        forBox.hidden = false;
+        syncReplace();
+        forBox.scrollIntoView({ block: "center" });
+      });
+      forBox.addEventListener("change", ev => {  // выбрали человека — скидка его личная, если это не его же открытая смета
+        if (ev.target !== F.user) return;
+        if (!(before && before.id && +F.user.value === +before.uid)) { const d = +(F.user.selectedOptions[0]?.dataset.d || 0); F.disc.value = d ? d : ""; }
+        syncReplace(); preview();
+      });
+      forBox.addEventListener("input", ev => { if (ev.target === F.disc) preview(); });
+      forBox.addEventListener("click", ev => {
+        if (!ev.target.closest("[data-for-close]")) return;
+        forBox.hidden = true;
+        if (!saved) { smSet(before); renderSmeta(); }
+      });
+      forBox.addEventListener("submit", async ev => {
+        ev.preventDefault();
+        const msg = $(".msg", forBox), btn = $("button[type=submit]", forBox);
+        if (!F.user.value) { msg.className = "msg bad"; msg.textContent = "Выберите, кому сохранить."; return; }
+        const d = pctIn(), uid = +F.user.value, who = F.user.selectedOptions[0].textContent.split(" — ")[0];
+        btn.disabled = true; msg.className = "msg"; msg.textContent = "Сохраняем…";
+        const r = await kabApi("smeta_for", { user_id: uid, title: F.title.value, doc: docH.textContent === DOC0 ? "" : docH.textContent, disc: d,
+          items: load(), id: F.replace?.checked && before?.id ? before.id : 0, notify: F.notify.checked }).catch(() => ({}));
+        btn.disabled = false;
+        if (!r.ok) { msg.className = "msg bad"; msg.textContent = r.error === "limit" ? "У человека уже 100 смет — пусть удалит старые." : r.status === 403 ? "Нужен вход сотрудника." : "Не удалось сохранить."; return; }
+        saved = true;
+        before = { d, id: r.id, uid, title: r.title };
+        smSet(before); renderSmeta(); syncReplace(); F.title.value = r.title;
+        msg.className = "msg ok";
+        msg.textContent = `Сохранено у «${who}»: «${r.title}».` + (F.notify.checked ? (r.sent ? " Сообщение в Telegram отправлено." : " Сообщение в Telegram не ушло: человек не разрешил боту писать — сообщите сами.") : "");
+      });
+    }
     $("[data-copy-link]").addEventListener("click", () => copy(location.origin + "/smeta/?s=" + Object.entries(load()).map(([a, q]) => encodeURIComponent(a) + "*" + q).join(",")
       + (docH.textContent !== DOC0 ? "&d=" + encodeURIComponent(docH.textContent) : ""), "Ссылка скопирована"));
-    $("[data-copy-text]").addEventListener("click", () => copy(rows().map(({ a, q, it }) => `${a}\t${it.n}\t${q}\t${it.b != null ? it.b * q + " BYN" : "по запросу"}`).join("\n"), "Список скопирован"));
+    $("[data-copy-text]").addEventListener("click", () => copy(rows().map(({ a, q, it }) => { const u = unitB(it, effD()); return `${a}\t${it.n}\t${q}\t${u != null ? u * q + " BYN" : "по запросу"}`; }).join("\n"), "Список скопирован"));
     // загрузка списка: «артикул количество» в строке
     $("[data-import-go]").addEventListener("click", () => {
       const area = $("[data-import]"), m = $("[data-import-msg]"), s = load(), miss = [];
@@ -748,7 +821,12 @@
     if (!f.elements.consent.checked) { msg.textContent = "Отметьте согласие на обработку данных."; msg.classList.add("bad"); return; }
     const body = { name: v("name"), phone: v("phone"), comment: v("comment"), website: v("website"), consent: true,
       topic: f.dataset.topic, page: location.pathname };
-    if (box) body.items = rows().map(({ a, q, it }) => ({ a, n: it.n, q, b: it.b }));
+    if (box) {  // цены — как в смете; смета от сотрудника — с её скидкой и названием документа
+      const m = smGet(), dh = $("[data-doc-h]")?.textContent;
+      body.items = rows().map(({ a, q, it }) => ({ a, n: it.n, q, b: unitB(it, effD()) }));
+      if (m && m.d != null) body.sdisc = +m.d;
+      if (dh && dh !== DOC0) body.doc = dh;
+    }
     btn.disabled = true; msg.textContent = "Отправляем…";
     try {
       const r = await fetch("/lead.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -757,7 +835,7 @@
       msg.textContent = "Спасибо! Заявка принята, перезвоним в рабочее время."; msg.classList.add("ok");
       f.reset();
       prefill(f);
-      if (box) { save({}); docSet(""); renderSmeta(); }
+      if (box) { save({}); docSet(""); $("[data-doc-h]").textContent = DOC0; renderSmeta(); }
     } catch (e) {
       msg.innerHTML = 'Не удалось отправить. Позвоните: <a href="tel:+375293702020">+375 29 370-20-20</a> или напишите на <a href="mailto:info@allvision.by">info@allvision.by</a>.';
       msg.classList.add("bad");
@@ -873,18 +951,20 @@
       const j = await kabApi("smetas" + (staff ? "&all=1" : "")).catch(() => ({}));
       if (!j.ok) return failed();
       if (!j.smetas.length) { panel.innerHTML = '<p>Сохранённых смет пока нет. Соберите список в <a href="/katalog/">каталоге</a>, затем на странице <a href="/smeta/">«Смета»</a> нажмите «Сохранить в кабинет».</p>'; return; }
-      const sum = items => Object.entries(items).reduce((s, [a, q]) => { const it = D.items[a] || D.items[a.split(" · ")[0]]; return it && it.b != null ? s + it.b * q : s; }, 0);
+      // сумма — со скидкой сметы от сотрудника, иначе с личной (этап 2)
+      const sum = s => Object.entries(s.items).reduce((t, [a, q]) => { const it = D.items[a] || D.items[a.split(" · ")[0]]; const u = it ? unitB(it, s.disc != null ? s.disc : DISC) : null; return u != null ? t + u * q : t; }, 0);
+      const from = s => s.made_by ? `<br><span class="muted small">${staff ? "подготовил: " + esc(s.made_name || "сотрудник") : "подготовила AllVision"}${s.disc ? ", скидка " + pct(s.disc) : ""}</span>` : "";
       panel.innerHTML = `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Смета</th>${staff ? "<th>Чья</th>" : ""}<th class="num">Позиций</th><th class="num">Сумма*</th><th>Обновлена</th><th></th></tr></thead><tbody>`
-        + j.smetas.map(s => `<tr><td>${esc(s.title)}${s.doc ? `<br><span class="muted small">${esc(s.doc)}</span>` : ""}</td>${staff ? `<td>${esc(s.name)}${s.company ? `<br><span class="muted small">${esc(s.company)}</span>` : ""}</td>` : ""}`
-          + `<td class="num">${Object.keys(s.items).length}</td><td class="num">${fmt(sum(s.items))} BYN</td><td>${day(s.updated_at)}</td>`
-          + `<td class="acts"><button class="cbtn" type="button" data-open="${s.id}">Открыть</button>${+s.user_id === +user.id ? ` <button class="cbtn ghost" type="button" data-del="${s.id}">Удалить</button>` : ""}</td></tr>`).join("")
-        + `</tbody></table></div><p class="muted small">* По сегодняшним ценам${DISC ? ` со скидкой ${pct(DISC)}` : ""}, без позиций «по запросу». «Открыть» заменяет текущий список для сметы.</p>`;
+        + j.smetas.map(s => `<tr><td>${esc(s.title)}${s.doc ? `<br><span class="muted small">${esc(s.doc)}</span>` : ""}${from(s)}</td>${staff ? `<td>${esc(s.name)}${s.company ? `<br><span class="muted small">${esc(s.company)}</span>` : ""}</td>` : ""}`
+          + `<td class="num">${Object.keys(s.items).length}</td><td class="num">${fmt(sum(s))} BYN</td><td>${day(s.updated_at)}</td>`
+          + `<td class="acts"><button class="cbtn" type="button" data-open="${s.id}">Открыть</button>${+s.user_id === +user.id || (staff && +s.made_by === +user.id) ? ` <button class="cbtn ghost" type="button" data-del="${s.id}">Удалить</button>` : ""}</td></tr>`).join("")
+        + `</tbody></table></div><p class="muted small">* По сегодняшним ценам: со скидкой, указанной в смете, иначе${DISC ? ` с вашей скидкой ${pct(DISC)}` : " по розничным"}; без позиций «по запросу». «Открыть» заменяет текущий список для сметы.</p>`;
       panel.onclick = async ev => {
         const o = ev.target.closest("[data-open]"), d = ev.target.closest("[data-del]");
         if (o) {
           const s = j.smetas.find(x => String(x.id) === o.dataset.open);
           if (Object.keys(load()).length && !confirm("Заменить текущий список для сметы этой сметой?")) return;
-          save(s.items); docSet(s.doc); location.href = "/smeta/";
+          save(s.items); docSet(s.doc); smSet({ d: s.disc, id: s.id, uid: s.user_id, title: s.title }); location.href = "/smeta/";
         }
         if (d && confirm("Удалить смету из кабинета?")) { await kabApi("smeta_del", { id: +d.dataset.del }).catch(() => {}); tabSmetas(); }
       };
