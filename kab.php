@@ -206,7 +206,7 @@ case 'cat_list':
         return ['art' => $r['art'], 'is_new' => (bool) $r['is_new'], 'name' => $r['name'], 'price' => $r['price'] === null ? null : (float) $r['price'],
             'about' => $r['about'], 'hidden' => (bool) $r['hidden'], 'gnum' => $r['gnum'], 'platform' => $r['platform'], 'photo' => $r['photo'] !== '',
             'deleted' => (bool) $r['deleted'], 'by' => $r['by_name'] ?: $r['by_tg'], 'at' => $r['updated_at'],
-            'pending' => $r['synced_at'] === null || $r['synced_at'] < $r['updated_at']];
+            'pending' => $r['synced_at'] === null || $r['synced_at'] <= $r['updated_at']];  // та же секунда — считаем ждущей: лишняя сборка безвредна
     }, $rows);
     reply(200, ['ok' => true, 'edits' => $rows, 'request' => kab_kv_get('rebuild'), 'last' => kab_kv_get('last_sync'), 'ready' => (string) (kab_cfg()['build_key'] ?? '') !== '']);
 
@@ -241,10 +241,10 @@ case 'cat_set':  // правка позиции или новая позиция
     }
     $hidden = !empty($in['hidden']) ? 1 : 0;
     if (!$isNew && $name === '' && $price === null && $about === '' && !$hidden && $photo === '') reply(422, ['ok' => false, 'error' => 'nothing']);
-    $db->prepare("INSERT INTO cat_edits (art, is_new, name, price, about, hidden, gnum, platform, photo, deleted, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-        ON CONFLICT(art) DO UPDATE SET is_new = excluded.is_new, name = excluded.name, price = excluded.price, about = excluded.about, hidden = excluded.hidden,
-        gnum = excluded.gnum, platform = excluded.platform, photo = excluded.photo, deleted = 0, updated_by = excluded.updated_by, updated_at = excluded.updated_at")
-        ->execute([$art, $isNew ? 1 : 0, $name, $price, $about, $hidden, $isNew ? $gnum : '', $isNew ? ($platform ?: 'buspro') : '', $photo, $me['id'], kab_now()]);
+    // была правка — обновить (synced_at остаётся: по нему видно, что после сборки правку меняли), нет — добавить. Без ON CONFLICT: SQLite хостинга может быть старше 3.24
+    $vals = [$isNew ? 1 : 0, $name, $price, $about, $hidden, $isNew ? $gnum : '', $isNew ? ($platform ?: 'buspro') : '', $photo, $me['id'], kab_now(), $art];
+    if ($old) $db->prepare('UPDATE cat_edits SET is_new = ?, name = ?, price = ?, about = ?, hidden = ?, gnum = ?, platform = ?, photo = ?, deleted = 0, updated_by = ?, updated_at = ? WHERE art = ?')->execute($vals);
+    else $db->prepare('INSERT INTO cat_edits (is_new, name, price, about, hidden, gnum, platform, photo, deleted, updated_by, updated_at, art) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)')->execute($vals);
     reply(200, ['ok' => true]);
 
 case 'cat_del':  // отменить правку: со следующей сборкой позиция станет как в прайсе, новая — исчезнет. Ещё не была в сборке — удаляется сразу
@@ -271,7 +271,7 @@ case 'rebuild':  // «Обновить сайт сейчас»: компьюте
 case 'cat_export':  // компьютеру сборки: все действующие правки, запрос «сейчас», отметка времени выгрузки
     $need(kab_build_ok());
     $rows = $db->query('SELECT art, is_new, name, price, about, hidden, gnum, platform, photo, updated_at, synced_at FROM cat_edits WHERE deleted = 0 ORDER BY art')->fetchAll();
-    $pending = (int) $db->query('SELECT COUNT(*) FROM cat_edits WHERE synced_at IS NULL OR synced_at < updated_at')->fetchColumn();
+    $pending = (int) $db->query('SELECT COUNT(*) FROM cat_edits WHERE synced_at IS NULL OR synced_at <= updated_at')->fetchColumn();
     reply(200, ['ok' => true, 'exported_at' => kab_now(), 'pending' => $pending, 'request' => kab_kv_get('rebuild'),
         'edits' => array_map(function ($r) {
             return ['art' => $r['art'], 'is_new' => (bool) $r['is_new'], 'name' => $r['name'], 'price' => $r['price'] === null ? null : (float) $r['price'], 'about' => $r['about'],
@@ -297,11 +297,11 @@ case 'cat_done':  // компьютер сборки: итог. Удачно —
     $need((bool) preg_match('/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/', $at), 422);
     $ok = !empty($in['ok']);
     if ($ok) {
-        $db->prepare('UPDATE cat_edits SET synced_at = ? WHERE deleted = 0 AND updated_at <= ?')->execute([kab_now(), $at]);
-        $gone =$db->prepare('SELECT photo FROM cat_edits WHERE deleted = 1 AND updated_at <= ?');
+        $db->prepare('UPDATE cat_edits SET synced_at = ? WHERE deleted = 0 AND updated_at < ?')->execute([kab_now(), $at]);
+        $gone = $db->prepare('SELECT photo FROM cat_edits WHERE deleted = 1 AND updated_at < ?');
         $gone->execute([$at]);
         foreach ($gone->fetchAll() as $g) if ($g['photo'] !== '') @unlink(kab_dir() . '/catalog/' . $g['photo']);
-        $db->prepare('DELETE FROM cat_edits WHERE deleted = 1 AND updated_at <= ?')->execute([$at]);
+        $db->prepare('DELETE FROM cat_edits WHERE deleted = 1 AND updated_at < ?')->execute([$at]);
     }
     $req = kab_kv_get('rebuild');  // на запрос ответили — удачно или нет: причину сотрудник видит в «Последняя сборка» и может нажать снова
     if ($req && ($req['at'] ?? '') <= $at) kab_kv_set('rebuild', null);

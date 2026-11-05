@@ -85,7 +85,7 @@ function kab_kv_get(string $k): ?array {
 }
 function kab_kv_set(string $k, ?array $v): void {
     if ($v === null) kab_db()->prepare('DELETE FROM kv WHERE k = ?')->execute([$k]);
-    else kab_db()->prepare('INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v')->execute([$k, json_encode($v, JSON_UNESCAPED_UNICODE)]);
+    else kab_db()->prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)')->execute([$k, json_encode($v, JSON_UNESCAPED_UNICODE)]);  // без ON CONFLICT: SQLite хостинга может быть старше 3.24
 }
 
 // компьютер сборки AllVision (cabinet_sync.py) — по ключу build_key из config.php в заголовке X-HDL-Key, без входа в кабинет
