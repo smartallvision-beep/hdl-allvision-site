@@ -63,6 +63,12 @@ function kab_db(): PDO {
     if (!in_array('doc', $smCols, true)) $db->exec("ALTER TABLE smetas ADD COLUMN doc TEXT DEFAULT ''");
     if (!in_array('disc', $smCols, true)) $db->exec('ALTER TABLE smetas ADD COLUMN disc REAL');
     if (!in_array('made_by', $smCols, true)) $db->exec('ALTER TABLE smetas ADD COLUMN made_by INTEGER');
+    // ассортимент из кабинета (этап 3, владелец 05.11.2026): одна правка на артикул — название, розничная цена USD с НДС (NULL — как в прайсе),
+    // описание, фото, «скрыть»; is_new — новая позиция (раздел gnum, система platform). synced_at — когда компьютер AllVision забрал её в сборку;
+    // deleted — правку отменили, уходит со следующей сборкой. kv — запрос «Обновить сайт сейчас» и итог последней сборки
+    $db->exec("CREATE TABLE IF NOT EXISTS cat_edits (art TEXT PRIMARY KEY, is_new INTEGER DEFAULT 0, name TEXT DEFAULT '', price REAL, about TEXT DEFAULT '',
+        hidden INTEGER DEFAULT 0, gnum TEXT DEFAULT '', platform TEXT DEFAULT '', photo TEXT DEFAULT '', deleted INTEGER DEFAULT 0, updated_by INTEGER, updated_at TEXT, synced_at TEXT)");
+    $db->exec('CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT)');
     // kind: doc — документ клиента (user_id, object — объект), mat — материал сотрудников (object — раздел). path — относительно папки данных
     $db->exec("CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY, kind TEXT NOT NULL, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         object TEXT DEFAULT '', title TEXT, name TEXT, path TEXT, size INTEGER, uploaded_by INTEGER, created_at TEXT)");
@@ -70,6 +76,28 @@ function kab_db(): PDO {
 }
 
 function kab_now(): string { return date('Y-m-d H:i:s'); }
+
+function kab_kv_get(string $k): ?array {
+    $q = kab_db()->prepare('SELECT v FROM kv WHERE k = ?');
+    $q->execute([$k]);
+    $v = $q->fetchColumn();
+    return $v === false ? null : (json_decode((string) $v, true) ?: null);
+}
+function kab_kv_set(string $k, ?array $v): void {
+    if ($v === null) kab_db()->prepare('DELETE FROM kv WHERE k = ?')->execute([$k]);
+    else kab_db()->prepare('INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v')->execute([$k, json_encode($v, JSON_UNESCAPED_UNICODE)]);
+}
+
+// компьютер сборки AllVision (cabinet_sync.py) — по ключу build_key из config.php в заголовке X-HDL-Key, без входа в кабинет
+function kab_build_ok(): bool {
+    $k = (string) (kab_cfg()['build_key'] ?? '');
+    return strlen($k) >= 32 && hash_equals($k, (string) ($_SERVER['HTTP_X_HDL_KEY'] ?? ''));
+}
+
+// разделы каталога для новых позиций (data.GROUPS) и системы (data.PLATFORMS)
+const KAB_CAT_GROUPS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '21', '22', '23', '24', '25', '26', '27', '28'];
+const KAB_CAT_PLATFORMS = ['buspro', 'knx', 'wireless'];
+const KAB_CAT_PHOTO = ['jpg', 'jpeg', 'png', 'webp'];
 
 // предел загрузки файла на хостинге: меньшее из upload_max_filesize и post_max_size (меняется в cPanel → PHP)
 function kab_ini_bytes(string $v): int {

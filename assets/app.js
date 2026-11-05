@@ -1112,6 +1112,100 @@
       panel.onclick = async ev => { const d = ev.target.closest("[data-fdel]"); if (d && confirm("Удалить файл из материалов?")) { await kabApi("file_del", { id: +d.dataset.fdel }).catch(() => {}); tabMats(); } };
     };
 
+    // ---- этап 3: ассортимент (владелец 05.11.2026). Сотрудник правит позицию или добавляет новую; на сайт — сборкой на компьютере AllVision
+    // (cabinet_sync.py): ночью или по «Обновить сайт сейчас». Правка по артикулу, как в смете: цена — этого артикула (цвета), название,
+    // описание и фото — всей карточки. Цена — розничная USD с НДС, как в прайсе; пустое поле — как в прайсе ----
+    const GROUPS_K = JSON.parse(kab.dataset.groups || "{}");
+    const PLAT_K = [["buspro", "HDL Buspro"], ["knx", "HDL KNX"], ["wireless", "HDL Buspro Wireless"]];
+    const tabCat = async note => {
+      wait();
+      const j = await kabApi("cat_list").catch(() => ({}));
+      if (!j.ok) return failed();
+      const byArt = Object.fromEntries(j.edits.map(e => [e.art, e]));
+      const when = s => s ? `${day(s)} ${s.slice(11, 16)}` : "";
+      const pend = j.edits.filter(e => e.pending).length, req = j.request, last = j.last;
+      const what = e => e.deleted ? "отменена — станет как в прайсе" : [e.is_new && `новая, ${esc(GROUPS_K[e.gnum] || "")}`, e.hidden && "скрыть с сайта",
+        e.name && `название «${esc(e.name)}»`, e.price != null && `цена ${String(e.price).replace(".", ",")} USD`, e.about && "описание", e.photo && "фото"].filter(Boolean).join("; ");
+      panel.innerHTML = '<div class="kab-cat">'
+        + (j.ready ? "" : '<p class="msg bad">Компьютер сборки ещё не подключён: правки сохраняются, но на сайт попадут, когда владелец настроит ключ сборки.</p>')
+        + (note ? `<p class="msg ok">${esc(note)}</p>` : "")
+        + `<p>${pend ? `Ждут сборки: <b>${pend}</b>.` : "Все правки на сайте."}${last ? ` Последняя сборка: ${when(last.at)}${last.ok ? "" : ` — <span class="bad">не выложено: ${esc(last.note)}</span>`}.` : ""}</p>`
+        + `<p class="cat-now"><button class="btn" type="button" data-cat-now${req ? " disabled" : ""}>${req ? `Запрошено ${when(req.at)}` : "Обновить сайт сейчас"}</button> `
+        + `<span class="muted small">${req ? "Компьютер AllVision заберёт правки в течение 10 минут, если он включён." : "Без запроса правки уходят на сайт ночью."}</span></p>`
+        + '<div class="kab-up"><h3>Найти позицию</h3><div class="cat-find"><input type="search" placeholder="Артикул или название" data-cat-q aria-label="Артикул или название"> '
+        + '<button class="cbtn ghost" type="button" data-cat-new>+ Новая позиция</button></div><ul class="cat-hits" data-cat-hits></ul></div>'
+        + '<form class="kab-up" data-cat-form hidden novalidate></form><h3>Правки</h3>'
+        + (j.edits.length ? `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Артикул</th><th>Что меняется</th><th>Кто, когда</th><th>Состояние</th><th></th></tr></thead><tbody>`
+          + j.edits.map(e => `<tr><td><b>${esc(e.art)}</b>${D.items[e.art] ? `<br><span class="muted small">${esc(D.items[e.art].n)}</span>` : ""}</td><td>${what(e)}</td>`
+            + `<td>${esc(e.by || "")}<br><span class="muted small">${when(e.at)}</span></td><td><span class="st ${e.pending ? "wait" : "closed"}">${e.pending ? "ждёт сборки" : "на сайте"}</span></td>`
+            + `<td class="acts">${e.deleted ? "" : `<button class="cbtn" type="button" data-cat-edit="${esc(e.art)}">Изменить</button> <button class="cbtn ghost" type="button" data-cat-del="${esc(e.art)}">Отменить</button>`}</td></tr>`).join("")
+          + "</tbody></table></div>" : '<p class="muted">Правок пока нет.</p>')
+        + '<p class="muted small">Цена — розничная в USD с НДС, как в прайсе; на сайте пересчитывается в BYN по курсу НБРБ. Пустое поле — как в прайсе. '
+        + "Правка по артикулу: цена — этого артикула (цвета), название, описание и фото — всей карточки. «Отменить» возвращает позицию как в прайсе.</p></div>";
+      const f = $("[data-cat-form]", panel), hits = $("[data-cat-hits]", panel);
+      const priceIn = () => { const v = String(f.elements.price?.value || "").trim().replace(",", "."); return v === "" || isNaN(+v) ? null : +v; };
+      const bynHint = () => { const p = priceIn(), el = $("[data-cat-byn]", f); if (el) el.textContent = p != null ? `На сайте будет ≈ ${fmt(Math.round(p * D.rate))} BYN по курсу ${String(D.rate).replace(".", ",")}.` : ""; };
+      const form = (art, isNew) => {
+        const e = byArt[art] || {}, it = D.items[art], cur = it ? (it.rb ?? it.b) : null, usd = cur != null ? (cur / D.rate).toFixed(2).replace(".", ",") : "";
+        f.innerHTML = `<h3>${isNew ? "Новая позиция" : "Правка: " + esc(art)}</h3>`
+          + (it ? `<p class="muted small">Сейчас на сайте: ${esc(it.n)}, ${cur != null ? `${fmt(cur)} BYN (≈ ${usd} USD)` : "по запросу"}. <a href="${esc(it.u)}" target="_blank" rel="noopener">Открыть карточку</a></p>` : "")
+          + '<div class="row3">' + (isNew ? `<label>Артикул *<input name="art" maxlength="80" value="${esc(art || "")}"></label>` : `<input type="hidden" name="art" value="${esc(art)}">`)
+          + `<label>Название${isNew ? " *" : ""}<input name="name" maxlength="200" value="${esc(e.name || "")}" placeholder="${it ? esc(it.n) : ""}"></label>`
+          + `<label>Цена, USD с НДС<input name="price" inputmode="decimal" value="${e.price != null ? String(e.price).replace(".", ",") : ""}" placeholder="${isNew ? "пусто — по запросу" : usd ? "как в прайсе: " + usd : "по запросу"}"></label>`
+          + (isNew ? `<label>Раздел *<select name="gnum"><option value="">— выберите —</option>${Object.entries(GROUPS_K).map(([k, t]) => `<option value="${k}"${k === e.gnum ? " selected" : ""}>${esc(t)}</option>`).join("")}</select></label>`
+            + `<label>Система<select name="platform">${PLAT_K.map(([k, t]) => `<option value="${k}"${k === e.platform ? " selected" : ""}>${t}</option>`).join("")}</select></label>` : "")
+          + `</div><label>Описание<textarea name="about" rows="4" maxlength="4000" placeholder="${isNew ? "Каждая строка — абзац." : "Пусто — как сейчас. Каждая строка — абзац."}">${esc(e.about || "")}</textarea></label>`
+          + `<label>Фото${e.photo ? " — загружено, новое заменит его" : ", станет главным на карточке"}<input type="file" name="photo" accept=".jpg,.jpeg,.png,.webp"></label>`
+          + (e.photo ? '<label class="consent"><input type="checkbox" name="drop_photo"> Убрать загруженное фото</label>' : "")
+          + (isNew ? "" : `<label class="consent"><input type="checkbox" name="hidden"${e.hidden ? " checked" : ""}> Скрыть с сайта</label>`)
+          + '<p class="muted small" data-cat-byn></p><button class="btn" type="submit">Сохранить</button> <button class="btn ghost" type="button" data-cat-close>Закрыть</button><p class="msg" role="status"></p>';
+        f.dataset.new = isNew ? "1" : "";
+        f.hidden = false; bynHint(); f.scrollIntoView({ block: "start" });
+      };
+      panel.oninput = ev => {
+        if (ev.target.closest("[data-cat-q]")) {
+          const q = low(ev.target.value.trim()), qa = q.replace(/[^a-z0-9а-я]/g, "");
+          const found = q.length < 2 ? [] : Object.entries(D.items).filter(([a, it]) => low(a).replace(/[^a-z0-9а-я]/g, "").includes(qa) || low(it.n).includes(q)).slice(0, 15);
+          hits.innerHTML = found.map(([a, it]) => `<li><span><b>${esc(a)}</b> ${esc(it.n)} · ${(it.rb ?? it.b) != null ? fmt(it.rb ?? it.b) + " BYN" : "по запросу"}</span> <button class="cbtn" type="button" data-cat-edit="${esc(a)}">Изменить</button></li>`).join("")
+            || (q.length >= 2 ? '<li class="muted">Не нашлось. Новая позиция — кнопкой «+ Новая позиция».</li>' : "");
+        }
+        if (ev.target.name === "price") bynHint();
+      };
+      panel.onclick = async ev => {
+        const ed = ev.target.closest("[data-cat-edit]"), del = ev.target.closest("[data-cat-del]");
+        if (ed) form(ed.dataset.catEdit, !!(byArt[ed.dataset.catEdit]?.is_new));
+        if (ev.target.closest("[data-cat-new]")) form("", true);
+        if (ev.target.closest("[data-cat-close]")) f.hidden = true;
+        if (del && confirm(`Отменить правку ${del.dataset.catDel}? Позиция станет как в прайсе${byArt[del.dataset.catDel]?.is_new ? " (новая — исчезнет с сайта)" : ""}.`)) {
+          const r = await kabApi("cat_del", { art: del.dataset.catDel }).catch(() => ({}));
+          tabCat(r.ok ? "Правка отменена." : "");
+        }
+        if (ev.target.closest("[data-cat-now]")) {
+          const r = await kabApi("rebuild", {}).catch(() => ({}));
+          tabCat(r.ok ? "Запрос отправлен: компьютер AllVision соберёт и выложит сайт в течение 10 минут, если он включён." : "");
+        }
+      };
+      f.onsubmit = async ev => {
+        ev.preventDefault();
+        const msg = $(".msg", f), btn = $("button[type=submit]", f), isNew = !!f.dataset.new, art = f.elements.art.value.trim();
+        // артикул уже на сайте — это правка, а не новая позиция (своя новая после сборки — правка её же)
+        if (isNew && D.items[art] && !byArt[art]?.is_new) { msg.className = "msg bad"; msg.textContent = "Такой артикул уже есть на сайте — найдите его поиском и нажмите «Изменить»."; return; }
+        const fd = new FormData(f);
+        if (isNew) fd.append("is_new", "1");
+        btn.disabled = true; msg.className = "msg"; msg.textContent = "Сохраняем…";
+        let r = {};
+        try { const x = await fetch("/kab.php?a=cat_set", { method: "POST", credentials: "same-origin", headers: { "X-HDL": "1" }, body: fd }); r = Object.assign({ status: x.status }, await x.json()); } catch {}
+        btn.disabled = false;
+        if (!r.ok) {
+          msg.className = "msg bad";
+          msg.textContent = { new: "Укажите артикул, название и раздел.", photo: "Фото — jpg, png или webp.", nothing: "Нечего сохранять: заполните хотя бы одно поле или отметьте «Скрыть с сайта»." }[r.error]
+            || (r.status === 413 ? "Фото слишком большое." : "Не удалось сохранить.");
+          return;
+        }
+        tabCat(`Сохранено: ${art}. На сайте — после сборки.`);
+      };
+    };
+
     const tabProfile = () => {
       panel.innerHTML = "";
       setupForm(false);
@@ -1126,16 +1220,16 @@
     };
 
     const route = () => {
-      panel.onclick = panel.onchange = null;
+      panel.onclick = panel.onchange = panel.oninput = null;
       if (!user) return showLogin();
       if (user.status === "form") { main.before(form); setupForm(true); return show(form); }
       show(main); head();
       // документы — клиентам (владелец 03.11.2026: у дилера их нет), материалы — только сотрудникам
-      const tabs = staff ? [["users", "Пользователи"], ["leads", "Заявки"], ["smetas", "Сметы"], ["docs", "Документы"], ["mats", "Материалы"], ["profile", "Мои данные"]]
+      const tabs = staff ? [["users", "Пользователи"], ["leads", "Заявки"], ["smetas", "Сметы"], ["cat", "Ассортимент"], ["docs", "Документы"], ["mats", "Материалы"], ["profile", "Мои данные"]]
         : [["smetas", "Сметы"], ["leads", "Заявки"], ...(user.role === "client" ? [["docs", "Документы"]] : []), ["profile", "Мои данные"]];
       const cur = (tabs.find(t => "#" + t[0] === location.hash) || tabs[0])[0];
       $("[data-kab-tabs]").innerHTML = tabs.map(([k, t]) => `<a href="#${k}" class="tab${k === cur ? " on" : ""}"${k === cur ? ' aria-current="page"' : ""}>${t}</a>`).join("");
-      ({ users: tabUsers, leads: tabLeads, smetas: tabSmetas, docs: tabDocs, mats: tabMats, profile: tabProfile })[cur]();
+      ({ users: tabUsers, leads: tabLeads, smetas: tabSmetas, cat: tabCat, docs: tabDocs, mats: tabMats, profile: tabProfile })[cur]();
     };
     addEventListener("hashchange", () => { if (user && user.status !== "form") route(); });
     $("[data-kab-logout]").addEventListener("click", async () => { await kabApi("logout", {}).catch(() => {}); out(); });

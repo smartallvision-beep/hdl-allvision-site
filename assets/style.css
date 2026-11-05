@@ -750,6 +750,11 @@ body[data-page=catalog] .hsearch { display: none; }
 .kab-up .consent { flex-direction: row; align-items: center; gap: 8px; color: var(--ink); }
 .kab-up .consent input { padding: 0; }
 @media (max-width: 760px) { .kab-up .row3 { grid-template-columns: 1fr; gap: 0; } }
+/* «Ассортимент» (этап 3): поиск позиции, форма правки */
+.kab-up textarea { font: 15px/1.5 var(--font); padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); color: var(--ink); background: #fff; width: 100%; resize: vertical; }
+.cat-find { display: flex; gap: 8px; flex-wrap: wrap; } .cat-find input { flex: 1 1 260px; }
+.cat-hits { list-style: none; padding: 0; margin: 10px 0 0; } .cat-hits li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.cat-now { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .kab-files { list-style: none; padding: 0; margin: 0 0 18px; }
 .kab-files li { padding: 8px 0; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
 .kab-files .cbtn { margin-left: auto; }

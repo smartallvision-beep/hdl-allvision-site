@@ -25,7 +25,7 @@ function pub(?array $u): ?array {
 $a = (string) ($_GET['a'] ?? '');
 $post = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
 if ($post && ($_SERVER['HTTP_X_HDL'] ?? '') !== '1') reply(403, ['ok' => false, 'error' => 'header']);
-$in = $post ? ($a === 'upload' ? $_POST : json_decode((string) file_get_contents('php://input'), true)) : $_GET;  // загрузка файла — форма, остальное — JSON
+$in = $post ? (in_array($a, ['upload', 'cat_set'], true) ? $_POST : json_decode((string) file_get_contents('php://input'), true)) : $_GET;  // загрузка файла и правка с фото — форма, остальное — JSON
 if (!is_array($in)) reply(400, ['ok' => false]);
 
 try {
@@ -196,6 +196,117 @@ case 'doc_title_del':
     }
     $rows = array_map(function ($r) { return ['id' => (int) $r['id'], 'title' => $r['title']]; }, $db->query('SELECT id, title FROM doc_titles ORDER BY id')->fetchAll());
     reply(200, ['ok' => true, 'titles' => $rows]);
+
+// ---- ассортимент из кабинета (этап 3, владелец 05.11.2026): сотрудник правит позицию или добавляет новую; на сайт правки попадают сборкой
+// на компьютере AllVision (cabinet_sync.py): ночью или по «Обновить сайт сейчас» ----
+case 'cat_list':
+    $need($staff);
+    $rows = $db->query('SELECT e.*, u.name AS by_name, u.tg_name AS by_tg FROM cat_edits e LEFT JOIN users u ON u.id = e.updated_by ORDER BY e.updated_at DESC')->fetchAll();
+    $rows = array_map(function ($r) {
+        return ['art' => $r['art'], 'is_new' => (bool) $r['is_new'], 'name' => $r['name'], 'price' => $r['price'] === null ? null : (float) $r['price'],
+            'about' => $r['about'], 'hidden' => (bool) $r['hidden'], 'gnum' => $r['gnum'], 'platform' => $r['platform'], 'photo' => $r['photo'] !== '',
+            'deleted' => (bool) $r['deleted'], 'by' => $r['by_name'] ?: $r['by_tg'], 'at' => $r['updated_at'],
+            'pending' => $r['synced_at'] === null || $r['synced_at'] < $r['updated_at']];
+    }, $rows);
+    reply(200, ['ok' => true, 'edits' => $rows, 'request' => kab_kv_get('rebuild'), 'last' => kab_kv_get('last_sync'), 'ready' => (string) (kab_cfg()['build_key'] ?? '') !== '']);
+
+case 'cat_set':  // правка позиции или новая позиция; фото — файлом в том же запросе (форма)
+    $need($post, 405);
+    $need($staff);
+    $art = kab_clean($in['art'] ?? '', 80);
+    $need($art !== '', 422);
+    $q = $db->prepare('SELECT * FROM cat_edits WHERE art = ?');
+    $q->execute([$art]);
+    $old = $q->fetch() ?: null;
+    $isNew = !empty($in['is_new']);
+    $name = kab_clean($in['name'] ?? '', 200);
+    $about = trim(mb_substr(str_replace("\r", '', (string) ($in['about'] ?? '')), 0, 4000));
+    $price = trim(str_replace(',', '.', (string) ($in['price'] ?? '')));
+    $price = $price === '' ? null : round(max(0.0, min(100000.0, (float) $price)), 2);
+    $gnum = in_array($in['gnum'] ?? '', KAB_CAT_GROUPS, true) ? $in['gnum'] : '';
+    $platform = in_array($in['platform'] ?? '', KAB_CAT_PLATFORMS, true) ? $in['platform'] : '';
+    if ($isNew && ($name === '' || $gnum === '')) reply(422, ['ok' => false, 'error' => 'new']);  // новой позиции нужны название и раздел
+    $photo = $old ? (string) $old['photo'] : '';
+    $dir = kab_dir() . '/catalog';
+    if (!empty($in['drop_photo']) && $photo !== '') { @unlink($dir . '/' . $photo); $photo = ''; }
+    $f = $_FILES['photo'] ?? null;
+    if ($f && ($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+        $ext = strtolower(pathinfo((string) $f['name'], PATHINFO_EXTENSION));
+        if ($f['error'] !== UPLOAD_ERR_OK || !in_array($ext, KAB_CAT_PHOTO, true) || !@getimagesize($f['tmp_name'])) reply(422, ['ok' => false, 'error' => 'photo']);
+        if (!is_dir($dir)) @mkdir($dir, 0750, true);
+        $newName = bin2hex(random_bytes(8)) . '.' . ($ext === 'jpeg' ? 'jpg' : $ext);
+        if (!move_uploaded_file($f['tmp_name'], $dir . '/' . $newName)) reply(500, ['ok' => false, 'error' => 'photo']);
+        if ($photo !== '') @unlink($dir . '/' . $photo);
+        $photo = $newName;
+    }
+    $hidden = !empty($in['hidden']) ? 1 : 0;
+    if (!$isNew && $name === '' && $price === null && $about === '' && !$hidden && $photo === '') reply(422, ['ok' => false, 'error' => 'nothing']);
+    $db->prepare("INSERT INTO cat_edits (art, is_new, name, price, about, hidden, gnum, platform, photo, deleted, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+        ON CONFLICT(art) DO UPDATE SET is_new = excluded.is_new, name = excluded.name, price = excluded.price, about = excluded.about, hidden = excluded.hidden,
+        gnum = excluded.gnum, platform = excluded.platform, photo = excluded.photo, deleted = 0, updated_by = excluded.updated_by, updated_at = excluded.updated_at")
+        ->execute([$art, $isNew ? 1 : 0, $name, $price, $about, $hidden, $isNew ? $gnum : '', $isNew ? ($platform ?: 'buspro') : '', $photo, $me['id'], kab_now()]);
+    reply(200, ['ok' => true]);
+
+case 'cat_del':  // отменить правку: со следующей сборкой позиция станет как в прайсе, новая — исчезнет. Ещё не была в сборке — удаляется сразу
+    $need($post, 405);
+    $need($staff);
+    $q = $db->prepare('SELECT * FROM cat_edits WHERE art = ?');
+    $q->execute([kab_clean($in['art'] ?? '', 80)]);
+    $e = $q->fetch();
+    $need((bool) $e, 404);
+    if ($e['synced_at'] === null) {
+        if ($e['photo'] !== '') @unlink(kab_dir() . '/catalog/' . $e['photo']);
+        $db->prepare('DELETE FROM cat_edits WHERE art = ?')->execute([$e['art']]);
+    } else {
+        $db->prepare('UPDATE cat_edits SET deleted = 1, updated_by = ?, updated_at = ? WHERE art = ?')->execute([$me['id'], kab_now(), $e['art']]);
+    }
+    reply(200, ['ok' => true]);
+
+case 'rebuild':  // «Обновить сайт сейчас»: компьютер AllVision проверяет запрос раз в 10 минут
+    $need($post, 405);
+    $need($staff);
+    kab_kv_set('rebuild', ['at' => kab_now(), 'by' => $me['name'] ?: $me['tg_name']]);
+    reply(200, ['ok' => true, 'request' => kab_kv_get('rebuild')]);
+
+case 'cat_export':  // компьютеру сборки: все действующие правки, запрос «сейчас», отметка времени выгрузки
+    $need(kab_build_ok());
+    $rows = $db->query('SELECT art, is_new, name, price, about, hidden, gnum, platform, photo, updated_at, synced_at FROM cat_edits WHERE deleted = 0 ORDER BY art')->fetchAll();
+    $pending = (int) $db->query('SELECT COUNT(*) FROM cat_edits WHERE synced_at IS NULL OR synced_at < updated_at')->fetchColumn();
+    reply(200, ['ok' => true, 'exported_at' => kab_now(), 'pending' => $pending, 'request' => kab_kv_get('rebuild'),
+        'edits' => array_map(function ($r) {
+            return ['art' => $r['art'], 'is_new' => (bool) $r['is_new'], 'name' => $r['name'], 'price' => $r['price'] === null ? null : (float) $r['price'], 'about' => $r['about'],
+                'hidden' => (bool) $r['hidden'], 'gnum' => $r['gnum'], 'platform' => $r['platform'], 'photo' => $r['photo']];
+        }, $rows)]);
+
+case 'cat_photo':  // компьютеру сборки: фото правки
+    $need(kab_build_ok());
+    $name = basename((string) ($in['photo'] ?? ''));
+    $full = kab_dir() . '/catalog/' . $name;
+    $need(preg_match('/^[0-9a-f]{16}\.(jpg|png|webp)$/', $name) === 1 && is_file($full), 404);
+    if (ob_get_level()) ob_end_clean();
+    header('Content-Type: application/octet-stream');
+    header('Content-Length: ' . filesize($full));
+    header('Cache-Control: private, no-store');
+    readfile($full);
+    exit;
+
+case 'cat_done':  // компьютер сборки: итог. Удачно — правки до exported_at отмечаются как на сайте, отменённые удаляются; запрос «сейчас» снимается всегда
+    $need($post, 405);
+    $need(kab_build_ok());
+    $at = (string) ($in['exported_at'] ?? '');
+    $need((bool) preg_match('/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/', $at), 422);
+    $ok = !empty($in['ok']);
+    if ($ok) {
+        $db->prepare('UPDATE cat_edits SET synced_at = ? WHERE deleted = 0 AND updated_at <= ?')->execute([kab_now(), $at]);
+        $gone =$db->prepare('SELECT photo FROM cat_edits WHERE deleted = 1 AND updated_at <= ?');
+        $gone->execute([$at]);
+        foreach ($gone->fetchAll() as $g) if ($g['photo'] !== '') @unlink(kab_dir() . '/catalog/' . $g['photo']);
+        $db->prepare('DELETE FROM cat_edits WHERE deleted = 1 AND updated_at <= ?')->execute([$at]);
+    }
+    $req = kab_kv_get('rebuild');  // на запрос ответили — удачно или нет: причину сотрудник видит в «Последняя сборка» и может нажать снова
+    if ($req && ($req['at'] ?? '') <= $at) kab_kv_set('rebuild', null);
+    kab_kv_set('last_sync', ['at' => kab_now(), 'ok' => $ok, 'note' => kab_clean($in['note'] ?? '', 300)]);
+    reply(200, ['ok' => true]);
 
 case 'leads':  // свои заявки; сотрудник — все заявки с сайта
     $need((bool) $me, 401);
