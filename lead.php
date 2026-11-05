@@ -101,7 +101,7 @@ $text = implode("\n", array_filter([
     $lead['name'] ? 'Имя: ' . $lead['name'] : '',
     'Телефон: ' . $lead['phone'],
     $lead['comment'] ? 'Комментарий: ' . $lead['comment'] : '',
-    $items && ($doc !== '' || $sdisc !== null) ? ($doc !== '' ? $doc : 'Смета') . ($sdisc !== null ? ', скидка в смете ' . $pct($sdisc) . ' (цены — с ней)' : '') : '',
+    $items && ($doc !== '' || $sdisc !== null) ? ($doc !== '' ? $doc : 'Смета') . ($sdisc !== null ? ', скидка в смете ' . $pct($sdisc) . ' (цены ниже — уже со скидками, в строках может быть своя)' : '') : '',
     $items ? "Смета:\n" . implode("\n", $items) . "\nИтого: " . number_format($sum, 0, ',', ' ') . ' BYN' : '',
     $lead['page'] ? 'Страница: ' . $lead['page'] : '',
 ]));

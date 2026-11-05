@@ -63,6 +63,9 @@ function kab_db(): PDO {
     if (!in_array('doc', $smCols, true)) $db->exec("ALTER TABLE smetas ADD COLUMN doc TEXT DEFAULT ''");
     if (!in_array('disc', $smCols, true)) $db->exec('ALTER TABLE smetas ADD COLUMN disc REAL');
     if (!in_array('made_by', $smCols, true)) $db->exec('ALTER TABLE smetas ADD COLUMN made_by INTEGER');
+    // ручная скидка и свои строки (владелец 05.11.2026): ld — скидка по строке {артикул: %}, extra — строки не из каталога [{n, u, q, b, d}]
+    if (!in_array('ld', $smCols, true)) $db->exec("ALTER TABLE smetas ADD COLUMN ld TEXT DEFAULT ''");
+    if (!in_array('extra', $smCols, true)) $db->exec("ALTER TABLE smetas ADD COLUMN extra TEXT DEFAULT ''");
     // ассортимент из кабинета (этап 3, владелец 05.11.2026): одна правка на артикул — название, розничная цена USD с НДС (NULL — как в прайсе),
     // описание, фото, «скрыть»; is_new — новая позиция (раздел gnum, система platform). synced_at — когда компьютер AllVision забрал её в сборку;
     // deleted — правку отменили, уходит со следующей сборкой. kv — запрос «Обновить сайт сейчас» и итог последней сборки

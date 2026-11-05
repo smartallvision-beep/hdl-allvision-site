@@ -341,6 +341,17 @@ table.specs { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-s
 .smeta-doc label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .smeta-doc select, .smeta-doc input { font: 15px var(--font); padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); color: var(--ink); background: #fff; }
 .smeta-doc .doc-new { display: inline-flex; gap: 8px; flex-wrap: wrap; } .smeta-doc .doc-new[hidden] { display: none; } .smeta-doc .msg { margin: 0; }
+/* смета у сотрудника (владелец 05.11.2026): общая скидка, «Добавить» из каталога, свои строки, процент в строке */
+.smeta-staff { background: var(--bg2); border-radius: 14px; padding: 12px 14px; margin: 0 0 8px; }
+.smeta-staff .sm-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.smeta-staff label { display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--muted); }
+.smeta-staff input { font: 15px var(--font); padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); color: var(--ink); background: #fff; }
+.smeta-staff [data-sm-d] { width: 80px; } .smeta-staff [data-sm-q] { flex: 1 1 260px; }
+.smeta-staff p { margin: 8px 0 0; } .smeta-staff .cat-hits:empty { display: none; }
+.smeta-tbl .pct-in { width: 64px; text-align: right; }
+.smeta-tbl .pct-in, .smeta-tbl .x-n, .smeta-tbl .x-u, .smeta-tbl .x-b, .smeta-tbl .x-q { font: 15px var(--font); padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r); background: #fff; color: var(--ink); }
+.smeta-tbl .x-n { width: 100%; max-width: 420px; } .smeta-tbl .x-u { width: 70px; margin-top: 4px; } .smeta-tbl .x-b { width: 100px; text-align: right; } .smeta-tbl .x-q { width: 70px; text-align: center; }
+.smeta-tbl tr.own td:first-child { box-shadow: inset 3px 0 var(--brand-soft); }
 /* «Смета для клиента» — сотруднику (этап 2): как форма загрузки в кабинете */
 .smeta-for { max-width: none; margin: 8px 0 20px; }
 .smeta-for .row3 { display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 12px; }
@@ -358,6 +369,8 @@ table.specs { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-s
   body { font-size: 13px; color: #000; }
   .qty { border: 0; } .qty button { display: none; } .qty input { width: 40px; }
   .smeta-tbl img { width: 36px; height: 36px; }
+  .smeta-tbl tfoot { display: table-row-group; }  /* итог — только в конце, а не внизу каждой страницы (владелец 05.11.2026); шапка таблицы повторяется */
+  .smeta-tbl tr { break-inside: avoid; }
   h1 { margin-top: 0; }
 }
 

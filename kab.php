@@ -109,11 +109,13 @@ case 'delete_me':  // удалить свои данные: пользовате
 case 'smetas':  // свои сметы (и подготовленные для меня сотрудником); сотрудник — все (all=1)
     $need((bool) $me, 401);
     $all = $staff && !empty($in['all']);
-    $q = $db->prepare('SELECT s.id, s.user_id, s.title, s.doc, s.disc, s.made_by, s.items, s.updated_at, u.name, u.company, u.role, m.name AS made_name, m.tg_name AS made_tg
+    $q = $db->prepare('SELECT s.id, s.user_id, s.title, s.doc, s.disc, s.made_by, s.items, s.ld, s.extra, s.updated_at, u.name, u.company, u.role, m.name AS made_name, m.tg_name AS made_tg
         FROM smetas s JOIN users u ON u.id = s.user_id LEFT JOIN users m ON m.id = s.made_by' . ($all ? '' : ' WHERE s.user_id = ?') . ' ORDER BY s.updated_at DESC LIMIT 300');
     $q->execute($all ? [] : [$me['id']]);
     $rows = array_map(function ($r) use ($staff) {
         $r['items'] = json_decode((string) $r['items']) ?: new stdClass();
+        $r['ld'] = json_decode((string) $r['ld']) ?: new stdClass();
+        $r['extra'] = json_decode((string) $r['extra'], true) ?: [];
         $r['id'] = (int) $r['id'];
         $r['user_id'] = (int) $r['user_id'];
         $r['disc'] = $r['disc'] === null ? null : (float) $r['disc'];
@@ -142,7 +144,24 @@ case 'smeta_for':   // сотрудник: смета клиенту или ди
         $art = kab_clean($art, 80);
         if ($art !== '') $items[$art] = max(1, min(9999, (int) $qty));
     }
-    if (!$items) reply(422, ['ok' => false, 'error' => 'empty']);
+    // ручная скидка по строкам и свои строки — только от сотрудника (владелец 05.11.2026); у клиента их нет, чтобы не подделать скидку
+    $ld = $extra = [];
+    if ($staff) {
+        foreach (array_slice(is_array($in['ld'] ?? null) ? $in['ld'] : [], 0, 300, true) as $k => $v) {
+            $k = kab_clean($k, 80);
+            if ($k !== '' && is_numeric($v)) $ld[$k] = max(0.0, min(50.0, round((float) $v, 1)));
+        }
+        foreach (array_slice(is_array($in['extra'] ?? null) ? $in['extra'] : [], 0, 100) as $x) {
+            $n = is_array($x) ? kab_clean($x['n'] ?? '', 200) : '';
+            if ($n === '') continue;
+            $extra[] = ['n' => $n, 'u' => kab_clean($x['u'] ?? '', 20) ?: 'шт.', 'q' => max(1, min(9999, (int) ($x['q'] ?? 1))),
+                'b' => is_numeric($x['b'] ?? null) ? round(max(0.0, min(1000000.0, (float) $x['b'])), 2) : null,
+                'd' => is_numeric($x['d'] ?? null) ? max(0.0, min(50.0, round((float) $x['d'], 1))) : null];
+        }
+    }
+    if (!$items && !$extra) reply(422, ['ok' => false, 'error' => 'empty']);
+    $ldJson = json_encode($ld, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT);
+    $exJson = json_encode($extra, JSON_UNESCAPED_UNICODE);
     $title = kab_clean($in['title'] ?? '', 120) ?: 'Смета от ' . date('d.m.Y');
     $doc = kab_clean($in['doc'] ?? '', 80);  // название документа — только из списка сотрудников
     $q = $db->prepare('SELECT 1 FROM doc_titles WHERE title = ?');
@@ -152,22 +171,22 @@ case 'smeta_for':   // сотрудник: смета клиенту или ди
     $json = json_encode($items, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT);
     $id = (int) ($in['id'] ?? 0);
     if ($id) {  // своя — только своя; клиенту — смета этого человека (сотрудник правит открытую из кабинета)
-        $q = $for ? $db->prepare('UPDATE smetas SET title = ?, doc = ?, items = ?, disc = ?, made_by = ?, updated_at = ? WHERE id = ? AND user_id = ?')
-            : $db->prepare('UPDATE smetas SET title = ?, doc = ?, items = ?, updated_at = ? WHERE id = ? AND user_id = ?');
-        $q->execute($for ? [$title, $doc, $json, $disc, $me['id'], kab_now(), $id, $owner['id']] : [$title, $doc, $json, kab_now(), $id, $me['id']]);
+        $q = $for ? $db->prepare('UPDATE smetas SET title = ?, doc = ?, items = ?, ld = ?, extra = ?, disc = ?, made_by = ?, updated_at = ? WHERE id = ? AND user_id = ?')
+            : $db->prepare('UPDATE smetas SET title = ?, doc = ?, items = ?, ld = ?, extra = ?, updated_at = ? WHERE id = ? AND user_id = ?');
+        $q->execute($for ? [$title, $doc, $json, $ldJson, $exJson, $disc, $me['id'], kab_now(), $id, $owner['id']] : [$title, $doc, $json, $ldJson, $exJson, kab_now(), $id, $me['id']]);
         $need($q->rowCount() > 0, 404);
     } else {
         $n = $db->prepare('SELECT COUNT(*) FROM smetas WHERE user_id = ?');
         $n->execute([$owner['id']]);
         if ((int) $n->fetchColumn() >= 100) reply(422, ['ok' => false, 'error' => 'limit']);
-        $db->prepare('INSERT INTO smetas (user_id, title, doc, items, disc, made_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-            ->execute([$owner['id'], $title, $doc, $json, $disc, $for ? $me['id'] : null, kab_now(), kab_now()]);
+        $db->prepare('INSERT INTO smetas (user_id, title, doc, items, ld, extra, disc, made_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            ->execute([$owner['id'], $title, $doc, $json, $ldJson, $exJson, $disc, $for ? $me['id'] : null, kab_now(), kab_now()]);
         $id = (int) $db->lastInsertId();
     }
     $sent = false;
     if ($for && !empty($in['notify'])) {  // написать боту можно, только если человек разрешил при входе
         $what = $doc !== '' ? mb_strtolower(mb_substr($doc, 0, 1)) . mb_substr($doc, 1) : 'смету';
-        $sent = kab_say($owner['tg_id'], 'AllVision подготовил для вас ' . $what . ' «' . $title . '» на hdl.by: ' . count($items) . ' поз.'
+        $sent = kab_say($owner['tg_id'], 'AllVision подготовил для вас ' . $what . ' «' . $title . '» на hdl.by: ' . (count($items) + count($extra)) . ' поз.'
             . ($disc > 0 ? ', скидка ' . rtrim(rtrim(number_format($disc, 1, ',', ''), '0'), ',') . ' %' : '') . '. Открыть: ' . kab_site() . '/kabinet/#smetas');
     }
     reply(200, ['ok' => true, 'id' => $id, 'title' => $title, 'sent' => $sent]);
