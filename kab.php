@@ -67,7 +67,7 @@ $leadRow = function (array $r) use ($staff): array {
     return $r;
 };
 // смета: правил сотрудник — ему кто, клиенту — что AllVision. udisc — личная скидка владельца сметы: сотрудник, открыв чужую смету, видит его цены
-$smetaSql = 'SELECT s.id, s.user_id, s.title, s.doc, s.disc, s.made_by, s.items, s.ld, s.extra, s.updated_at, s.edited_at, s.ver, u.name, u.tg_name, u.company, u.role, u.discount AS udisc,
+$smetaSql = 'SELECT s.id, s.user_id, s.title, s.doc, s.disc, s.made_by, s.items, s.ld, s.extra, s.updated_at, s.edited_at, s.ver, s.project, u.name, u.tg_name, u.company, u.role, u.discount AS udisc,
     m.name AS made_name, m.tg_name AS made_tg, e.name AS edited_name, e.tg_name AS edited_tg
     FROM smetas s JOIN users u ON u.id = s.user_id LEFT JOIN users m ON m.id = s.made_by LEFT JOIN users e ON e.id = s.edited_by';
 $smetaRow = function (array $r) use ($staff): array {
@@ -82,6 +82,7 @@ $smetaRow = function (array $r) use ($staff): array {
     $r['user_id'] = (int) $r['user_id'];
     $r['ver'] = (int) $r['ver'];
     $r['disc'] = $r['disc'] === null ? null : (float) $r['disc'];
+    $r['project'] = $staff ? (string) $r['project'] : '';  // проект (папка объекта) — только сотрудникам
     $r['made_by'] = $r['made_by'] === null ? null : (int) $r['made_by'];
     $r['made_name'] = $staff && $r['made_by'] ? ($r['made_name'] ?: $r['made_tg']) : null;  // клиенту — только что смету подготовила AllVision
     unset($r['made_tg']);
@@ -237,6 +238,13 @@ case 'smeta_for':   // сотрудник: смета клиенту или ди
             ->execute([$owner['id'], $title, $doc, $json, $ldJson, $exJson, $disc, $for ? $me['id'] : null, kab_now(), kab_now()]);
         $id = (int) $db->lastInsertId();
     }
+    // «Сохранить в проект» (сотрудник, своя смета): проект — из списка папок объектов
+    if ($staff && !$for && ($proj = kab_clean($in['project'] ?? '', 200)) !== '') {
+        $q = $db->prepare('SELECT COUNT(*) FROM projects WHERE name = ?');
+        $q->execute([$proj]);
+        $need((int) $q->fetchColumn() > 0, 404);
+        $db->prepare('UPDATE smetas SET project = ?, proj_at = NULL WHERE id = ?')->execute([$proj, $id]);
+    }
     $q = $db->prepare('SELECT ver FROM smetas WHERE id = ?');
     $q->execute([$id]);
     $ver = (int) $q->fetchColumn();
@@ -302,6 +310,41 @@ case 'smeta_upd':  // сотрудник: «Сохранить» в открыт
         $sent = kab_say($sm['tg_id'], 'AllVision изменил вашу смету «' . $title . '» на hdl.by: ' . (count($items) + count($extra)) . ' поз.'
             . ($disc > 0 ? ', скидка ' . kab_pct((float) $disc) : '') . '. Открыть: ' . kab_site() . '/kabinet/#smetas');
     reply(200, ['ok' => true, 'sent' => $sent, 'ver' => (int) $sm['ver'] + 1, 'title' => $title, 'disc' => $disc]);
+
+case 'projects':  // сотрудник: список проектов (папки объектов) и сметы в них
+    $need($staff);
+    $names = $db->query('SELECT name FROM projects ORDER BY pos, name')->fetchAll(PDO::FETCH_COLUMN);
+    $q = $db->query($smetaSql . " WHERE s.project <> '' ORDER BY s.updated_at DESC");
+    reply(200, ['ok' => true, 'projects' => $names, 'smetas' => array_map($smetaRow, $q->fetchAll()), 'synced' => kab_kv_get('proj_sync')]);
+
+case 'proj_set':  // компьютер AllVision: список папок D:\Work\Объекты
+    $need(kab_build_ok());
+    $need($post, 405);
+    $names = array_values(array_unique(array_filter(array_map(function ($n) { return kab_clean((string) $n, 200); }, (array) ($in['names'] ?? [])))));
+    $db->beginTransaction();
+    $db->exec('DELETE FROM projects');
+    $ins = $db->prepare('INSERT INTO projects (name, pos) VALUES (?, ?)');
+    foreach ($names as $i => $n) $ins->execute([$n, $i]);
+    $db->commit();
+    $db->prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)')->execute(['proj_sync', json_encode(['at' => kab_now(), 'n' => count($names)])]);
+    reply(200, ['ok' => true, 'n' => count($names)]);
+
+case 'proj_export':  // компьютер AllVision: сметы проектов, которые ещё не лежат в папке объекта в последней версии
+    $need(kab_build_ok());
+    $q = $db->query("SELECT s.id, s.title, s.doc, s.project, s.items, s.ld, s.extra, s.disc, s.updated_at, u.name, u.tg_name FROM smetas s JOIN users u ON u.id = s.user_id
+        WHERE s.project <> '' AND (s.proj_at IS NULL OR s.proj_at < s.updated_at) ORDER BY s.id");
+    reply(200, ['ok' => true, 'smetas' => array_map(function ($r) {
+        return ['id' => (int) $r['id'], 'title' => $r['title'], 'doc' => (string) $r['doc'], 'project' => $r['project'], 'items' => json_decode((string) $r['items'], true) ?: [],
+            'ld' => json_decode((string) $r['ld'], true) ?: [], 'extra' => json_decode((string) $r['extra'], true) ?: [], 'disc' => $r['disc'] === null ? null : (float) $r['disc'],
+            'updated_at' => $r['updated_at'], 'who' => $r['name'] ?: $r['tg_name']];
+    }, $q->fetchAll())]);
+
+case 'proj_done':  // компьютер AllVision: эти версии смет лежат в папках объектов
+    $need(kab_build_ok());
+    $need($post, 405);
+    $u = $db->prepare('UPDATE smetas SET proj_at = ? WHERE id = ?');
+    foreach ((array) ($in['done'] ?? []) as $d) $u->execute([(string) ($d['at'] ?? ''), (int) ($d['id'] ?? 0)]);
+    reply(200, ['ok' => true]);
 
 case 'smeta_del':
     $need($post, 405);

@@ -81,6 +81,11 @@ function kab_db(): PDO {
     // ver_by, ver_at — кто и когда сохранил последнюю версию (и заметку тоже): их называет «уже изменил(а)». edited_* — только состав, его видит клиент
     if (!in_array('ver_by', $smCols, true)) $alter('ALTER TABLE smetas ADD COLUMN ver_by INTEGER');
     if (!in_array('ver_at', $smCols, true)) $alter('ALTER TABLE smetas ADD COLUMN ver_at TEXT');
+    // проекты (владелец 07.11.2026): смета сотрудника в проекте — папке объекта D:\Work\Объекты на компьютере AllVision. Список папок присылает
+    // компьютер (cabinet_sync.py), он же забирает сметы проектов файлом Excel в папку объекта; proj_at — когда забрал последнюю версию
+    if (!in_array('project', $smCols, true)) $alter("ALTER TABLE smetas ADD COLUMN project TEXT DEFAULT ''");
+    if (!in_array('proj_at', $smCols, true)) $alter('ALTER TABLE smetas ADD COLUMN proj_at TEXT');
+    $db->exec('CREATE TABLE IF NOT EXISTS projects (name TEXT PRIMARY KEY, pos INTEGER DEFAULT 0)');
     $ldCols = array_column($db->query('PRAGMA table_info(leads)')->fetchAll(), 'name');
     // made_by — заявку оформил сотрудник (поиск клиента, владелец 06.11.2026); ver — как у смет; note — заметка для своих, клиент её не видит
     foreach (['sm' => "TEXT DEFAULT ''", 'items0' => 'TEXT', 'total0' => 'INTEGER', 'edited_by' => 'INTEGER', 'edited_at' => 'TEXT', 'made_by' => 'INTEGER',

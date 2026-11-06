@@ -731,6 +731,9 @@
     // во время правки сохраняет только полоса сверху: нижние «Сохранить в кабинет» и «Сохранить для клиента» сохраняли не туда (06.11.2026)
     const kp = $("[data-smeta-save]"), fp = $("[data-smeta-for]"), fb = $("[data-for-box]");
     if (kp) kp.hidden = !ME || edNow;
+    const pj = $("[data-smeta-proj]"), pb = $("[data-proj-box]");
+    if (pj) pj.hidden = !STAFF || edNow;
+    if (pb && edNow) pb.hidden = true;
     if (fp) fp.hidden = !STAFF || edNow;
     if (fb && edNow) fb.hidden = true;
     renderHints(r);
@@ -1256,6 +1259,43 @@
         setTimeout(() => { tmsg.textContent = ""; }, 5000);
       });
     }
+    // «Сохранить в проект» (владелец 07.11.2026): своя смета сотрудника в проекте — папке объекта D:\Work\Объекты. Компьютер AllVision
+    // кладёт её файлом Excel в папку объекта (cabinet_sync.py, раз в 10 минут). После сохранения корзина пустеет, дальше — вкладка «Проекты»
+    const projBtn = $("[data-smeta-proj]"), projBox = $("[data-proj-box]");
+    if (projBtn && projBox && staffMe) {
+      projBtn.addEventListener("click", async () => {
+        if (editing()) return;
+        if (!projBox.hidden) return projBox.scrollIntoView({ block: "center" });
+        const j = await kabApi("projects").catch(() => ({}));
+        if (!j.ok) { tmsg.textContent = "Не удалось загрузить список проектов."; return; }
+        let last = ""; try { last = localStorage.getItem("hdl-proj") || ""; } catch {}
+        projBox.innerHTML = `<h3>Сохранить в проект</h3>` + (j.projects.length
+          ? `<div class="row3"><label>Проект *<select name="project"><option value="">— выберите проект —</option>${j.projects.map(n => `<option${n === last ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></label>`
+            + `<label>Название сметы<input name="title" maxlength="120" placeholder="Например: щит, 1 этаж"></label></div>`
+            + '<p class="muted small">Проекты — папки объектов на компьютере AllVision. Смета сохранится в вашем кабинете в этом проекте, а в течение 10 минут её копия файлом Excel появится в папке объекта, в «Сметы с сайта».</p>'
+            + '<button class="btn" type="submit">Сохранить в проект</button> <button class="btn ghost" type="button" data-proj-close>Закрыть</button><p class="msg" role="status"></p>'
+          : '<p>Список проектов ещё не пришёл с компьютера AllVision — он обновляется раз в 10 минут. Попробуйте чуть позже.</p><button class="btn ghost" type="button" data-proj-close>Закрыть</button>');
+        projBox.hidden = false;
+        projBox.scrollIntoView({ block: "center" });
+      });
+      projBox.addEventListener("click", ev => { if (ev.target.closest("[data-proj-close]")) projBox.hidden = true; });
+      projBox.addEventListener("submit", async ev => {
+        ev.preventDefault();
+        if (guard() || editing()) return;
+        const P = projBox.elements, msg = $(".msg", projBox), btn = $("button[type=submit]", projBox), sm = smGet() || {};
+        if (!P.project.value) { msg.className = "msg bad"; msg.textContent = "Выберите проект."; return; }
+        if (!Object.keys(load()).length && !(sm.extra || []).length) { msg.className = "msg bad"; msg.textContent = "Список пуст — сохранять нечего."; return; }
+        const ni = ownNoName(sm);
+        if (ni >= 0) { NONAME = ni; renderSmeta(); msg.className = "msg bad"; msg.textContent = "У своей строки нет названия — впишите его или уберите строку (×)."; return; }
+        btn.disabled = true; msg.className = "msg"; msg.textContent = "Сохраняем…";
+        const r = await kabApi("smeta_save", { title: P.title.value, doc: docNow(), items: load(), ld: obj(sm.ld), extra: sm.extra || [], d: sm.d ?? null, project: P.project.value }).catch(() => ({}));
+        btn.disabled = false;
+        if (!r.ok) { msg.className = "msg bad"; msg.textContent = r.error === "limit" ? "У вас уже 100 смет — удалите старые." : r.status === 404 ? "Такого проекта больше нет — обновите страницу." : "Не удалось сохранить."; return; }
+        try { localStorage.setItem("hdl-proj", P.project.value); sessionStorage.setItem("hdl-flash", JSON.stringify({ text: `Смета «${r.title}» сохранена в проект «${P.project.value}». Копия в папке объекта появится в течение 10 минут.`, sid: r.id })); } catch {}
+        save({}); docSet(""); smSet(null);
+        location.href = "/kabinet/#projects";
+      });
+    }
     // этап 2 (владелец 05.11.2026): сотрудник сохраняет смету клиенту или дилеру — у человека в кабинете, со скидкой в смете вместо личной,
     // названием документа и сообщением в Telegram. Пока меняют скидку, таблица считает с ней — видно то, что увидит человек; закрыли без
     // сохранения — как было. Пустая «Скидка в смете» — личная скидка человека, а не 0 % (06.11.2026)
@@ -1733,6 +1773,25 @@
       flash();
     };
 
+    // проекты (владелец 07.11.2026): папки объектов с компьютера AllVision, в каждой — сметы, сохранённые «Сохранить в проект»
+    const tabProjects = async () => {
+      wait();
+      const j = await kabApi("projects").catch(() => ({}));
+      if (!j.ok) return failed();
+      SHOWN = { leads: [], smetas: j.smetas };
+      const by = {};
+      j.smetas.forEach(s => { (by[s.project] = by[s.project] || []).push(s); });
+      const names = j.projects.concat(Object.keys(by).filter(n => !j.projects.includes(n)));  // папку убрали, а сметы в проекте остались — показываем
+      const full = names.filter(n => by[n]), empty = names.filter(n => !by[n]);
+      panel.innerHTML = (names.length ? "" : "<p>Список проектов ещё не пришёл с компьютера AllVision — он обновляется раз в 10 минут.</p>")
+        + full.map(n => `<section class="kab-proj"><h3>${esc(n)} <span class="muted small">· ${by[n].length} ${by[n].length % 10 === 1 && by[n].length % 100 !== 11 ? "смета" : [2, 3, 4].includes(by[n].length % 10) && ![12, 13, 14].includes(by[n].length % 100) ? "сметы" : "смет"}${j.projects.includes(n) ? "" : " · папки на компьютере больше нет"}</span></h3>${smetaTable(by[n], true)}</section>`).join("")
+        + (empty.length ? `<p class="muted small kab-proj-empty"><b>Без смет:</b> ${empty.map(esc).join(" · ")}</p>` : "")
+        + '<p class="muted small">Проекты — папки «Объекты» на компьютере AllVision (папки на «_» не показываем). Смету в проект сохраняют на странице сметы кнопкой «Сохранить в проект»; копия файлом Excel ложится в папку объекта, в «Сметы с сайта», в течение 10 минут после каждого сохранения.'
+        + (j.synced && j.synced.at ? ` Список проектов обновлён ${esc(j.synced.at.slice(8, 10) + "." + j.synced.at.slice(5, 7) + " " + j.synced.at.slice(11, 16))}.` : "") + "</p>";
+      panel.onclick = listClicks;
+      flash();
+    };
+
     const tabLeads = async () => {
       wait();
       const j = await kabApi("leads").catch(() => ({}));
@@ -2072,7 +2131,7 @@
       if (user.status === "form") { main.before(form); setupForm(true); return show(form); }
       show(main); head();
       // документы — клиентам (владелец 03.11.2026: у дилера их нет), материалы — только сотрудникам
-      const tabs = staff ? [["users", "Пользователи"], ["leads", "Заявки"], ["smetas", "Сметы"], ["cat", "Ассортимент"], ["docs", "Документы"], ["mats", "Материалы"], ["profile", "Мои данные"]]
+      const tabs = staff ? [["users", "Пользователи"], ["leads", "Заявки"], ["smetas", "Сметы"], ["projects", "Проекты"], ["cat", "Ассортимент"], ["docs", "Документы"], ["mats", "Материалы"], ["profile", "Мои данные"]]
         : [["smetas", "Сметы"], ["leads", "Заявки"], ...(user.role === "client" ? [["docs", "Документы"]] : []), ["profile", "Мои данные"]];
       // карточка человека из поиска: #p=u<номер> или #p=t<телефон> — вкладки без выбранной (владелец 06.11.2026)
       const pk = staff && /^#p=[ut]\d+$/.test(location.hash) ? location.hash.slice(3) : "";
@@ -2082,7 +2141,7 @@
       edBanner();
       PERSON = null;
       if (pk) return tabPerson(pk);
-      ({ users: tabUsers, leads: tabLeads, smetas: tabSmetas, cat: tabCat, docs: tabDocs, mats: tabMats, profile: tabProfile })[cur]();
+      ({ users: tabUsers, leads: tabLeads, smetas: tabSmetas, projects: tabProjects, cat: tabCat, docs: tabDocs, mats: tabMats, profile: tabProfile })[cur]();
     };
     addEventListener("hashchange", () => { if (user && user.status !== "form") route(); });
     $("[data-kab-logout]").addEventListener("click", async () => {

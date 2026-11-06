@@ -1032,3 +1032,6 @@ body[data-page=catalog] .hsearch { display: none; }
 .kab-cat b { font-weight: 600; color: var(--muted); margin-left: 2px; }
 .kab-cat:hover { border-color: var(--brand); }
 .kab-cat.on { background: var(--brand); border-color: var(--brand); color: #fff; } .kab-cat.on b { color: #fff; }
+
+.kab-proj { margin: 0 0 22px; } .kab-proj h3 { margin: 0 0 8px; font-size: 19px; }
+.kab-proj-empty { margin: 4px 0 14px; }
