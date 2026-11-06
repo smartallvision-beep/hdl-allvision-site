@@ -1015,3 +1015,6 @@ body[data-page=catalog] .hsearch { display: none; }
   .kitp-row .cfg-step { grid-area: step; justify-content: flex-start; } .kitp-sum { grid-area: sum; }
   .kitp-img img { width: 56px; height: 56px; }
 }
+
+.for-next { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.for-next .btn { padding: 9px 16px; font-size: 15px; }

@@ -1255,7 +1255,25 @@
         if (!editing()) { smSet(before); renderSmeta(); }
         syncReplace(); F.title.value = r.title;
         msg.className = "msg ok";
-        msg.textContent = `Сохранено у «${who}»: «${r.title}».` + (F.notify.checked ? (r.sent ? " Сообщение в Telegram отправлено." : " Сообщение в Telegram не ушло: человек не разрешил боту писать — сообщите сами.") : "");
+        msg.innerHTML = esc(`Сохранено у «${who}»: «${r.title}».` + (F.notify.checked ? (r.sent ? " Сообщение в Telegram отправлено." : " Сообщение в Telegram не ушло: человек не разрешил боту писать — сообщите сами.") : ""))
+          // дальше — открыть эту смету в правке или в карточку клиента (владелец 06.11.2026)
+          + `<span class="for-next"><button class="btn" type="button" data-for-open="${+r.id}">Открыть смету</button> <a class="btn ghost" href="/kabinet/#p=u${uid}" data-for-person="${+r.id}">К клиенту →</a></span>`;
+      });
+      forBox.addEventListener("click", async ev => {
+        const pp = ev.target.closest("[data-for-person]");
+        if (pp) { try { sessionStorage.setItem("hdl-flash", JSON.stringify({ text: `Смета «${F.title.value}» сохранена.`, sid: +pp.dataset.forPerson })); } catch {} return; }
+        const ob = ev.target.closest("[data-for-open]"); if (!ob) return;
+        ob.disabled = true;
+        const j = await kabApi("smeta_get&id=" + encodeURIComponent(ob.dataset.forOpen)).catch(() => ({}));
+        ob.disabled = false;
+        if (!j.ok) { const m = $(".msg", forBox); m.className = "msg bad"; m.textContent = "Не удалось открыть смету — откройте её из кабинета."; return; }
+        const s = j.smeta;  // как «Открыть и поправить» в кабинете: правка этой сметы, назад — в карточку клиента
+        save(obj(s.items)); docSet(s.doc);
+        const x = { d: s.disc, id: s.id, uid: s.user_id, title: s.title, ld: obj(s.ld), extra: s.extra || [], edit: "s", who: s.name || "", wtg: true,
+          v: s.ver, k: Math.random().toString(36).slice(2, 10), back: "/kabinet/#p=u" + s.user_id, ud: +s.udisc || 0 };
+        smSet(x);
+        const y = smGet(); y.saved = sig(y); smSet(y);
+        location.replace("/smeta/");
       });
     }
     // ссылка на смету: в ней только артикулы и количество. Скидки и свои строки по ссылке не передаются — предупреждаем (06.11.2026)
