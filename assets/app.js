@@ -835,7 +835,7 @@
     const lockStale = () => {
       const note = $("[data-stale]"), m = smGet();
       [box, $("[data-sm-staff]"), $("[data-sm-edit]"), $("[data-ed-strip]"), $("[data-smeta-tools]"), $("[data-smeta-form]"), $("[data-smeta-hints]"), $("[data-for-box]"), docBox].forEach(el => { if (el) el.inert = true; });
-      [$("[data-sm-edit]"), $("[data-ed-strip]")].forEach(el => { if (el) el.hidden = true; });  // мёртвые кнопки не показываем
+      [$("[data-sm-edit]"), $("[data-ed-strip]"), $("[data-ed-bottom]")].forEach(el => { if (el) el.hidden = true; });  // мёртвые кнопки не показываем
       document.body.classList.add("stale"); document.body.classList.remove("editing"); document.documentElement.classList.remove("editing");
       if (askBox?.open) askBox.close();
       if (!note) return true;
@@ -988,17 +988,23 @@
       }
       const cls = "ed-state " + (nw ? "new" : d ? "dirty" : "clean");
       const text = nw ? (kind === "nl" ? "● Заявка ещё не создана" : "● Смета ещё не создана") : d ? "● Есть несохранённые изменения" : "✓ Всё сохранено" + (m.savedAt ? " в " + m.savedAt : "") + diff;
-      const btns = nw ? `<button class="btn" type="button" data-ed-save data-ret>Создать и вернуться</button><button class="btn ghost" type="button" data-ed-save>Создать</button>`
-        : d ? `<button class="btn" type="button" data-ed-save data-ret>Сохранить и вернуться</button><button class="btn ghost" type="button" data-ed-save>Сохранить</button>`
-          : `<button class="btn" type="button" data-ed-back>Вернуться к клиенту</button>${diff ? '<button class="btn ghost" type="button" data-ed-save>Сохранить по сегодняшним ценам</button>' : ""}`;
+      // кнопки видны всегда (владелец 07.11.2026): нечего сохранять — «Сохранить» серая; «Передать…» (смета) и «PDF» — рядом
+      const opt = (kind === "s" ? '<button class="btn ghost ed-opt" type="button" data-ed-move-go>Передать…</button>' : "") + '<button class="btn ghost ed-opt" type="button" data-ed-print>PDF</button>';
+      const btns = nw ? `<button class="btn" type="button" data-ed-save data-ret>Создать и вернуться</button><button class="btn ghost" type="button" data-ed-save>Создать</button>${opt}`
+        : d ? `<button class="btn" type="button" data-ed-save data-ret>Сохранить и вернуться</button><button class="btn ghost" type="button" data-ed-save>Сохранить</button>${opt}`
+          : (diff ? '<button class="btn ghost" type="button" data-ed-save>Сохранить по сегодняшним ценам</button>' : '<button class="btn ghost off" type="button" disabled title="Всё сохранено — менять нечего">Сохранить</button>')
+            + `${opt}<button class="btn" type="button" data-ed-back>Вернуться к клиенту</button>`;
       if (st.className !== cls || st.textContent !== text) { st.className = cls; st.textContent = text; }
       if (bt.dataset.k !== btns) { bt.dataset.k = btns; bt.innerHTML = btns; }
+      const bot = $("[data-ed-bottom]");  // те же кнопки под таблицей — не прокручивать наверх
+      if (bot) { bot.hidden = false; if (bot.dataset.k !== btns) { bot.dataset.k = btns; bot.innerHTML = `<span class="${cls}">${esc(text)}</span><span class="ed-btns">${btns}</span>`; } else $("span", bot).textContent = text; }
       count();
     };
     const drawEdit = () => {
       const m = smGet() || {}, on = editing() && !stale();
       if (edBox) edBox.hidden = !on;
       if (edStrip) edStrip.hidden = !on;
+      if (!on && $("[data-ed-bottom]")) $("[data-ed-bottom]").hidden = true;
       document.body.classList.toggle("editing", on);
       document.documentElement.classList.toggle("editing", on);
       if (!on || !edBox || !edStrip) return;
@@ -1052,7 +1058,7 @@
       if (kind === "nl" && !m.uid && (String(m.ph || "").match(/\d/g) || []).length < 7) { $("[data-ed-phone]", edBox)?.focus(); return say("Укажите телефон.", "bad"); }
       const tg = !!$("[data-ed-tg]", edBox)?.checked, doc = docNow(), rows = leadRows(m);  // строки — по тому же снимку, что и состав
       const base = { items: L0, ld: obj(m.ld), extra: m.extra || [], doc, notify: tg };
-      saving = true; $$("[data-ed-save]", edStrip).forEach(b => { b.disabled = true; }); say("Сохраняем…");
+      saving = true; $$("[data-ed-save]").forEach(b => { b.disabled = true; }); say("Сохраняем…");
       let r = {}, metaOnly = false;
       try {
         if (kind === "l") {
@@ -1069,7 +1075,7 @@
         else if (kind === "nl") r = await kabApi("lead_new", { ...base, user_id: m.uid || 0, name: m.who || "", phone: m.ph || "", d: m.d ?? null, ud: m.ud ?? null, note: m.nt || "", rows }).catch(() => ({}));
         else r = await kabApi("smeta_for", { ...base, user_id: m.uid, title: m.title || "", disc: m.d ?? null, id: 0 }).catch(() => ({}));  // пустая скидка — личная скидка клиента
       } catch {}
-      saving = false; $$("[data-ed-save]", edStrip).forEach(b => { b.disabled = false; });
+      saving = false; $$("[data-ed-save]").forEach(b => { b.disabled = false; });
       if (stale()) {  // пока сохраняли, в другой вкладке открыли другой документ — эта вкладка его не трогает, но итог сохранения говорит
         if (r.ok && !r.same) staleDone = `<b>${kind === "l" || kind === "nl" ? "Заявка" : "Смета"} сохранена в ${hhmm()}.</b> `;
         lockStale();
@@ -1112,7 +1118,14 @@
     if (edBox && edStrip && staffMe) {
       onRender = drawState;
       drawEdit();
-      edStrip.addEventListener("click", async ev => {
+      const stripClick = async ev => {
+        if (ev.target.closest("[data-ed-print]")) return window.print();
+        if (ev.target.closest("[data-ed-move-go]")) {  // «Передать…» — открыть выбор человека в блоке правки
+          const mv = $("[data-ed-move]", edBox), box = $("[data-ed-mv]", edBox);
+          if (mv && box && box.hidden) mv.click();
+          (box || mv)?.scrollIntoView({ block: "center", behavior: "smooth" });
+          return;
+        }
         const bk = ev.target.closest("[data-ed-back]");
         if (bk) {
           if (bk.tagName === "A" && (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button === 1)) return;  // в новой вкладке — как обычная ссылка
@@ -1128,7 +1141,9 @@
         if (ev.target.closest("[data-ed-force]")) return saveDoc(false, true);
         const sv = ev.target.closest("[data-ed-save]");
         if (sv) saveDoc(sv.hasAttribute("data-ret"));
-      });
+      };
+      edStrip.addEventListener("click", stripClick);
+      $("[data-ed-bottom]")?.addEventListener("click", stripClick);
       // имя, телефон, название, заметка — сразу в память: не пропадут при переходе в каталог за позициями
       edBox.addEventListener("input", ev => {
         const f = { "data-ed-name": "who", "data-ed-phone": "ph", "data-ed-title": "title", "data-ed-note": "nt" };

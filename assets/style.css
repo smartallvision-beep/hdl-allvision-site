@@ -1041,3 +1041,12 @@ body[data-page=catalog] .hsearch { display: none; }
 
 .kab-sub { margin: 4px 0 10px; font-size: 19px; }
 .st.ok { background: #e5f4ec; color: #1f7a4d; }
+
+/* кнопки правки всегда видны: сверху и под таблицей (07.11.2026) */
+.ed-strip .btn.off, .ed-bottom .btn.off { opacity: .45; cursor: default; }
+.ed-bottom { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 14px 0 6px; padding: 12px 0; border-top: 2px solid var(--brand); }
+.ed-bottom[hidden] { display: none; }
+.ed-bottom .ed-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.ed-bottom .btn { padding: 8px 14px; font-size: 15px; }
+.ed-bottom .ed-state.clean { color: var(--ok); } .ed-bottom .ed-state.dirty, .ed-bottom .ed-state.new { color: var(--brand); font-weight: 600; }
+@media (max-width: 640px) { .ed-strip .ed-opt, .ed-strip .btn.off { display: none; } .ed-bottom .ed-btns { margin-left: 0; width: 100%; } }
