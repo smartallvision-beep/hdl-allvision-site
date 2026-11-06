@@ -119,6 +119,10 @@
   const editing = () => { const m = smGet(); return STAFF && !!(m && m.edit); };
   const edName = m => !m || !m.edit ? "" : ({ l: `заявки №${m.lid}`, s: `сметы «${m.title || ""}»`, nl: "новой заявки", ns: "новой сметы" }[m.edit] || "") + (m.who ? ` (${m.who})` : "");
   const edTo = () => { const m = smGet(); return STAFF && m && m.edit ? (m.edit === "l" ? ` в заявку №${m.lid}` : " в правку") : ""; };  // «Добавлено в заявку №12»
+  // кнопка «В смету» во время правки называет, куда кладёт: «В заявку №12» (06.11.2026)
+  const addLabel = () => { const m = smGet(); return !(STAFF && m && m.edit) ? "В смету" : m.edit === "l" ? `В заявку №${m.lid}` : m.edit === "nl" ? "В заявку" : "В смету"; };
+  // сколько позиций добавлено с тех пор, как из правки открыли каталог (m.cat0 — список на тот момент)
+  const catNew = (m, s) => !m || !m.cat0 ? [] : Object.keys(s).filter(k => (s[k] || 0) > (+m.cat0[k] || 0));
   const load = () => { try { return obj(JSON.parse(localStorage.getItem(KEY))); } catch { return {}; } };
   const save = s => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} count(); };
   const count = () => {
@@ -127,12 +131,33 @@
     // идёт правка — в шапке «Правка» вместо «Смета», что именно — в подсказке
     const m = smGet(), ed = STAFF && m && m.edit;
     $$(".smeta-link").forEach(a => { a.classList.toggle("editing", !!ed); a.title = ed ? "Открыта правка " + edName(m) : ""; const t = a.firstChild; if (t && t.nodeType === 3) t.textContent = ed ? "Правка " : "Смета "; });
+    catBack();
+  };
+  // каталог во время правки: под шапкой (на телефоне внизу) — «← Вернуться к заявке №12», кто клиент и сколько добавлено (06.11.2026)
+  const IN_CAT = location.pathname.startsWith("/katalog/");
+  const catBack = () => {
+    if (!IN_CAT) return;
+    const m = smGet(), on = !!(STAFF && m && m.edit);
+    let el = $("[data-cat-back]");
+    document.body.classList.toggle("cat-editing", on);
+    if (!on) { if (el) el.hidden = true; return; }
+    if (!el) { el = document.createElement("div"); el.className = "cat-back no-print"; el.setAttribute("data-cat-back", ""); $(".top")?.after(el); }
+    const n = catNew(m, load()).length, to = { l: `к заявке №${m.lid}`, s: "к смете", nl: "к новой заявке", ns: "к новой смете" }[m.edit] || "к правке";
+    el.hidden = false;
+    el.innerHTML = `<div class="wrap cat-back-in"><a class="btn" href="/smeta/">← Вернуться ${esc(to)}</a>`
+      + `<span>${m.who ? esc(m.who) + " · " : ""}${n ? `добавлено сейчас: ${n} поз.` : "добавляйте кнопкой «" + esc(addLabel()) + "»"}</span></div>`;
+    $$("[data-add-card]:not(.done), [data-add]").forEach(b => { if (/^В (смету|заявку)/.test(b.textContent)) b.textContent = addLabel(); });
   };
   // остатки правки после выхода (06.11.2026): без входа на сайт — ни скидок, ни своих строк из кабинета; правку сотрудника у клиента
   // на общем компьютере — целиком, вместе со списком
   { const m = smGet(); if (m && (!loggedIn() || (ME && !STAFF && m.edit))) { if (m.edit) { try { localStorage.removeItem(KEY); } catch {} docSet(""); } smSet(null); } }
   count();
+  // где были в каталоге (с фильтрами); пришли в каталог из меню, а не кнопкой «Каталог», — счёт добавленного тоже отсюда
+  const catAt = () => { if (IN_CAT && editing()) { const m = smGet(); m.catAt = location.pathname + location.search; if (!m.cat0) m.cat0 = load(); smSet(m); } };
+  catAt();
+  document.addEventListener("click", ev => { if (ev.target.closest("[data-cat-back] a")) catAt(); });
   addEventListener("pageshow", ev => { if (ev.persisted) count(); });  // «Назад» из кэша браузера — счётчик в шапке по памяти
+  addEventListener("storage", ev => { if (IN_CAT && [SM_KEY, KEY].includes(ev.key)) count(); });  // правку закрыли или сохранили в другой вкладке
   // подпись документа — то, что сохраняется. Совпадает с подписью при открытии или последнем сохранении — «Всё сохранено» (06.11.2026)
   const sortE = o => Object.entries(obj(o)).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
   const sig = (m, items) => {
@@ -278,7 +303,7 @@
     if (d) s[d] = (s[d] || 0) + q;  // драйвер — по одному на светильник
     save(s);
     add.textContent = (d ? "Добавлено с драйвером" : nodrv ? "Добавлено без драйвера" : "Добавлено") + edTo() + " ✓";
-    setTimeout(() => { add.textContent = "В смету"; }, 1600);
+    setTimeout(() => { add.textContent = addLabel(); }, 1600);
   });
   // галочка «драйвер у меня есть» открывает выбор светильника и кнопку; «Всё равно в смету без драйвера» — только с выбранным исполнением;
   // в строке сметы пометка «без драйвера»
@@ -434,8 +459,9 @@
   document.addEventListener("click", ev => {
     const b = ev.target.closest("[data-add-card]"); if (!b) return;
     const s = load(); s[b.dataset.addCard] = (s[b.dataset.addCard] || 0) + 1; save(s);
-    b.textContent = editing() ? "✓ В правке" : "✓ В смете"; b.classList.add("done");
-    setTimeout(() => { b.textContent = "В смету"; b.classList.remove("done"); }, 1600);
+    const m = smGet();
+    b.textContent = !editing() ? "✓ В смете" : m.edit === "l" ? `✓ В заявке №${m.lid}` : "✓ Добавлено"; b.classList.add("done");
+    setTimeout(() => { b.textContent = addLabel(); b.classList.remove("done"); }, 1600);
   });
 
   // ---- фото не загрузилось (сбой сети, защита хостинга, испорченная копия в кэше браузера): ещё две попытки мимо кэша ----
@@ -679,8 +705,9 @@
     let sum = 0, full = 0, ask = 0;
     ls.forEach(l => { if (l.t != null) { sum += l.t; full += l.rb * l.q; } else ask++; });
     sum = Math.round(sum * 100) / 100; full = Math.round(full * 100) / 100;
+    const fresh = new Set(edNow ? catNew(m, load()) : []);  // добавлено из каталога после «Каталог» — до сохранения
     const tr = ls.map(l => {
-      const own = !!l.x, k = esc(l.key);
+      const own = !!l.x, k = esc(l.key), isNew = !own && fresh.has(l.key);
       const dval = own ? (l.x.d ?? "") : (obj(m.ld)[l.a] ?? "");
       const dIn = `<input class="pct-in" type="number" min="0" max="50" step="0.5" value="${dval}" placeholder="${D0 || 0}" ${own ? `data-x="${l.i}" data-f="d"` : `data-ld="${k}"`} aria-label="Скидка в строке, %">`;
       const bIn = own ? `<input class="x-b" data-x="${l.i}" data-f="b" inputmode="decimal" value="${l.rb ?? ""}" placeholder="цена, BYN" aria-label="Цена, BYN">` : "";
@@ -689,11 +716,11 @@
       const mob = ed && (own || l.rb != null) ? `<div class="m-only ed-m">${own ? `<label>цена ${bIn}</label>` : ""}${l.rb != null ? `<label>скидка, % ${dIn}</label>` : ""}</div>` : "";
       const name = own ? (ed ? `<input class="x-n" data-x="${l.i}" data-f="n" value="${esc(l.n)}" placeholder="Название, например: монтаж и настройка" maxlength="200" aria-label="Название"${l.i === NONAME ? ' aria-invalid="true"' : ""}> <input class="x-u" data-x="${l.i}" data-f="u" value="${esc(l.u || "шт.")}" maxlength="20" aria-label="Единица">${mob}`
           : `${esc(l.n)}<br><span class="muted small">${esc(l.u || "шт.")}</span>`)
-        : `<a href="${esc(l.it.u)}">${esc(l.n)}</a><br><span class="muted small">${esc(l.a)}</span>${mob}`;
+        : `<a href="${esc(l.it.u)}">${esc(l.n)}</a><br><span class="muted small">${esc(l.a)}</span>${isNew ? ' <span class="from-cat-t">добавлено из каталога</span>' : ""}${mob}`;
       const qty = own ? (ed ? `<input class="x-q" type="number" min="1" value="${l.q}" data-x="${l.i}" data-f="q" aria-label="Количество">` : `${l.q}`)
         : `<div class="qty"><button type="button" data-d="-1" data-a="${k}" aria-label="Меньше">−</button><input type="number" min="1" value="${l.q}" data-set="${k}" aria-label="Количество"><button type="button" data-d="1" data-a="${k}" aria-label="Больше">+</button></div>`;
       const price = own && ed ? bIn : money(l.rb);
-      return `<tr${own ? ' class="own"' : ""}><td class="hide-m">${!own && l.it.t ? `<img src="${esc(l.it.t)}" alt="">` : ""}</td><td>${name}</td><td>${qty}</td><td class="num hide-m">${price}</td>`
+      return `<tr${own ? ' class="own"' : isNew ? ' class="from-cat"' : ""}><td class="hide-m">${!own && l.it.t ? `<img src="${esc(l.it.t)}" alt="">` : ""}</td><td>${name}</td><td>${qty}</td><td class="num hide-m">${price}</td>`
         + (showD ? `<td class="num hide-m">${dcell}</td><td class="num off">${l.t != null && l.off ? "−" + fmt(l.off) + " BYN" : ""}</td>` : "")
         + `<td class="num">${money(l.t)}</td><td class="no-print">${own ? (ed ? `<button class="rm" type="button" data-xrm="${l.i}" aria-label="Убрать">×</button>` : "") : `<button class="rm" type="button" data-rm="${k}" aria-label="Убрать">×</button>`}</td></tr>`;
     }).join("");
@@ -839,6 +866,16 @@
           || (q.length >= 2 ? '<li class="muted">В каталоге не нашлось — добавьте своей строкой.</li>' : "");
       });
       stBox.addEventListener("click", ev => {
+        const ca = ev.target.closest("[data-sm-cat]");
+        if (ca) {
+          const m = smGet();
+          if (!editing() || guard()) return;  // без правки — обычная ссылка на каталог
+          ev.preventDefault();
+          if (!m.cat0) m.cat0 = load();  // повторный заход в каталог до сохранения — подсветка с первого раза
+          smSet(m);
+          location.href = m.catAt || "/katalog/";
+          return;
+        }
         const ad = ev.target.closest("[data-sm-add]");
         if (ad) { if (guard()) return; const s = load(); s[ad.dataset.smAdd] = (s[ad.dataset.smAdd] || 0) + 1; save(s); renderSmeta(); ad.textContent = `Добавлено: ${s[ad.dataset.smAdd]} шт.`; }
         if (ev.target.closest("[data-sm-own]")) {
@@ -995,6 +1032,7 @@
         : r.status === 403 ? "Нужен вход сотрудника." : r.status === 404 ? "Не нашли: возможно, удалили или заблокировали." : "Не удалось сохранить. Проверьте связь и нажмите ещё раз.", "bad");
       // подпись сохранённого — по состоянию на момент нажатия: правки, сделанные пока шло сохранение, остаются несохранёнными
       const cur = smGet() || m, next = { ...cur };
+      delete next.cat0;  // сохранили — «добавлено из каталога» больше не подсвечиваем
       if (kind === "nl") Object.assign(next, { edit: "l", lid: r.id, title: `Заявка №${r.id}`, status: "work", had: !empty });
       if (kind === "ns") Object.assign(next, { edit: "s", id: r.id, title: r.title, d: r.disc ?? null });
       if (kind === "s" && r.title) next.title = r.title;
