@@ -1180,7 +1180,13 @@
         const title = window.prompt("Название сметы, например «Квартира, ул. Притыцкого»:", "");
         if (title === null) return;
         const j = await kabApi("smeta_save", { title, doc: docNow(), items: load(), ld: obj(sm.ld), extra: sm.extra || [], d: sm.d ?? null, sid: sm.id || 0, lid: sm.lid || 0 }).catch(() => ({}));
-        tmsg.textContent = j.ok ? `Сохранено в кабинете: «${j.title}»` : j.status === 401 ? "Войдите в кабинет заново, затем сохраните." : "Не удалось сохранить.";
+        if (j.ok) {  // список переносится в смету кабинета, корзина пустеет; дальше — кабинет, вкладка «Сметы», эта смета подсвечена (владелец 06.11.2026)
+          try { sessionStorage.setItem("hdl-flash", JSON.stringify({ text: `Смета «${j.title}» сохранена в кабинете.`, sid: j.id })); } catch {}
+          save({}); docSet(""); smSet(null);
+          location.href = "/kabinet/#smetas";
+          return;
+        }
+        tmsg.textContent = j.status === 401 ? "Войдите в кабинет заново, затем сохраните." : "Не удалось сохранить.";
         setTimeout(() => { tmsg.textContent = ""; }, 5000);
       });
     }
