@@ -77,9 +77,11 @@
   }).catch(() => {});
 
   // ---- высота шапки для перехода к форме по ссылке (style.css, section[id]): на компьютере шапка в две строки, на телефоне в одну ----
-  const topH = () => { const t = $(".top"); if (t) document.documentElement.style.setProperty("--top-h", t.offsetHeight + "px"); };
+  const topH = () => { const t = $(".top"); if (t && !t.matches(".open, .cat-open, .search-open")) document.documentElement.style.setProperty("--top-h", t.offsetHeight + "px"); };
   topH();
   addEventListener("resize", topH);
+  // с открытым меню шапка в разы выше: закрыли меню, каталог или поиск — меряем заново (иначе строка правки уезжала за экран, 06.11.2026)
+  if ($(".top")) new MutationObserver(topH).observe($(".top"), { attributes: true, attributeFilter: ["class"] });
 
   // ---- cookie: окно, пока не выбрали «Принять» или «Отклонить»; выбор в памяти браузера, после «no» Метрика не грузится ----
   const CK = "hdl-cookie";
@@ -94,24 +96,52 @@
 
   // ---- смета: { артикул: количество } ----
   const KEY = "hdl-smeta";
+  // объект, а не массив: пустой состав с сервера раньше приходил как [] — в массиве скидки в строках и новые позиции молча терялись (06.11.2026)
+  const obj = v => v && typeof v === "object" && !Array.isArray(v) ? v : {};
   // название документа сметы («Коммерческое предложение»…) — идёт вместе со списком: по ссылке, из кабинета (владелец 05.11.2026)
   const DOC_KEY = "hdl-doc", DOC0 = "Список для сметы";
   const docGet = () => { try { return localStorage.getItem(DOC_KEY) || DOC0; } catch { return DOC0; } };
   const docSet = d => { try { if (d && d !== DOC0) localStorage.setItem(DOC_KEY, d); else localStorage.removeItem(DOC_KEY); } catch {} };
-  // смета из кабинета (этап 2): { d — скидка в смете вместо личной (null — личная), id, uid — чья, title }. Приходит только из кабинета:
-  // ссылкой скидку не передать. Список опустел или пришёл по ссылке — сбрасывается
+  // названия документа с сервера (страница сметы). Пока не пришли — название берётся из памяти, а не из заголовка страницы:
+  // иначе быстрое «Сохранить» стирало название (06.11.2026)
+  let DOCS = null;
+  const docNow = () => { const h = $("[data-doc-h]"), t = DOCS && h ? h.textContent || DOC0 : docGet(); return t === DOC0 ? "" : t; };
+  // смета из кабинета: d — скидка в смете (null — личная), ld, extra, id или lid, uid — чья, title. У сотрудника ещё: edit — что правится,
+  // ud — личная скидка клиента, who, ph, wtg — есть ли кабинет, v — версия, saved — подпись сохранённого, k — метка вкладки, back — куда вернуться.
+  // Приходит только из кабинета: ссылкой скидку не передать
   const SM_KEY = "hdl-sm";
-  const smGet = () => { try { return JSON.parse(localStorage.getItem(SM_KEY)) || null; } catch { return null; } };
+  const smGet = () => { try { const m = JSON.parse(localStorage.getItem(SM_KEY)) || null; if (m) m.ld = obj(m.ld); return m; } catch { return null; } };
   const smSet = m => { try { if (m) localStorage.setItem(SM_KEY, JSON.stringify(m)); else localStorage.removeItem(SM_KEY); } catch {} };
   // скидка, по которой считается смета: скидка сметы, иначе личная. Сотрудник, открыв чужую смету или заявку, видит её с личной скидкой
   // клиента (m.ud), а не со своей
-  const effD = () => { const m = smGet(); return m && m.d != null ? +m.d : m && m.ud != null ? +m.ud : DISC; };
-  // сотрудник правит открытую из кабинета заявку (m.edit = "l", m.lid) или смету ("s", m.id) — владелец 06.11.2026
+  const effD = () => { const m = smGet(); return m && m.d != null ? +m.d : STAFF && m && m.ud != null ? +m.ud : DISC; };
+  // сотрудник правит открытую из кабинета заявку (m.edit «l», m.lid) или смету («s», m.id), новую — «nl» / «ns» (владелец 06.11.2026)
   const editing = () => { const m = smGet(); return STAFF && !!(m && m.edit); };
-  const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } };
+  const edName = m => !m || !m.edit ? "" : ({ l: `заявки №${m.lid}`, s: `сметы «${m.title || ""}»`, nl: "новой заявки", ns: "новой сметы" }[m.edit] || "") + (m.who ? ` (${m.who})` : "");
+  const edTo = () => { const m = smGet(); return STAFF && m && m.edit ? (m.edit === "l" ? ` в заявку №${m.lid}` : " в правку") : ""; };  // «Добавлено в заявку №12»
+  const load = () => { try { return obj(JSON.parse(localStorage.getItem(KEY))); } catch { return {}; } };
   const save = s => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} count(); };
-  const count = () => { const n = Object.values(load()).reduce((a, b) => a + b, 0); $$("[data-smeta-count]").forEach(el => el.textContent = n); };
+  const count = () => {
+    const n = Object.values(load()).reduce((a, b) => a + b, 0);
+    $$("[data-smeta-count]").forEach(el => el.textContent = n);
+    // идёт правка — в шапке «Правка» вместо «Смета», что именно — в подсказке
+    const m = smGet(), ed = STAFF && m && m.edit;
+    $$(".smeta-link").forEach(a => { a.classList.toggle("editing", !!ed); a.title = ed ? "Открыта правка " + edName(m) : ""; const t = a.firstChild; if (t && t.nodeType === 3) t.textContent = ed ? "Правка " : "Смета "; });
+  };
+  // остатки правки после выхода (06.11.2026): без входа на сайт — ни скидок, ни своих строк из кабинета; правку сотрудника у клиента
+  // на общем компьютере — целиком, вместе со списком
+  { const m = smGet(); if (m && (!loggedIn() || (ME && !STAFF && m.edit))) { if (m.edit) { try { localStorage.removeItem(KEY); } catch {} docSet(""); } smSet(null); } }
   count();
+  addEventListener("pageshow", ev => { if (ev.persisted) count(); });  // «Назад» из кэша браузера — счётчик в шапке по памяти
+  // подпись документа — то, что сохраняется. Совпадает с подписью при открытии или последнем сохранении — «Всё сохранено» (06.11.2026)
+  const sortE = o => Object.entries(obj(o)).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+  const sig = (m, items) => {
+    m = m || {};
+    return JSON.stringify([sortE(items || load()), m.d ?? null, m.ud ?? null, sortE(m.ld),
+      (m.extra || []).map(x => [String(x.n || "").trim(), x.u || "шт.", +x.q || 1, x.b == null || x.b === "" ? null : +x.b, x.d ?? null]), docGet() === DOC0 ? "" : docGet(),
+      m.edit === "s" || m.edit === "ns" ? String(m.title || "").trim() : "", m.nt || "", m.uid ? "" : [m.who || "", m.ph || ""]]);
+  };
+  const dirty = m => !!(m && m.edit) && (m.edit === "ns" || m.edit === "nl" ? !!(Object.keys(load()).length || (m.extra || []).length) : m.saved !== sig(m));
 
   // ---- меню на телефоне ----
   const burger = $(".burger");
@@ -247,7 +277,7 @@
     s[key] = (s[key] || 0) + q;
     if (d) s[d] = (s[d] || 0) + q;  // драйвер — по одному на светильник
     save(s);
-    add.textContent = d ? "Добавлено с драйвером ✓" : nodrv ? "Добавлено без драйвера ✓" : "Добавлено ✓";
+    add.textContent = (d ? "Добавлено с драйвером" : nodrv ? "Добавлено без драйвера" : "Добавлено") + edTo() + " ✓";
     setTimeout(() => { add.textContent = "В смету"; }, 1600);
   });
   // галочка «драйвер у меня есть» открывает выбор светильника и кнопку; «Всё равно в смету без драйвера» — только с выбранным исполнением;
@@ -404,7 +434,7 @@
   document.addEventListener("click", ev => {
     const b = ev.target.closest("[data-add-card]"); if (!b) return;
     const s = load(); s[b.dataset.addCard] = (s[b.dataset.addCard] || 0) + 1; save(s);
-    b.textContent = "✓ В смете"; b.classList.add("done");
+    b.textContent = editing() ? "✓ В правке" : "✓ В смете"; b.classList.add("done");
     setTimeout(() => { b.textContent = "В смету"; b.classList.remove("done"); }, 1600);
   });
 
@@ -592,47 +622,77 @@
     el.innerHTML = rowsH.length ? `<h3>Не забудьте</h3><ul>${rowsH.join("")}</ul>` : "";
   };
   // строки сметы (владелец 05.11.2026): из каталога и свои — то, чего нет в каталоге (монтаж, кабель, щит). Скидка строки — своя
-  // (m.ld[артикул], у своей строки d), иначе общая: скидка сметы m.d, иначе личная. Цена со скидкой — за штуку до рубля, как в каталоге
+  // (m.ld[артикул], у своей строки d), иначе общая: скидка сметы m.d, иначе личная (у сотрудника в чужом документе — клиента, m.ud).
+  // Цена со скидкой — за штуку до рубля, как в каталоге
   const smLines = (items, m) => {
     m = m || {};
-    const D0 = m.d != null ? +m.d : m.ud != null ? +m.ud : DISC, LD = m.ld || {};
-    const ls = Object.entries(items).map(([a, q]) => { const it = itemOf(a); return { key: a, a, q, it, n: it.n, rb: it.rb ?? it.b, disc: LD[a] ?? D0 }; })
+    const D0 = m.d != null ? +m.d : STAFF && m.ud != null ? +m.ud : DISC, LD = obj(m.ld);
+    const ls = Object.entries(obj(items)).map(([a, q]) => { const it = itemOf(a); return { key: a, a, q, it, n: it.n, rb: it.rb ?? it.b, disc: LD[a] ?? D0 }; })
       .concat((m.extra || []).map((x, i) => ({ key: "~" + i, x, i, q: +x.q || 1, n: x.n, u: x.u, rb: x.b == null || x.b === "" ? null : +x.b, disc: x.d ?? D0 })));
+    const r2 = v => Math.round(v * 100) / 100;  // до копейки: у своих строк бывают копейки (кабель 1,85 за метр)
     ls.forEach(l => {
-      l.u1 = l.rb == null ? null : l.disc ? Math.round(l.rb * (1 - l.disc / 100)) : l.rb;
-      l.t = l.u1 == null ? null : l.u1 * l.q;
-      l.off = l.t == null ? 0 : l.rb * l.q - l.t;
+      l.u1 = l.rb == null ? null : l.disc ? (l.x ? r2(l.rb * (1 - l.disc / 100)) : Math.round(l.rb * (1 - l.disc / 100))) : l.rb;
+      l.t = l.u1 == null ? null : r2(l.u1 * l.q);
+      l.off = l.t == null ? 0 : r2(l.rb * l.q - l.t);
     });
     return ls;
   };
-  // строки для заявки — как их видит посетитель: цена за штуку уже со скидкой; свои строки — «своя строка», единица после запятой
-  const leadRows = m => smLines(load(), m).map(l => ({ a: l.x ? "своя строка" : l.a, n: l.x ? `${l.n}, ${l.u || "шт."}` : l.n, q: l.q, b: l.u1 }));
+  // строки для заявки — как их видит посетитель: b — цена за штуку со скидкой, rb — без скидки, p — скидка строки, % (расшифровка в кабинете,
+  // 06.11.2026); свои строки — «своя строка», единица после запятой. Своя строка без названия и цены не идёт, без названия с ценой — «Своя строка»
+  const leadRows = m => smLines(load(), m).filter(l => !l.x || String(l.n || "").trim() || l.rb != null)
+    .map(l => ({ a: l.x ? "своя строка" : l.a, n: l.x ? `${String(l.n || "").trim() || "Своя строка"}, ${l.u || "шт."}` : l.n, q: l.q, b: l.u1, rb: l.rb, p: l.u1 == null ? null : (+l.disc || 0) }));
+  // своя строка без названия: перед сохранением просим вписать название или убрать строку (06.11.2026: такие строки терялись)
+  const ownNoName = m => ((m && m.extra) || []).findIndex(x => !String((x && x.n) ?? "").trim());
   let PRINT = false;  // печать: без полей ввода, колонки скидки — только если она есть
+  let NONAME = -1;    // своя строка без названия после неудачного сохранения — красная рамка
+  let onRender = () => {};  // полоса правки обновляет «сохранено / есть изменения» после каждой перерисовки
+  let K0 = "";        // метка документа, который правит эта вкладка
+  let staleDone = ""; // вкладка устарела во время сохранения, а оно прошло — пишем об этом в пояснении
   const renderSmeta = () => {
     if (!box) return;
-    const r = rows(), m = smGet() || {}, n = r.length + (m.extra || []).length;
-    $("[data-smeta-form]").hidden = !n || editing();  // правку заявки сохраняют в неё же, новой заявкой не отправляют
+    const r = rows(), m = smGet() || {}, n = r.length + (m.extra || []).length, edNow = editing();
+    $("[data-smeta-form]").hidden = !n || edNow;  // правку заявки сохраняют в неё же, новой заявкой не отправляют
     $("[data-smeta-tools]").hidden = !n;
+    // во время правки сохраняет только полоса сверху: нижние «Сохранить в кабинет» и «Сохранить для клиента» сохраняли не туда (06.11.2026)
+    const kp = $("[data-smeta-save]"), fp = $("[data-smeta-for]"), fb = $("[data-for-box]");
+    if (kp) kp.hidden = !ME || edNow;
+    if (fp) fp.hidden = !STAFF || edNow;
+    if (fb && edNow) fb.hidden = true;
     renderHints(r);
     const di = $("[data-sm-d]");
     if (di && document.activeElement !== di) di.value = m.d != null ? m.d : "";
-    if (!n) { if (!STAFF) smSet(null); box.innerHTML = '<p>Список пуст. Добавляйте позиции кнопкой «В смету» в <a href="/katalog/">каталоге</a> или загрузите готовый список артикулов.</p>'; return; }
+    // какая скидка действует, если поле пустое (06.11.2026: в поле было «нет», а считалась личная скидка клиента)
+    const dn = $("[data-sm-dnote]");
+    if (dn) {
+      const own = Object.keys(obj(m.ld)).length || (m.extra || []).some(x => x.d != null && x.d !== "");
+      const re = m.edit === "l" && m.d == null && m.udNow != null && m.ud != null && +m.udNow !== +m.ud;
+      dn.innerHTML = (m.d != null ? `в документе ${pct(m.d)}` : STAFF && m.ud != null ? (+m.ud ? `пусто — личная скидка клиента ${pct(m.ud)}${m.edit === "l" ? " на момент заявки" : ""}` : "пусто — у клиента нет личной скидки")
+        : DISC ? `пусто — ваша личная ${pct(DISC)}` : "пусто — без скидки") + (own ? ", в строках есть свои" : "")
+        + (re ? ` · сейчас у клиента ${pct(+m.udNow || 0)} <button class="cbtn ghost" type="button" data-ud-now>Пересчитать по ${pct(+m.udNow || 0)}</button>` : "");
+      if (di) di.placeholder = m.d == null && effD() ? String(effD()).replace(".", ",") : "нет";
+    }
+    if (!n) { if (!STAFF) smSet(null); box.innerHTML = '<p>Список пуст. Добавляйте позиции кнопкой «В смету» в <a href="/katalog/">каталоге</a> или загрузите готовый список артикулов.</p>'; onRender(); return; }
     // скидка — расшифровкой: розничная цена, процент, сумма скидки по строке и всего (владелец 05.11.2026); «без скидки − скидка = итого» до рубля
     const ed = STAFF && !PRINT, D0 = effD(), ls = smLines(load(), m);
     const anyD = ls.some(l => l.t != null && l.disc > 0), showD = anyD || ed, pcts = new Set(ls.filter(l => l.t != null).map(l => +l.disc));
     const one = pcts.size === 1 ? [...pcts][0] : null, money = v => v != null ? fmt(v) + " BYN" : "по запросу";
     let sum = 0, full = 0, ask = 0;
     ls.forEach(l => { if (l.t != null) { sum += l.t; full += l.rb * l.q; } else ask++; });
+    sum = Math.round(sum * 100) / 100; full = Math.round(full * 100) / 100;
     const tr = ls.map(l => {
       const own = !!l.x, k = esc(l.key);
-      const dval = own ? (l.x.d ?? "") : ((m.ld || {})[l.a] ?? "");
-      const dcell = l.rb == null ? "" : ed ? `<input class="pct-in" type="number" min="0" max="50" step="0.5" value="${dval}" placeholder="${D0 || 0}" ${own ? `data-x="${l.i}" data-f="d"` : `data-ld="${k}"`} aria-label="Скидка в строке, %">` : pct(l.disc);
-      const name = own ? (ed ? `<input class="x-n" data-x="${l.i}" data-f="n" value="${esc(l.n)}" placeholder="Название, например: монтаж и настройка" maxlength="200" aria-label="Название"> <input class="x-u" data-x="${l.i}" data-f="u" value="${esc(l.u || "шт.")}" maxlength="20" aria-label="Единица">`
+      const dval = own ? (l.x.d ?? "") : (obj(m.ld)[l.a] ?? "");
+      const dIn = `<input class="pct-in" type="number" min="0" max="50" step="0.5" value="${dval}" placeholder="${D0 || 0}" ${own ? `data-x="${l.i}" data-f="d"` : `data-ld="${k}"`} aria-label="Скидка в строке, %">`;
+      const bIn = own ? `<input class="x-b" data-x="${l.i}" data-f="b" inputmode="decimal" value="${l.rb ?? ""}" placeholder="цена, BYN" aria-label="Цена, BYN">` : "";
+      const dcell = l.rb == null ? "" : ed ? dIn : pct(l.disc);
+      // на телефоне колонки цены и скидки скрыты — у сотрудника те же поля под названием (06.11.2026)
+      const mob = ed && (own || l.rb != null) ? `<div class="m-only ed-m">${own ? `<label>цена ${bIn}</label>` : ""}${l.rb != null ? `<label>скидка, % ${dIn}</label>` : ""}</div>` : "";
+      const name = own ? (ed ? `<input class="x-n" data-x="${l.i}" data-f="n" value="${esc(l.n)}" placeholder="Название, например: монтаж и настройка" maxlength="200" aria-label="Название"${l.i === NONAME ? ' aria-invalid="true"' : ""}> <input class="x-u" data-x="${l.i}" data-f="u" value="${esc(l.u || "шт.")}" maxlength="20" aria-label="Единица">${mob}`
           : `${esc(l.n)}<br><span class="muted small">${esc(l.u || "шт.")}</span>`)
-        : `<a href="${esc(l.it.u)}">${esc(l.n)}</a><br><span class="muted small">${esc(l.a)}</span>`;
+        : `<a href="${esc(l.it.u)}">${esc(l.n)}</a><br><span class="muted small">${esc(l.a)}</span>${mob}`;
       const qty = own ? (ed ? `<input class="x-q" type="number" min="1" value="${l.q}" data-x="${l.i}" data-f="q" aria-label="Количество">` : `${l.q}`)
         : `<div class="qty"><button type="button" data-d="-1" data-a="${k}" aria-label="Меньше">−</button><input type="number" min="1" value="${l.q}" data-set="${k}" aria-label="Количество"><button type="button" data-d="1" data-a="${k}" aria-label="Больше">+</button></div>`;
-      const price = own && ed ? `<input class="x-b" data-x="${l.i}" data-f="b" inputmode="decimal" value="${l.rb ?? ""}" placeholder="цена, BYN" aria-label="Цена, BYN">` : money(l.rb);
+      const price = own && ed ? bIn : money(l.rb);
       return `<tr${own ? ' class="own"' : ""}><td class="hide-m">${!own && l.it.t ? `<img src="${esc(l.it.t)}" alt="">` : ""}</td><td>${name}</td><td>${qty}</td><td class="num hide-m">${price}</td>`
         + (showD ? `<td class="num hide-m">${dcell}</td><td class="num off">${l.t != null && l.off ? "−" + fmt(l.off) + " BYN" : ""}</td>` : "")
         + `<td class="num">${money(l.t)}</td><td class="no-print">${own ? (ed ? `<button class="rm" type="button" data-xrm="${l.i}" aria-label="Убрать">×</button>` : "") : `<button class="rm" type="button" data-rm="${k}" aria-label="Убрать">×</button>`}</td></tr>`;
@@ -646,6 +706,7 @@
       + `<th class="num">Сумма</th><th class="no-print"></th></tr></thead>
       <tbody>${tr}</tbody><tfoot>${foot}</tfoot></table>
       <p class="muted small">Цены по курсу НБРБ ${String(D.rate).replace(".", ",")} на ${D.rateDate.split("-").reverse().join(".")}${anyD ? `; «Цена» — розничная, скидка${one ? " " + pct(one) : " по строкам"} от неё` : ""}.${(m.extra || []).length ? "" : " Монтаж и настройка считаем отдельно."}</p>`;
+    onRender();
   };
   if (box) {
     $("[data-today]").textContent = new Date().toLocaleDateString("ru-RU");
@@ -660,86 +721,102 @@
     const sp = new URLSearchParams(location.search), shared = sp.get("s"), sharedDoc = sp.get("d") || "";
     // название документа: сотрудник выбирает из общего списка («Коммерческое предложение», «Заказ покупателя»…) и может его пополнять,
     // клиенту оно приходит со сметой (владелец 05.11.2026). Заголовок на экране и в печати, с датой — имя файла PDF. Показываем только
-    // название из списка: ссылку с придуманным заголовком («Счёт на оплату») сайт не примет
+    // название из списка: ссылку с придуманным заголовком («Счёт на оплату») сайт не примет. Список — в DOCS (наверху файла)
     const docBox = $("[data-doc]"), docH = $("[data-doc-h]"), title0 = document.title, staffMe = !!(ME && ME.role === "staff");
-    let docs = null;  // названия с сервера; пока не пришли — «Список для сметы»
     const docShow = () => {
-      const c = docs && docs.some(x => x.title === docGet()) ? docGet() : DOC0;
+      const c = DOCS && DOCS.some(x => x.title === docGet()) ? docGet() : DOC0;
       docH.textContent = c;
       document.title = c === DOC0 ? title0 : `${c} от ${new Date().toLocaleDateString("ru-RU")}`;
-      if (staffMe && docs) drawDocs(c);
+      if (staffMe && DOCS) drawDocs(c);
+      onRender();
       return c;
     };
     const drawDocs = c => {
-      const one = docs.find(x => x.title === c);
-      docBox.innerHTML = `<label>Название документа <select data-doc-sel>${[DOC0, ...docs.map(x => x.title)].map(t => `<option value="${esc(t)}"${t === c ? " selected" : ""}>${esc(t)}</option>`).join("")}<option value="+">+ Новое название…</option></select></label>`
+      const one = DOCS.find(x => x.title === c);
+      docBox.innerHTML = `<label>Название документа <select data-doc-sel>${[DOC0, ...DOCS.map(x => x.title)].map(t => `<option value="${esc(t)}"${t === c ? " selected" : ""}>${esc(t)}</option>`).join("")}<option value="+">+ Новое название…</option></select></label>`
         + (one ? ` <button class="cbtn ghost" type="button" data-doc-del="${one.id}">Убрать из списка</button>` : "")
         + '<span class="doc-new" data-doc-new hidden><input maxlength="80" placeholder="Например: Спецификация к договору" data-doc-in aria-label="Новое название"> <button class="cbtn" type="button" data-doc-add>Добавить</button></span><span class="msg small" data-doc-msg role="status"></span>';
       docBox.hidden = false;
     };
     const docSend = async (a, body) => {
       const r = await kabApi(a, body).catch(() => ({}));
-      if (r.ok) { docs = r.titles; return true; }
+      if (r.ok) { DOCS = r.titles; return true; }
       const m = $("[data-doc-msg]", docBox);
       m.className = "msg small bad"; m.textContent = r.status === 403 ? "Нужен вход сотрудника." : "Не удалось сохранить.";
       return false;
     };
-    if (staffMe || sharedDoc || docGet() !== DOC0) kabApi("doc_titles").then(j => { if (j.ok) { docs = j.titles; docShow(); } }).catch(() => {});
-    if (staffMe) {
-      docBox.addEventListener("change", ev => {
-        const s = ev.target.closest("[data-doc-sel]"); if (!s) return;
-        if (s.value === "+") { $("[data-doc-new]", docBox).hidden = false; $("[data-doc-in]", docBox).focus(); return; }
-        docSet(s.value); docShow();
-      });
-      docBox.addEventListener("click", async ev => {
-        if (ev.target.closest("[data-doc-add]")) {
-          const t = $("[data-doc-in]", docBox).value.trim().replace(/\s+/g, " ");
-          if (!t) return $("[data-doc-in]", docBox).focus();
-          if (await docSend("doc_title_add", { title: t })) { docSet(docs.some(x => x.title === t) ? t : DOC0); docShow(); }
-        }
-        const d = ev.target.closest("[data-doc-del]");
-        if (d && confirm(`Убрать «${docH.textContent}» из списка названий для всех сотрудников?`) && await docSend("doc_title_del", { id: +d.dataset.docDel })) { docSet(DOC0); docShow(); }
-      });
-      docBox.addEventListener("keydown", ev => { if (ev.key === "Enter" && ev.target.closest("[data-doc-in]")) { ev.preventDefault(); $("[data-doc-add]", docBox).click(); } });
-    }
+    if (staffMe || sharedDoc || docGet() !== DOC0) kabApi("doc_titles").then(j => { if (j.ok) { DOCS = j.titles; docShow(); } }).catch(() => {});
+
+    let askBox = null;  // окно «есть несохранённые изменения» (ниже)
+    // ---- другая вкладка (06.11.2026): документ, который правит эта вкладка, помечен меткой k. Открыли в другой вкладке другой документ —
+    // эта вкладка устарела: ничего не пишет и предлагает открыть текущий. Иначе её «Сохранить» записывало чужой список не туда ----
+    K0 = (smGet() || {}).k || "";
+    const stale = () => ((smGet() || {}).k || "") !== K0;
+    let myBack = "";  // куда возвращаться из этой вкладки — запоминается при каждой отрисовке полосы
+    const lockStale = () => {
+      const note = $("[data-stale]"), m = smGet();
+      [box, $("[data-sm-staff]"), $("[data-sm-edit]"), $("[data-ed-strip]"), $("[data-smeta-tools]"), $("[data-smeta-form]"), $("[data-smeta-hints]"), $("[data-for-box]"), docBox].forEach(el => { if (el) el.inert = true; });
+      [$("[data-sm-edit]"), $("[data-ed-strip]")].forEach(el => { if (el) el.hidden = true; });  // мёртвые кнопки не показываем
+      document.body.classList.add("stale"); document.body.classList.remove("editing"); document.documentElement.classList.remove("editing");
+      if (askBox?.open) askBox.close();
+      if (!note) return true;
+      note.innerHTML = staleDone + `В другой вкладке открыт другой документ${m && m.edit && STAFF ? ": правка " + esc(edName(m)) : ""}. Эта вкладка устарела и ничего не сохранит.`
+        + ` <button class="cbtn" type="button" data-stale-reload>Открыть текущий</button>${myBack ? ` <a class="cbtn ghost" href="${esc(myBack)}">К клиенту</a>` : ""}`;
+      note.hidden = false;
+      note.scrollIntoView({ block: "center" });
+      return true;
+    };
+    const guard = () => stale() && lockStale();
+    $("[data-stale]")?.addEventListener("click", ev => { if (ev.target.closest("[data-stale-reload]")) location.reload(); });
+
     // открыта ссылка на чужую смету: ?s=артикул*количество,…&d=название документа
     if (shared) {
       const got = {};
       shared.split(",").forEach(x => { const [a, q] = x.split("*"); if (D.items[a] || D.items[a.split(" · ")[0]]) got[a] = Math.max(1, +q || 1); });
       const n = Object.keys(got).length, shareBox = $("[data-smeta-share]");
       history.replaceState(null, "", location.pathname);
-      if (n && !Object.keys(load()).length) { save(got); docSet(sharedDoc); smSet(null); shareBox.textContent = `Смета открыта по ссылке: ${n} поз.`; shareBox.hidden = false; }
+      if (n && !Object.keys(load()).length && !editing()) { save(got); docSet(sharedDoc); smSet(null); K0 = ""; shareBox.textContent = `Смета открыта по ссылке: ${n} поз.`; shareBox.hidden = false; }
       else if (n) {
         shareBox.innerHTML = `По ссылке передана смета: ${n} поз. <button class="cbtn" type="button" data-share="replace">Заменить мой список</button> <button class="cbtn ghost" type="button" data-share="add">Добавить к моему</button>`;
         shareBox.hidden = false;
         shareBox.addEventListener("click", ev => {
-          const m = ev.target.dataset.share; if (!m) return;
+          const m = ev.target.dataset.share; if (!m || guard()) return;
+          if (m === "replace" && editing() && !confirm(`Сейчас открыта правка ${edName(smGet())}. Закрыть её и заменить список?`)) return;
           const s = m === "add" ? load() : {};
           Object.entries(got).forEach(([a, q]) => { s[a] = (s[a] || 0) + q; });
-          if (m === "replace") { docSet(sharedDoc); smSet(null); docShow(); }
+          if (m === "replace") { docSet(sharedDoc); smSet(null); K0 = ""; docShow(); drawEdit(); }
           save(s); shareBox.hidden = true; renderSmeta();
         });
       }
     }
     renderSmeta();
     box.addEventListener("click", ev => {
-      const b = ev.target.closest("button"); if (!b) return;
+      const b = ev.target.closest("button"); if (!b || b.dataset.xrm != null) return;
+      if (guard()) return;
       const s = load();
-      if (b.dataset.rm) delete s[b.dataset.rm];
+      if (b.dataset.rm) {
+        delete s[b.dataset.rm];
+        const m = smGet();
+        if (STAFF && m && b.dataset.rm in m.ld) { delete m.ld[b.dataset.rm]; smSet(m); }
+      }
       if (b.dataset.d) s[b.dataset.a] = Math.max(1, (s[b.dataset.a] || 1) + +b.dataset.d);
       save(s); renderSmeta();
     });
     box.addEventListener("change", ev => {
       const i = ev.target.closest("[data-set]"); if (!i) return;
+      if (guard()) return;
       const s = load(); s[i.dataset.set] = Math.max(1, Math.round(+i.value) || 1); save(s); renderSmeta();
     });
     $("[data-smeta-hints]").addEventListener("click", ev => {
-      const b = ev.target.closest("[data-hint-add]"); if (!b) return;
+      const b = ev.target.closest("[data-hint-add]"); if (!b || guard()) return;
       const s = load(); s[b.dataset.hintAdd] = (s[b.dataset.hintAdd] || 0) + (+b.dataset.q || 1); save(s); renderSmeta();
     });
-    // печать, ссылка, текст
+    // печать, ссылка, текст; ms — сколько висит сообщение (предупреждение про ссылку — дольше)
     const tmsg = $("[data-tools-msg]");
-    const copy = async (text, ok) => { try { await navigator.clipboard.writeText(text); tmsg.textContent = ok; } catch { window.prompt("Скопируйте:", text); } setTimeout(() => { tmsg.textContent = ""; }, 3000); };
+    const copy = async (text, ok, ms = 3000) => {
+      try { await navigator.clipboard.writeText(text); tmsg.textContent = ok; } catch { window.prompt(ok + "\n\nСкопируйте:", text); }
+      setTimeout(() => { tmsg.textContent = ""; }, ms);
+    };
     $("[data-print]").addEventListener("click", () => window.print());
     addEventListener("beforeprint", () => { PRINT = true; renderSmeta(); });
     addEventListener("afterprint", () => { PRINT = false; renderSmeta(); });
@@ -749,10 +826,11 @@
     if (stBox && staffMe) {
       stBox.hidden = false;
       const dIn = $("[data-sm-d]", stBox), hitsEl = $("[data-sm-hits]", stBox);
-      const mset = f => { const m = smGet() || {}; f(m); smSet(m); renderSmeta(); };
+      const mset = f => { if (guard()) return; const m = smGet() || {}; f(m); smSet(m); renderSmeta(); };
       const num = v => { v = String(v).trim().replace(",", "."); return v === "" || isNaN(+v) ? null : +v; };
       dIn.value = (smGet() || {}).d ?? "";
-      dIn.addEventListener("input", () => mset(m => { const v = num(dIn.value); if (v == null) delete m.d; else m.d = Math.max(0, Math.min(50, v)); }));
+      const pc = v => Math.round(Math.max(0, Math.min(50, v)) * 10) / 10;  // процент — до 0,1, как хранит сервер
+      dIn.addEventListener("input", () => mset(m => { const v = num(dIn.value); if (v == null) delete m.d; else m.d = pc(v); }));
       stBox.addEventListener("input", ev => {
         if (!ev.target.closest("[data-sm-q]")) return;
         const q = low(ev.target.value.trim()), qa = q.replace(/[^a-z0-9а-я]/g, "");
@@ -762,119 +840,281 @@
       });
       stBox.addEventListener("click", ev => {
         const ad = ev.target.closest("[data-sm-add]");
-        if (ad) { const s = load(); s[ad.dataset.smAdd] = (s[ad.dataset.smAdd] || 0) + 1; save(s); renderSmeta(); ad.textContent = `Добавлено: ${s[ad.dataset.smAdd]} шт.`; }
+        if (ad) { if (guard()) return; const s = load(); s[ad.dataset.smAdd] = (s[ad.dataset.smAdd] || 0) + 1; save(s); renderSmeta(); ad.textContent = `Добавлено: ${s[ad.dataset.smAdd]} шт.`; }
         if (ev.target.closest("[data-sm-own]")) {
           mset(m => { (m.extra = m.extra || []).push({ n: "", u: "шт.", q: 1, b: null }); });
           const ins = $$(".own .x-n", box); ins[ins.length - 1]?.focus();
         }
+        // личная скидка клиента поменялась после заявки — пересчитать по сегодняшней
+        if (ev.target.closest("[data-ud-now]")) mset(m => { m.ud = +m.udNow || 0; });
       });
       // правки в таблице — по «change»: таблица перерисовывается, а при наборе курсор не прыгает
       box.addEventListener("change", ev => {
         const ld = ev.target.closest("[data-ld]"), x = ev.target.closest("[data-x]");
-        if (ld) mset(m => { m.ld = m.ld || {}; const v = num(ld.value); if (v == null) delete m.ld[ld.dataset.ld]; else m.ld[ld.dataset.ld] = Math.max(0, Math.min(50, v)); });
+        if (ld) mset(m => { m.ld = obj(m.ld); const v = num(ld.value); if (v == null) delete m.ld[ld.dataset.ld]; else m.ld[ld.dataset.ld] = pc(v); });
         if (x) mset(m => {
           const r = (m.extra || [])[+x.dataset.x], f = x.dataset.f;
           if (!r) return;
-          if (f === "n" || f === "u") r[f] = x.value.trim();
+          if (f === "n" || f === "u") { r[f] = x.value.trim(); if (f === "n" && r.n && +x.dataset.x === NONAME) NONAME = -1; }
           else if (f === "q") r.q = Math.max(1, Math.round(num(x.value) || 1));
-          else { const v = num(x.value); r[f] = v == null ? null : Math.max(0, f === "d" ? Math.min(50, v) : v); }
+          else { const v = num(x.value); r[f] = v == null ? null : f === "d" ? pc(v) : Math.round(Math.max(0, v) * 100) / 100; }
         });
       });
-      box.addEventListener("click", ev => { const xr = ev.target.closest("[data-xrm]"); if (xr) mset(m => { (m.extra || []).splice(+xr.dataset.xrm, 1); }); });
+      box.addEventListener("click", ev => {
+        const xr = ev.target.closest("[data-xrm]");
+        if (xr) mset(m => { (m.extra || []).splice(+xr.dataset.xrm, 1); if (+xr.dataset.xrm === NONAME) NONAME = -1; else if (+xr.dataset.xrm < NONAME) NONAME--; });
+      });
     }
-    // правка заявки или сметы из кабинета (владелец 06.11.2026: «Сотрудник компании должен видеть все заказы, мог заходить и их редактировать»):
-    // полоса сверху, «Сохранить изменения» пишет в ту же заявку или смету. Клиент видит новую версию в кабинете, по галочке — сообщение в Telegram.
-    // Новая смета или заявка человеку из поиска в кабинете (m.edit «ns» / «nl»): «Создать» — и дальше обычная правка созданного
-    const edBox = $("[data-sm-edit]");
+
+    // ---- правка заявки или сметы из кабинета (сотрудник; владелец 06.11.2026: «При сохранении нет кнопки вернуться к клиентам…
+    // Личные кабинеты должны быть гибкие в редактировании»). Сверху — закреплённая строка: «← клиент», что открыто, сохранено ли, кнопки
+    // (на телефоне — внизу экрана). Ниже — розовая полоса: клиент, состояние, комментарий, заметка для своих, название сметы, Telegram,
+    // «Сделать копией», «PDF для клиента». Практика: путь назад к родительской странице всегда виден (GOV.UK Back link, Shopify Polaris),
+    // главная кнопка — «Сохранить и вернуться» (1С «Записать и закрыть»), «сохранено / есть несохранённые изменения» и вопрос при выходе —
+    // только когда есть что терять (Polaris contextual save bar, NN/g); после возврата итог виден на карточке клиента ----
+    const edBox = $("[data-sm-edit]"), edStrip = $("[data-ed-strip]");
+    const ST_L = { new: "Новая", work: "В работе", kp: "КП отправлено", closed: "Закрыта" };
     const backTo = m => "/kabinet/#" + (m.uid ? "p=u" + m.uid : m.ph && m.ph.replace(/\D/g, "").length >= 7 ? "p=t" + m.ph.replace(/\D/g, "").slice(-9) : m.edit === "s" || m.edit === "ns" ? "smetas" : "leads");
-    const drawEdit = () => {
-      const m = smGet() || {};
-      edBox.hidden = !editing();
-      if (edBox.hidden) return;
-      const kind = m.edit, isNew = kind === "ns" || kind === "nl", tg = !!m.wtg;  // wtg: у человека есть кабинет (у своей сметы — нет смысла сообщать)
-      const head = { l: "Правка заявки №" + esc(m.lid), s: "Правка сметы «" + esc(m.title || "") + "»", ns: "Новая смета", nl: "Новая заявка" }[kind] || "Правка";
-      const forWho = isNew && !m.uid
-        ? ' для <input data-ed-name maxlength="120" placeholder="Имя" value="' + esc(m.who || "") + '" aria-label="Имя"> <input data-ed-phone maxlength="40" placeholder="Телефон *" value="' + esc(m.ph || "") + '" aria-label="Телефон">'
-        : m.who ? (isNew ? " для " : " · ") + esc(m.who) : "";
-      edBox.innerHTML = `<p><b>${head}</b>${forWho}</p>`
-        + (kind === "ns" ? `<p><label class="ed-title">Название сметы <input data-ed-title maxlength="120" placeholder="Например: квартира, ул. Притыцкого" value="${esc(m.title || "")}"></label></p>` : "")
-        + `<p class="muted small">${isNew ? "Добавьте позиции из каталога или своей строкой, затем «Создать»." : "Меняйте количество, позиции, скидки и свои строки, затем «Сохранить изменения»."} Цены — по сегодняшнему каталогу и курсу`
-        + `${m.d == null && m.ud ? `, с личной скидкой клиента ${pct(m.ud)}` : ""}. `
-        + (m.uid || kind === "s" ? "Клиент увидит " + (isNew ? "документ" : "изменения") + " в своём кабинете.</p>" : "У человека нет кабинета на сайте: пошлите ему PDF или ссылку сами.</p>")
-        + `<div class="ed-acts"><button class="btn" type="button" data-ed-save>${kind === "ns" ? "Создать смету" : kind === "nl" ? "Создать заявку" : "Сохранить изменения"}</button>`
-        + (tg ? '<label class="consent"><input type="checkbox" data-ed-tg checked> Сообщить в Telegram</label>' : "")
-        + `<button class="btn ghost" type="button" data-ed-close>${isNew ? "Отменить" : "Закрыть правку"}</button></div><p class="msg" data-ed-msg role="status"></p>`;
+    const backOf = m => m.back || backTo(m);
+    const backLabel = m => m.who || m.ph || (m.edit === "s" || m.edit === "ns" ? "Сметы" : "Заявки");
+    const hhmm = () => new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    const isNewK = k => k === "ns" || k === "nl";
+    // выйти из правки: список и правка очищаются (документ уже на сервере), страница сметы не остаётся в истории
+    const leave = (m, flash) => {
+      if (flash) try { sessionStorage.setItem("hdl-flash", JSON.stringify(flash)); } catch {}
+      const b = backOf(m || {});
+      if (!stale()) { save({}); docSet(""); smSet(null); K0 = ""; }  // устаревшая вкладка общий список не трогает: там уже другой документ
+      location.replace(b);
     };
-    if (edBox && staffMe) {
+    // строка сверху: состояние и кнопки — по подписи документа (сохранено ли)
+    const drawState = () => {
+      if (!edStrip || edStrip.hidden) return;
+      const m = smGet() || {}, kind = m.edit, nw = isNewK(kind), d = dirty(m);
+      const st = $("[data-ed-state]", edStrip), bt = $("[data-ed-btns]", edStrip);
+      if (!st || !bt) return;
+      let diff = "";  // заявка: цены изменились после прошлого сохранения — у клиента одна сумма, по сегодняшним ценам другая
+      if (kind === "l" && !d && m.total != null && m.had) {
+        const now = Math.round(leadRows(m).reduce((t, r) => t + (r.b != null ? r.b * r.q : 0), 0) * 100) / 100;
+        if (Math.abs(now - +m.total) >= 0.005) diff = ` · у клиента ${fmt(+m.total)} BYN, по сегодняшним ценам ${fmt(now)} BYN`;
+      }
+      const cls = "ed-state " + (nw ? "new" : d ? "dirty" : "clean");
+      const text = nw ? (kind === "nl" ? "● Заявка ещё не создана" : "● Смета ещё не создана") : d ? "● Есть несохранённые изменения" : "✓ Всё сохранено" + (m.savedAt ? " в " + m.savedAt : "") + diff;
+      const btns = nw ? `<button class="btn" type="button" data-ed-save data-ret>Создать и вернуться</button><button class="btn ghost" type="button" data-ed-save>Создать</button>`
+        : d ? `<button class="btn" type="button" data-ed-save data-ret>Сохранить и вернуться</button><button class="btn ghost" type="button" data-ed-save>Сохранить</button>`
+          : `<button class="btn" type="button" data-ed-back>Вернуться к клиенту</button>${diff ? '<button class="btn ghost" type="button" data-ed-save>Сохранить по сегодняшним ценам</button>' : ""}`;
+      if (st.className !== cls || st.textContent !== text) { st.className = cls; st.textContent = text; }
+      if (bt.dataset.k !== btns) { bt.dataset.k = btns; bt.innerHTML = btns; }
+      count();
+    };
+    const drawEdit = () => {
+      const m = smGet() || {}, on = editing() && !stale();
+      if (edBox) edBox.hidden = !on;
+      if (edStrip) edStrip.hidden = !on;
+      document.body.classList.toggle("editing", on);
+      document.documentElement.classList.toggle("editing", on);
+      if (!on || !edBox || !edStrip) return;
+      myBack = backOf(m);
+      const kind = m.edit, nw = isNewK(kind), lead = kind === "l" || kind === "nl", anon = lead && !m.uid;
+      const head = { l: "Заявка №" + esc(m.lid), s: "Смета «" + esc(m.title || "") + "»", ns: "Новая смета", nl: "Новая заявка" }[kind] || "Правка";
+      edStrip.innerHTML = `<a class="ed-back" href="${esc(myBack)}" data-ed-back>← ${esc(backLabel(m))}</a><b class="ed-head">${head}${m.from ? ` <span class="muted small">(копия ${esc(m.from)})</span>` : ""}</b>`
+        + '<span class="ed-state" data-ed-state></span><span class="ed-btns" data-ed-btns></span><p class="msg" data-ed-msg role="status"></p>';
+      edBox.innerHTML = (anon ? `<p class="ed-who">Клиент: <input data-ed-name maxlength="120" placeholder="Имя" value="${esc(m.who || "")}" aria-label="Имя"> <input data-ed-phone maxlength="40" placeholder="Телефон *" value="${esc(m.ph || "")}" aria-label="Телефон"></p>`
+          : m.who ? `<p class="ed-who">Клиент: <b>${esc(m.who)}</b></p>` : "")
+        + (kind === "s" || kind === "ns" ? `<p><label class="ed-title">Название сметы <input data-ed-title maxlength="120" placeholder="Например: квартира, ул. Притыцкого" value="${esc(m.title || "")}"></label></p>` : "")
+        + (kind === "l" ? `<p class="ed-row"><label>Состояние <select data-ed-st>${Object.entries(ST_L).map(([k, t]) => `<option value="${k}"${k === m.status ? " selected" : ""}>${t}</option>`).join("")}</select></label> <span class="msg small" data-ed-stmsg role="status"></span></p>` : "")
+        + (lead && m.cm ? `<p class="small">Комментарий клиента: ${esc(m.cm)}</p>` : "")
+        + (lead ? `<label class="ed-note">Заметка для своих <span class="muted small">— клиент её не видит</span><textarea data-ed-note rows="2" maxlength="1000" placeholder="Например: перезвонить в пятницу, монтаж после 15-го">${esc(m.nt || "")}</textarea></label>` : "")
+        + `<p class="muted small">${nw ? "Добавьте позиции из каталога или своей строкой, затем «Создать»." : "Меняйте количество, позиции, скидки и свои строки, затем «Сохранить»."} Цены — по сегодняшнему каталогу и курсу. `
+        + (m.uid || kind === "s" ? `Клиент увидит ${nw ? "документ" : "изменения"} в своём кабинете.` : "У человека нет кабинета на сайте: пошлите ему PDF (кнопка «PDF для клиента»). По ссылке скидки и свои строки не передаются.") + "</p>"
+        + `<div class="ed-acts">${m.wtg ? `<label class="consent"><input type="checkbox" data-ed-tg${m.tg !== false ? " checked" : ""}> Сообщить в Telegram</label>` : ""}`
+        + (!nw ? `<button class="cbtn ghost" type="button" data-ed-copy="l">Сделать копией: новая заявка</button>${m.uid ? '<button class="cbtn ghost" type="button" data-ed-copy="s">Сделать копией: новая смета</button>' : ""}` : "")
+        + (!m.uid ? '<button class="cbtn ghost" type="button" data-ed-pdf>PDF для клиента</button>' : "") + "</div>";
+      drawState();
+    };
+    // уход с несохранённым: окно с тремя выходами (NN/g: подтверждение — только при реальной потере). Без <dialog> — обычный вопрос браузера
+    const askLeave = m => new Promise(res => {
+      const nw = isNewK(m.edit), text = nw ? `${m.edit === "nl" ? "Новая заявка" : "Новая смета"}${m.who ? " для " + m.who : ""} не создана.` : `В ${edName(m).replace(/^заявки/, "заявке").replace(/^сметы/, "смете")} есть несохранённые изменения.`;
+      if (!window.HTMLDialogElement) return res(confirm(text + " Выйти без сохранения?") ? "drop" : "stay");
+      if (!askBox) {
+        askBox = document.createElement("dialog");
+        askBox.className = "ed-ask";
+        document.body.appendChild(askBox);
+      }
+      askBox.innerHTML = `<p>${esc(text)}</p><div class="ed-ask-btns"><button class="btn" type="button" data-a="save">${nw ? "Создать и выйти" : "Сохранить и выйти"}</button>`
+        + `<button class="btn ghost" type="button" data-a="drop">${nw ? "Удалить черновик" : "Выйти без сохранения"}</button><button class="btn ghost" type="button" data-a="stay">Остаться</button></div>`;
+      const done = a => { askBox.close(); res(a); };
+      askBox.onclick = ev => { const b = ev.target.closest("[data-a]"); if (b) done(b.dataset.a); };
+      askBox.oncancel = ev => { ev.preventDefault(); done("stay"); };
+      askBox.showModal();
+      $("[data-a=stay]", askBox).focus();
+    });
+    let saving = false;
+    // сохранить документ; ret — сразу вернуться к клиенту; force — «Сохранить поверх», когда документ тем временем изменил другой
+    const saveDoc = async (ret, force) => {
+      if (saving || guard()) return;
+      const m = smGet() || {}, kind = m.edit, msg = $("[data-ed-msg]", edStrip);
+      const say = (t, cls) => { msg.className = "msg " + (cls || ""); msg.textContent = t; };
+      const L0 = load(), empty = !Object.keys(L0).length && !(m.extra || []).length;
+      if (empty && !(kind === "l" && !m.had)) return say(kind === "l" ? "Список пуст — сохранять нечего. Заявку можно закрыть: состояние «Закрыта»." : "Список пуст — добавьте позиции.", "bad");
+      const ni = ownNoName(m);
+      if (ni >= 0) { NONAME = ni; renderSmeta(); const f = $(`.x-n[data-x="${ni}"]`, box); f?.scrollIntoView({ block: "center" }); f?.focus({ preventScroll: true }); return say("У своей строки нет названия — впишите его или уберите строку (×).", "bad"); }
+      if (kind === "nl" && !m.uid && (String(m.ph || "").match(/\d/g) || []).length < 7) { $("[data-ed-phone]", edBox)?.focus(); return say("Укажите телефон.", "bad"); }
+      const tg = !!$("[data-ed-tg]", edBox)?.checked, doc = docNow(), rows = leadRows(m);  // строки — по тому же снимку, что и состав
+      const base = { items: L0, ld: obj(m.ld), extra: m.extra || [], doc, notify: tg };
+      saving = true; $$("[data-ed-save]", edStrip).forEach(b => { b.disabled = true; }); say("Сохраняем…");
+      let r = {}, metaOnly = false;
+      try {
+        if (kind === "l") {
+          // заметка, имя и телефон — только если их меняли. Поменялись только они — состав и цены не трогаем: заявка не пересчитывается
+          // по сегодняшним ценам, клиенту не пишем (06.11.2026). Иначе — одним сохранением с составом, под одной проверкой версии
+          const meta = {};
+          if ((m.nt || "") !== (m.nt0 || "")) meta.note = m.nt || "";
+          if (!m.uid && ((m.who || "") !== (m.who0 || "") || (m.ph || "") !== (m.ph0 || ""))) { meta.name = m.who || ""; meta.phone = m.ph || ""; }
+          const comp = sig({ ...m, nt: m.nt0, who: m.who0, ph: m.ph0 }, L0) !== m.saved;  // менялся ли сам состав
+          if (!empty && (comp || !Object.keys(meta).length)) r = await kabApi("lead_save", { ...base, ...meta, id: m.lid, d: m.d ?? null, ud: m.ud ?? null, rows, v: m.v, force: force ? 1 : 0 }).catch(() => ({}));
+          else if (Object.keys(meta).length) { r = await kabApi("lead_meta", { id: m.lid, ...meta, v: m.v, force: force ? 1 : 0 }).catch(() => ({})); metaOnly = true; }
+          else { r = { ok: true, same: true, total: null }; metaOnly = true; }
+        } else if (kind === "s") r = await kabApi("smeta_upd", { ...base, id: m.id, disc: m.d ?? null, title: m.title || "", v: m.v, force: force ? 1 : 0 }).catch(() => ({}));
+        else if (kind === "nl") r = await kabApi("lead_new", { ...base, user_id: m.uid || 0, name: m.who || "", phone: m.ph || "", d: m.d ?? null, ud: m.ud ?? null, note: m.nt || "", rows }).catch(() => ({}));
+        else r = await kabApi("smeta_for", { ...base, user_id: m.uid, title: m.title || "", disc: m.d ?? null, id: 0 }).catch(() => ({}));  // пустая скидка — личная скидка клиента
+      } catch {}
+      saving = false; $$("[data-ed-save]", edStrip).forEach(b => { b.disabled = false; });
+      if (stale()) {  // пока сохраняли, в другой вкладке открыли другой документ — эта вкладка его не трогает, но итог сохранения говорит
+        if (r.ok && !r.same) staleDone = `<b>${kind === "l" || kind === "nl" ? "Заявка" : "Смета"} сохранена в ${hhmm()}.</b> `;
+        lockStale();
+        return;
+      }
+      if (r.status === 409) {
+        const at = r.at ? r.at.slice(11, 16) : "";
+        msg.className = "msg bad";
+        msg.innerHTML = `${kind === "l" ? "Заявку №" + esc(m.lid) : "Смету"} уже изменил(а) ${esc(r.by || "другой сотрудник")}${at ? " в " + at : ""}. ${metaOnly ? "Ваша заметка не сохранена." : "Ваши правки не сохранены."} `
+          + `<button class="cbtn" type="button" data-ed-force>${metaOnly ? "Сохранить заметку поверх" : "Сохранить поверх"}</button> <a class="cbtn ghost" href="${esc(backOf(m))}" data-ed-back data-drop>К клиенту — открыть свежую</a>`;
+        return;
+      }
+      if (!r.ok) return say(r.error === "empty" ? "Список пуст — сохранять нечего." : r.error === "phone" ? "Укажите телефон: не меньше 7 цифр." : r.error === "limit" ? "У человека уже 100 смет — пусть удалит старые."
+        : r.status === 403 ? "Нужен вход сотрудника." : r.status === 404 ? "Не нашли: возможно, удалили или заблокировали." : "Не удалось сохранить. Проверьте связь и нажмите ещё раз.", "bad");
+      // подпись сохранённого — по состоянию на момент нажатия: правки, сделанные пока шло сохранение, остаются несохранёнными
+      const cur = smGet() || m, next = { ...cur };
+      if (kind === "nl") Object.assign(next, { edit: "l", lid: r.id, title: `Заявка №${r.id}`, status: "work", had: !empty });
+      if (kind === "ns") Object.assign(next, { edit: "s", id: r.id, title: r.title, d: r.disc ?? null });
+      if (kind === "s" && r.title) next.title = r.title;
+      if (kind === "l" || kind === "nl") Object.assign(next, { nt0: m.nt || "", who0: m.who || "", ph0: m.ph || "" });
+      if (kind === "l" && !metaOnly) next.had = true;  // состав сохранён на сервере — пустой список дальше «сохранить» нельзя
+      if (r.total != null && !metaOnly) next.total = r.total;
+      if (r.ver != null) next.v = r.ver;
+      if (!next.uid && next.ph && (!/#p=/.test(next.back || "") || (m.ph || "") !== (m.ph0 || ""))) next.back = backTo(next);  // без кабинета — в карточку по (новому) телефону
+      const sigM = { ...m, edit: next.edit, title: next.title, d: kind === "ns" ? next.d : m.d };
+      next.saved = sig(sigM, L0);
+      next.savedAt = hhmm();
+      const notified = tg && !metaOnly && !r.same;  // заметка, имя и телефон клиенту не отправляются
+      if (notified) next.tg = false;  // сообщили — галочку снимаем, чтобы не писать клиенту при каждом сохранении
+      smSet(next);
+      const what = kind === "nl" ? `Заявка №${r.id} создана` : kind === "ns" ? `Смета «${r.title}» создана` : kind === "l" ? `Заявка №${m.lid} сохранена` : `Смета «${next.title}» сохранена`;
+      const text = r.same ? "Изменений нет — сохранять нечего." : `${what} в ${next.savedAt}.` + (notified ? (r.sent ? " Клиенту ушло сообщение в Telegram." : " Сообщение в Telegram не ушло: человек не разрешил боту писать — сообщите сами.") : "");
+      if (force && kind === "l") return leave(next, { text: text + (metaOnly ? " Состав заявки тем временем менял коллега — откройте её заново, чтобы увидеть." : " Сохранено поверх правки коллеги."), lid: next.lid });
+      if (ret) return leave(next, { text, lid: next.edit === "l" ? next.lid : 0, sid: next.edit === "s" ? next.id : 0 });
+      drawEdit(); renderSmeta();
+      const m2 = $("[data-ed-msg]", edStrip);
+      if (m2) { m2.className = "msg " + (r.same ? "" : "ok"); m2.textContent = text; }
+    };
+    if (edBox && edStrip && staffMe) {
+      onRender = drawState;
       drawEdit();
-      edBox.addEventListener("input", ev => {  // имя и телефон нового человека — сразу в память: не пропадут при переходе в каталог
-        const n = ev.target.closest("[data-ed-name]"), p = ev.target.closest("[data-ed-phone]"), t = ev.target.closest("[data-ed-title]");
-        if (n || p || t) { const m = smGet() || {}; if (n) m.who = n.value; if (p) m.ph = p.value; if (t) m.title = t.value; smSet(m); }
-      });
-      edBox.addEventListener("click", async ev => {
-        const m = smGet() || {}, msg = $("[data-ed-msg]", edBox), kind = m.edit;
-        const bad2 = t => { msg.className = "msg bad"; msg.textContent = t; };
-        if (ev.target.closest("[data-ed-save]")) {
-          if (!Object.keys(load()).length && !(m.extra || []).length) return bad2("Список пуст — добавьте позиции.");
-          if (kind === "nl" && !m.uid && (String(m.ph || "").match(/\d/g) || []).length < 7) return bad2("Укажите телефон.");
-          const tg = !!$("[data-ed-tg]", edBox)?.checked, btn = $("[data-ed-save]", edBox), doc = docH.textContent === DOC0 ? "" : docH.textContent;
-          const base = { items: load(), ld: m.ld || {}, extra: m.extra || [], doc, notify: tg };
-          let a, body;
-          if (kind === "l") { a = "lead_save"; body = { ...base, id: m.lid, d: m.d ?? null, rows: leadRows(m) }; }
-          else if (kind === "s") { a = "smeta_upd"; body = { ...base, id: m.id, d: m.d ?? null }; }
-          else if (kind === "nl") { a = "lead_new"; body = { ...base, user_id: m.uid || 0, name: m.who || "", phone: m.ph || "", d: m.d ?? null, rows: leadRows(m) }; }
-          else { a = "smeta_for"; body = { ...base, user_id: m.uid, title: m.title || "", disc: m.d ?? m.ud ?? 0, id: 0 }; }  // скидка в смете = видимая сейчас
-          btn.disabled = true; msg.className = "msg"; msg.textContent = "Сохраняем…";
-          const r = await kabApi(a, body).catch(() => ({}));
-          btn.disabled = false;
-          if (!r.ok) return bad2(r.error === "empty" ? "Список пуст — сохранять нечего." : r.error === "phone" ? "Укажите телефон." : r.error === "limit" ? "У человека уже 100 смет — пусть удалит старые."
-            : r.status === 403 ? "Нужен вход сотрудника." : r.status === 404 ? "Не нашли: возможно, удалили или заблокировали." : "Не удалось сохранить.");
-          // создали — дальше обычная правка созданного документа
-          if (kind === "nl") smSet({ ...m, edit: "l", lid: r.id, title: `Заявка №${r.id}` });
-          if (kind === "ns") smSet({ ...m, edit: "s", id: r.id, title: r.title, d: body.disc });
-          if (isNewKind(kind)) { drawEdit(); renderSmeta(); }
-          const m2 = $("[data-ed-msg]", edBox);
-          m2.className = "msg ok";
-          m2.textContent = (kind === "nl" ? `Заявка №${r.id} создана` : kind === "ns" ? `Смета «${r.title}» создана` : "Сохранено")
-            + ` ${new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}.`
-            + (tg ? (r.sent ? " Сообщение в Telegram отправлено." : " Сообщение в Telegram не ушло: человек не разрешил боту писать — сообщите сами.") : "");
+      edStrip.addEventListener("click", async ev => {
+        const bk = ev.target.closest("[data-ed-back]");
+        if (bk) {
+          if (bk.tagName === "A" && (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button === 1)) return;  // в новой вкладке — как обычная ссылка
+          ev.preventDefault();
+          const m = smGet() || {};
+          if (stale() || !m.edit) { location.href = myBack || "/kabinet/"; return; }
+          if (!dirty(m) || bk.hasAttribute("data-drop")) return leave(m);  // после «уже изменил другой» — уйти и открыть свежую версию
+          const a = await askLeave(m);
+          if (stale()) return lockStale();  // пока окно было открыто, в другой вкладке открыли другой документ
+          if (a === "save") saveDoc(true); else if (a === "drop") leave(m);
+          return;
         }
-        if (ev.target.closest("[data-ed-close]")) {
-          if (!confirm(isNewKind(kind) ? "Отменить? Список для сметы очистится." : "Закрыть правку? Несохранённые изменения пропадут, список для сметы очистится.")) return;
-          const back = backTo(m);
-          save({}); docSet(""); smSet(null); location.href = back;
-        }
+        if (ev.target.closest("[data-ed-force]")) return saveDoc(false, true);
+        const sv = ev.target.closest("[data-ed-save]");
+        if (sv) saveDoc(sv.hasAttribute("data-ret"));
       });
+      // имя, телефон, название, заметка — сразу в память: не пропадут при переходе в каталог за позициями
+      edBox.addEventListener("input", ev => {
+        const f = { "data-ed-name": "who", "data-ed-phone": "ph", "data-ed-title": "title", "data-ed-note": "nt" };
+        const key = Object.keys(f).find(a => ev.target.hasAttribute(a));
+        if (!key || guard()) return;
+        const m = smGet() || {}; m[f[key]] = ev.target.value; smSet(m); drawState();
+      });
+      edBox.addEventListener("change", async ev => {
+        const s = ev.target.closest("[data-ed-st]"), t = ev.target.closest("[data-ed-tg]");
+        if (t) { const m = smGet() || {}; m.tg = t.checked; smSet(m); }
+        if (!s || guard()) return;
+        // состояние заявки сохраняется сразу, как в списке заявок
+        const m = smGet() || {}, out = $("[data-ed-stmsg]", edBox);
+        const r = await kabApi("lead_status", { id: m.lid, status: s.value }).catch(() => ({}));
+        const cur = smGet();
+        if (r.ok && cur && (cur.k || "") === K0 && cur.edit === "l" && +cur.lid === +m.lid) smSet({ ...cur, status: s.value });
+        if (r.ok) { out.className = "msg small ok"; out.textContent = "✓ сохранено"; }
+        else { out.className = "msg small bad"; out.textContent = "не сохранилось"; s.value = m.status || "new"; }
+      });
+      edBox.addEventListener("click", ev => {
+        if (ev.target.closest("[data-ed-pdf]")) return window.print();
+        const cp = ev.target.closest("[data-ed-copy]");
+        if (!cp || guard()) return;
+        // копия: новая заявка или смета тому же клиенту с тем же составом и скидками; исходный документ остаётся, как сохранён
+        const m = smGet() || {};
+        if (dirty(m) && !confirm(`Несохранённые изменения попадут только в копию; ${edName(m)} останется, как сохранена. Продолжить?`)) return;
+        const kind = cp.dataset.edCopy === "s" ? "ns" : "nl", from = m.edit === "l" ? `заявки №${m.lid}` : `сметы «${m.title || ""}»`;
+        const next = { ...m, edit: kind, from, title: kind === "ns" ? (m.edit === "s" ? `${m.title || ""} (копия)` : "") : "" };
+        if (next.udNow != null) next.ud = next.udNow;  // новый документ — с сегодняшней личной скидкой клиента
+        ["lid", "id", "v", "saved", "savedAt", "status", "total", "had", "cm", "nt0", "who0", "ph0"].forEach(k => { delete next[k]; });
+        smSet(next); drawEdit(); renderSmeta();
+        $("[data-ed-msg]", edStrip).textContent = `Это копия ${from}. Проверьте и нажмите «Создать».`;
+        scrollTo({ top: 0, behavior: "smooth" });
+      });
+      // вернулись в эту вкладку, страница из кэша браузера («Назад»), правка в другой вкладке — показываем то, что сейчас в памяти
+      const resync = () => { if (stale()) return lockStale(); count(); docShow(); renderSmeta(); drawEdit(); };
+      addEventListener("storage", ev => { if ([SM_KEY, KEY, DOC_KEY, null].includes(ev.key)) resync(); });
+      addEventListener("pageshow", ev => { if (ev.persisted) resync(); });
+      document.addEventListener("visibilitychange", () => { if (!document.hidden && stale()) lockStale(); });
+      if (stale()) lockStale();
+    } else {
+      // не сотрудник: страницу вернули из кэша браузера — список мог измениться на другой странице
+      addEventListener("pageshow", ev => { if (ev.persisted) { count(); renderSmeta(); } });
     }
-    function isNewKind(k) { return k === "ns" || k === "nl"; }
-    // вошедшему — «Сохранить в кабинет»: смета откроется с любого устройства (вкладка «Сметы» в кабинете)
+    // вошедшему — «Сохранить в кабинет»: смета откроется с любого устройства (вкладка «Сметы» в кабинете). Смету или заявку от AllVision
+    // клиент сохраняет к себе со скидками и своими строками: сервер берёт их из базы по sid / lid (06.11.2026)
     const keep = $("[data-smeta-save]");
     if (keep && ME) {
-      keep.hidden = false;
+      keep.hidden = editing();
       keep.addEventListener("click", async () => {
+        if (guard()) return;
+        const sm = smGet() || {}, ni = ownNoName(sm);
+        if (ni >= 0) { NONAME = ni; renderSmeta(); tmsg.textContent = "У своей строки нет названия — впишите его или уберите строку (×)."; return; }
         const title = window.prompt("Название сметы, например «Квартира, ул. Притыцкого»:", "");
         if (title === null) return;
-        const sm = smGet() || {}, j = await kabApi("smeta_save", { title, doc: docH.textContent === DOC0 ? "" : docH.textContent, items: load(), ld: sm.ld, extra: sm.extra }).catch(() => ({}));
+        const j = await kabApi("smeta_save", { title, doc: docNow(), items: load(), ld: obj(sm.ld), extra: sm.extra || [], d: sm.d ?? null, sid: sm.id || 0, lid: sm.lid || 0 }).catch(() => ({}));
         tmsg.textContent = j.ok ? `Сохранено в кабинете: «${j.title}»` : j.status === 401 ? "Войдите в кабинет заново, затем сохраните." : "Не удалось сохранить.";
         setTimeout(() => { tmsg.textContent = ""; }, 5000);
       });
     }
     // этап 2 (владелец 05.11.2026): сотрудник сохраняет смету клиенту или дилеру — у человека в кабинете, со скидкой в смете вместо личной,
     // названием документа и сообщением в Telegram. Пока меняют скидку, таблица считает с ней — видно то, что увидит человек; закрыли без
-    // сохранения — как было. Смета, открытая из кабинета, по умолчанию заменяет ту же смету человека
+    // сохранения — как было. Пустая «Скидка в смете» — личная скидка человека, а не 0 % (06.11.2026)
     const forBtn = $("[data-smeta-for]"), forBox = $("[data-for-box]");
     if (forBtn && staffMe) {
-      forBtn.hidden = false;
+      forBtn.hidden = editing();
       const ROLE_N = { user: "пользователь", client: "клиент", dealer: "дилер" }, F = forBox.elements;
       let people = null, before = null, saved = false;
+      const emptyD = () => String(F.disc.value).trim() === "";
       const pctIn = () => Math.max(0, Math.min(50, Math.round((+String(F.disc.value).replace(",", ".") || 0) * 10) / 10));
-      const preview = () => { smSet({ ...(smGet() || {}), d: pctIn() }); renderSmeta(); };
+      const preview = () => { if (guard()) return; smSet({ ...(smGet() || {}), d: emptyD() ? null : pctIn(), ud: +(F.user.selectedOptions[0]?.dataset.d || 0) }); renderSmeta(); };
       const syncReplace = () => {
         const same = !!(before && before.id && +F.user.value === +before.uid), l = $("[data-for-replace]", forBox);
         l.innerHTML = `<input type="checkbox" name="replace"${same ? " checked" : ""}> Заменить смету «${esc(before?.title || "")}» у этого человека`;
         l.hidden = !same;
       };
       forBtn.addEventListener("click", async () => {
+        if (editing()) return;
         if (!forBox.hidden) return forBox.scrollIntoView({ block: "center" });
         if (!people) {
           const j = await kabApi("users").catch(() => ({}));
@@ -887,48 +1127,62 @@
           .map(u => `<option value="${u.id}" data-d="${+u.discount || 0}"${before && +before.uid === u.id ? " selected" : ""}>${esc(nm(u))}${u.company ? " · " + esc(u.company) : ""} — ${ROLE_N[u.role] || ""}${+u.discount ? ", скидка " + pct(+u.discount) : ""}</option>`).join("");
         forBox.innerHTML = `<h3>Смета для клиента</h3><div class="row3"><label>Кому *<select name="user"><option value="">— выберите клиента или дилера —</option>${opts}</select></label>`
           + `<label>Название сметы<input name="title" maxlength="120" placeholder="Например: квартира, ул. Притыцкого" value="${esc(before?.title || "")}"></label>`
-          + `<label>Скидка в смете, %<input name="disc" type="number" min="0" max="50" step="0.5" value="${before?.d ?? ""}"></label></div>`
+          + `<label>Скидка в смете, %<input name="disc" type="number" min="0" max="50" step="0.5" value="${before?.d ?? ""}" placeholder="личная"></label></div>`
           + '<label class="consent" data-for-replace hidden></label><label class="consent"><input type="checkbox" name="notify" checked> Сообщить в Telegram</label>'
-          + `<p class="muted small">Скидка в смете заменяет личную скидку человека. Название документа — «${esc(docH.textContent)}», меняется выше. Человек увидит смету в кабинете, во вкладке «Сметы».</p>`
+          + `<p class="muted small">Скидка в смете заменяет личную скидку человека; пусто — действует его личная. Название документа — «${esc(docH.textContent)}», меняется выше. Человек увидит смету в кабинете, во вкладке «Сметы».</p>`
           + '<button class="btn" type="submit">Сохранить для клиента</button> <button class="btn ghost" type="button" data-for-close>Закрыть</button><p class="msg" role="status"></p>';
         forBox.hidden = false;
         syncReplace();
         forBox.scrollIntoView({ block: "center" });
       });
-      forBox.addEventListener("change", ev => {  // выбрали человека — скидка его личная, если это не его же открытая смета
+      forBox.addEventListener("change", ev => {  // выбрали человека — таблица считает с его личной скидкой, если своей в смете нет
         if (ev.target !== F.user) return;
-        // общую скидку уже поставили на странице — она и остаётся; нет — подставляется личная выбранного человека
-        if (!(before && before.id && +F.user.value === +before.uid) && (smGet() || {}).d == null) { const d = +(F.user.selectedOptions[0]?.dataset.d || 0); F.disc.value = d ? d : ""; }
         syncReplace(); preview();
       });
       forBox.addEventListener("input", ev => { if (ev.target === F.disc) preview(); });
       forBox.addEventListener("click", ev => {
         if (!ev.target.closest("[data-for-close]")) return;
         forBox.hidden = true;
-        if (!saved) { const cur = smGet() || {}; if (before && before.d != null) cur.d = before.d; else delete cur.d; smSet(cur); renderSmeta(); }  // скидка — как была, строки не трогаем
+        if (!saved && !editing()) {  // скидки — как были, строки не трогаем
+          const cur = smGet() || {};
+          if (before && before.d != null) cur.d = before.d; else delete cur.d;
+          if (before && before.ud != null) cur.ud = before.ud; else delete cur.ud;
+          smSet(cur); renderSmeta();
+        }
       });
       forBox.addEventListener("submit", async ev => {
         ev.preventDefault();
+        if (guard() || editing()) return;
         const msg = $(".msg", forBox), btn = $("button[type=submit]", forBox);
         if (!F.user.value) { msg.className = "msg bad"; msg.textContent = "Выберите, кому сохранить."; return; }
-        const d = pctIn(), uid = +F.user.value, who = F.user.selectedOptions[0].textContent.split(" — ")[0];
+        const ni = ownNoName(smGet());
+        if (ni >= 0) { NONAME = ni; renderSmeta(); msg.className = "msg bad"; msg.textContent = "У своей строки нет названия — впишите его или уберите строку (×)."; return; }
+        const d = emptyD() ? null : pctIn(), uid = +F.user.value, who = F.user.selectedOptions[0].textContent.split(" — ")[0];
         btn.disabled = true; msg.className = "msg"; msg.textContent = "Сохраняем…";
-        const r = await kabApi("smeta_for", { user_id: uid, title: F.title.value, doc: docH.textContent === DOC0 ? "" : docH.textContent, disc: d,
-          items: load(), ld: (smGet() || {}).ld, extra: (smGet() || {}).extra, id: F.replace?.checked && before?.id ? before.id : 0, notify: F.notify.checked }).catch(() => ({}));
+        const r = await kabApi("smeta_for", { user_id: uid, title: F.title.value, doc: docNow(), disc: d,
+          items: load(), ld: obj((smGet() || {}).ld), extra: (smGet() || {}).extra || [], id: F.replace?.checked && before?.id ? before.id : 0, notify: F.notify.checked }).catch(() => ({}));
         btn.disabled = false;
         if (!r.ok) { msg.className = "msg bad"; msg.textContent = r.error === "limit" ? "У человека уже 100 смет — пусть удалит старые." : r.status === 403 ? "Нужен вход сотрудника." : "Не удалось сохранить."; return; }
         saved = true;
-        before = { ...(smGet() || {}), d, id: r.id, uid, title: r.title };
-        smSet(before); renderSmeta(); syncReplace(); F.title.value = r.title;
+        before = { ...(smGet() || {}), d: r.disc ?? null, id: r.id, uid, title: r.title };
+        if (!editing()) { smSet(before); renderSmeta(); }
+        syncReplace(); F.title.value = r.title;
         msg.className = "msg ok";
         msg.textContent = `Сохранено у «${who}»: «${r.title}».` + (F.notify.checked ? (r.sent ? " Сообщение в Telegram отправлено." : " Сообщение в Telegram не ушло: человек не разрешил боту писать — сообщите сами.") : "");
       });
     }
-    $("[data-copy-link]").addEventListener("click", () => copy(location.origin + "/smeta/?s=" + Object.entries(load()).map(([a, q]) => encodeURIComponent(a) + "*" + q).join(",")
-      + (docH.textContent !== DOC0 ? "&d=" + encodeURIComponent(docH.textContent) : ""), "Ссылка скопирована"));
+    // ссылка на смету: в ней только артикулы и количество. Скидки и свои строки по ссылке не передаются — предупреждаем (06.11.2026)
+    $("[data-copy-link]").addEventListener("click", () => {
+      const items = load();
+      if (!Object.keys(items).length) { tmsg.textContent = "По ссылке передать нечего: в списке только свои строки. Пошлите PDF."; setTimeout(() => { tmsg.textContent = ""; }, 8000); return; }
+      const m = smGet(), lost = !!m && ((m.extra || []).length > 0 || smLines(items, m).some(l => l.rb != null && l.disc > 0));
+      const url = location.origin + "/smeta/?s=" + Object.entries(items).map(([a, q]) => encodeURIComponent(a) + "*" + q).join(",") + (docNow() ? "&d=" + encodeURIComponent(docNow()) : "");
+      copy(url, lost ? "Ссылка скопирована. В ней только артикулы и количество: скидок и своих строк по ссылке не будет — клиенту лучше PDF." : "Ссылка скопирована", lost ? 8000 : 3000);
+    });
     $("[data-copy-text]").addEventListener("click", () => copy(smLines(load(), smGet()).map(l => `${l.x ? "—" : l.a}\t${l.n}${l.x ? ", " + (l.u || "шт.") : ""}\t${l.q}\t${l.t != null ? l.t + " BYN" : "по запросу"}`).join("\n"), "Список скопирован"));
     // загрузка списка: «артикул количество» в строке
     $("[data-import-go]").addEventListener("click", () => {
+      if (guard()) return;
       const area = $("[data-import]"), m = $("[data-import-msg]"), s = load(), miss = [];
       let n = 0;
       area.value.split(/\r?\n/).map(x => x.trim()).filter(Boolean).forEach(line => {
@@ -942,6 +1196,24 @@
       m.textContent = `Добавлено позиций: ${n}.` + (miss.length ? ` Не нашли: ${miss.slice(0, 8).join(", ")}${miss.length > 8 ? "…" : ""}. Такие позиции напишите в комментарии к заявке.` : "");
       if (!miss.length) area.value = "";
     });
+    if (staffMe) {
+      docBox.addEventListener("change", ev => {
+        const s = ev.target.closest("[data-doc-sel]"); if (!s) return;
+        if (s.value === "+") { $("[data-doc-new]", docBox).hidden = false; $("[data-doc-in]", docBox).focus(); return; }
+        if (guard()) return;
+        docSet(s.value); docShow();
+      });
+      docBox.addEventListener("click", async ev => {
+        if (ev.target.closest("[data-doc-add]")) {
+          const t = $("[data-doc-in]", docBox).value.trim().replace(/\s+/g, " ");
+          if (!t) return $("[data-doc-in]", docBox).focus();
+          if (await docSend("doc_title_add", { title: t })) { docSet(DOCS.some(x => x.title === t) ? t : DOC0); docShow(); }
+        }
+        const d = ev.target.closest("[data-doc-del]");
+        if (d && confirm(`Убрать «${docH.textContent}» из списка названий для всех сотрудников?`) && await docSend("doc_title_del", { id: +d.dataset.docDel })) { docSet(DOC0); docShow(); }
+      });
+      docBox.addEventListener("keydown", ev => { if (ev.key === "Enter" && ev.target.closest("[data-doc-in]")) { ev.preventDefault(); $("[data-doc-add]", docBox).click(); } });
+    }
   }
 
   // ---- телефон: в пустом поле «+375 », дальше код оператора и номер по образцу +375 29 123-45-67; стёрли «+375» — любой номер как есть ----
@@ -969,12 +1241,13 @@
     const body = { name: v("name"), phone: v("phone"), comment: v("comment"), website: v("website"), consent: true,
       topic: f.dataset.topic, page: location.pathname };
     if (box) {  // цены — как в смете; смета от сотрудника — с её скидкой и названием документа
-      const m = smGet(), dh = $("[data-doc-h]")?.textContent;
+      const m = smGet(), dh = docNow();
+      if (ownNoName(m) >= 0) { msg.textContent = "У своей строки нет названия — впишите его или уберите строку (×)."; msg.classList.add("bad"); return; }
       body.items = leadRows(m);
       // состав для «Открыть» в кабинете; скидки и свои строки сервер берёт из сметы (sid) или заявки (lid) этого человека, а не отсюда
-      body.sm = { items: load(), ld: m?.ld || {}, extra: m?.extra || [], d: m?.d ?? null, sid: m?.id || 0, lid: m?.lid || 0 };
+      body.sm = { items: load(), ld: obj(m?.ld), extra: m?.extra || [], d: m?.d ?? null, sid: m?.id || 0, lid: m?.lid || 0 };
       if (m && m.d != null) body.sdisc = +m.d;
-      if (dh && dh !== DOC0) body.doc = dh;
+      if (dh) body.doc = dh;
     }
     btn.disabled = true; msg.textContent = "Отправляем…";
     try {
@@ -1019,7 +1292,7 @@
       fail: "Не получилось войти. Попробуйте ещё раз или позвоните: +375 29 370-20-20.", blocked: "Доступ закрыт. Позвоните: +375 29 370-20-20." };
     const tgErr = (location.hash.match(/^#tg=(\w+)$/) || [])[1];
     if (tgErr) history.replaceState(null, "", location.pathname);
-    const out = () => { remember(null); setAcc(null); user = null; staff = admin = false; history.replaceState(null, "", location.pathname); route(); };
+    const out = () => { const m = smGet(); smSet(null); if (m && m.edit) { save({}); docSet(""); } count(); remember(null); setAcc(null); user = null; staff = admin = false; history.replaceState(null, "", location.pathname); route(); };
 
     const showLogin = async () => {
       show(loginBox);
@@ -1098,35 +1371,63 @@
     // ---- заявки и сметы: одни таблицы для вкладок и карточки клиента (поиск по имени и телефону, владелец 06.11.2026) ----
     let SHOWN = { leads: [], smetas: [] }, PERSON = null;  // что сейчас в панели — для «Открыть»; чья карточка открыта
     const jl = s => { try { return JSON.parse(s || "[]") || []; } catch { return []; } };
-    const ulist = it => `<ul>${it.map(x => `<li>${esc(x.a)} — ${esc(x.n)} × ${x.q}${x.b != null ? ", " + fmt(x.b * x.q) + " BYN" : ""}</li>`).join("")}</ul>`;
+    const dayT = s => day(s) + (s && s.length > 15 ? " " + s.slice(11, 16) : "");  // дата и время правки
+    const hhmm = () => new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    const tok = () => Math.random().toString(36).slice(2, 10);  // метка документа для вкладки страницы сметы
+    // строка состава: «× 2: 1 202 → 1 082 BYN (−10 %)» — цена до скидки зачёркнута (Baymard, 1С:УНФ: скидка и процентом, и суммой)
+    const ulist = it => `<ul>${it.map(x => `<li>${esc(x.a)} — ${esc(x.n)} × ${x.q}${x.b == null ? ", по запросу"
+      : ": " + (x.rb != null && x.rb > x.b ? `<s>${fmt(x.rb * x.q)}</s> → ` : "") + fmt(x.b * x.q) + " BYN" + (x.rb != null && x.rb > x.b && x.p ? ` (−${pct(x.p)})` : "")}</li>`).join("")}</ul>`;
+    // итог заявки с расшифровкой скидки (владелец 06.11.2026: «нет информации о скидке»): «2 поз. · без скидки 1 202 → скидка 10 % −120 → итого 1 082 BYN».
+    // У строк, записанных до 06.11.2026, цены до скидки нет — тогда откуда скидка, видно по составу для правки
+    const leadMoney = (rows, total, sm) => {
+      if (!rows.length) return "";
+      const r2 = v => Math.round(v * 100) / 100, priced = rows.filter(r => r.b != null), sum = total != null ? +total : r2(priced.reduce((t, r) => t + r.b * r.q, 0));
+      const full = r2(priced.reduce((t, r) => t + (r.rb ?? r.b) * r.q, 0)), ps = new Set(priced.map(r => r.p ?? ((r.rb ?? r.b) > r.b ? "?" : 0)).map(String));
+      if (full - sum >= 0.005) return `${rows.length} поз. · без скидки ${fmt(full)} → скидка${ps.size === 1 && !ps.has("?") ? " " + pct(+[...ps][0]) : ""} −${fmt(r2(full - sum))} → <b>итого ${fmt(sum)} BYN</b>`;
+      const src = sm ? (sm.d != null ? (+sm.d ? `скидка на всё ${pct(sm.d)}` : "") : +sm.ud > 0 ? `личная скидка ${pct(sm.ud)}` : "") : "";
+      return `${rows.length} поз., <b>${fmt(sum)} BYN</b>${src ? ` <span class="muted small">(${src})</span>` : ""}`;
+    };
     const pkey = ph => { const d = String(ph || "").replace(/\D/g, ""); return d.length >= 7 ? d.slice(-9) : ""; };  // как kab_phone_key на сервере
     const pLink = (uid, ph, text) => uid ? `<a href="#p=u${uid}">${text}</a>` : pkey(ph) ? `<a href="#p=t${pkey(ph)}">${text}</a>` : text;
-    // сумма сметы — со скидкой сметы, иначе с личной скидкой её владельца (сотрудник у чужой сметы — не со своей)
-    const smSum = s => smLines(s.items, { d: s.disc, ld: s.ld, extra: s.extra, ...(staff && +s.user_id !== +user.id ? { ud: +s.udisc || 0 } : {}) }).reduce((t, l) => t + (l.t || 0), 0);
-    const smFrom = s => (s.made_by ? `<br><span class="muted small">${staff ? "подготовил: " + esc(s.made_name || "сотрудник") : "подготовила AllVision"}${s.disc ? ", скидка " + pct(s.disc) : ""}</span>` : "")
-      + (s.edited_at ? `<br><span class="muted small">${staff ? "изменил: " + esc(s.edited_name || "сотрудник") : "изменена AllVision"} ${day(s.edited_at)}</span>` : "");
+    // сумма сметы — со скидкой сметы, иначе с личной скидкой её владельца (сотрудник у чужой сметы — не со своей); подпись — откуда скидка
+    const smMoney = s => {
+      const ud = staff && +s.user_id !== +user.id ? +s.udisc || 0 : null;
+      const ls = smLines(s.items, { d: s.disc != null ? s.disc : ud != null ? ud : DISC, ld: s.ld, extra: s.extra });  // не зависит от STAFF: сразу после входа его ещё нет
+      let sum = 0, full = 0;
+      ls.forEach(l => { if (l.t != null) { sum += l.t; full += l.rb * l.q; } });
+      sum = Math.round(sum * 100) / 100; full = Math.round(full * 100) / 100;
+      const pd = ud != null ? ud : DISC;
+      const src = s.disc != null ? (+s.disc ? `в смете ${pct(s.disc)}` : "в смете без скидки") : pd ? `личная ${pct(pd)}` : "";
+      const own = Object.keys(obj(s.ld)).length || (s.extra || []).some(x => x.d != null && x.d !== "");
+      const note = [full > sum ? `без скидки ${fmt(full)}` : "", src, own ? "+ в строках" : ""].filter(Boolean).join(" · ");
+      return `${fmt(sum)} BYN${note ? `<br><span class="muted small">${note}</span>` : ""}`;
+    };
+    const smFrom = s => (s.made_by ? `<br><span class="muted small">${staff ? "подготовил: " + esc(s.made_name || "сотрудник") : "подготовила AllVision"}</span>` : "")
+      + (s.edited_at ? `<br><span class="muted small">${staff ? "изменил: " + esc(s.edited_name || "сотрудник") : "изменена AllVision"} ${dayT(s.edited_at)}</span>` : "");
     const smetaTable = (list, who) => `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Смета</th>${who ? "<th>Чья</th>" : ""}<th class="num">Позиций</th><th class="num">Сумма*</th><th>Обновлена</th><th></th></tr></thead><tbody>`
       + list.map(s => `<tr><td>${esc(s.title)}${s.doc ? `<br><span class="muted small">${esc(s.doc)}</span>` : ""}${smFrom(s)}</td>`
         + (who ? `<td>${pLink(s.user_id, "", esc(s.name))}${s.company ? `<br><span class="muted small">${esc(s.company)}</span>` : ""}</td>` : "")
-        + `<td class="num">${Object.keys(s.items).length + (s.extra || []).length}</td><td class="num">${fmt(smSum(s))} BYN</td><td>${day(s.updated_at)}</td>`
+        + `<td class="num">${Object.keys(obj(s.items)).length + (s.extra || []).length}</td><td class="num">${smMoney(s)}</td><td>${day(s.updated_at)}</td>`
         + `<td class="acts"><button class="cbtn" type="button" data-open="${s.id}">Открыть</button>${+s.user_id === +user.id || (staff && +s.made_by === +user.id) ? ` <button class="cbtn ghost" type="button" data-del="${s.id}">Удалить</button>` : ""}</td></tr>`).join("")
       + "</tbody></table></div>";
-    const smetaNote = () => `<p class="muted small">* По сегодняшним ценам: со скидкой, указанной в смете, иначе${staff ? " с личной скидкой владельца сметы" : DISC ? ` с вашей скидкой ${pct(DISC)}` : " по розничным"}; без позиций «по запросу». «Открыть» заменяет текущий список для сметы.${staff ? " Открытую смету правят на странице сметы и сохраняют кнопкой «Сохранить изменения»." : ""}</p>`;
+    const smetaNote = () => `<p class="muted small">* По сегодняшним ценам: со скидкой, указанной в смете, иначе${staff ? " с личной скидкой владельца сметы" : DISC ? ` с вашей скидкой ${pct(DISC)}` : " по розничным"}; без позиций «по запросу». «Открыть» заменяет текущий список для сметы.${staff ? " Открытую смету правят на странице сметы и сохраняют кнопкой «Сохранить»." : ""}</p>`;
     const leadTable = (list, who) => `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>№</th><th>Дата</th>${who ? "<th>Кто</th>" : ""}<th>Что</th><th>Состояние</th></tr></thead><tbody>`
       + list.map(l => {
         const it = jl(l.items), was = staff ? jl(l.items0) : [];
         return `<tr><td>${l.id}</td><td>${day(l.created_at)}</td>`
           + (who ? `<td>${pLink(l.user_id, l.phone, esc(l.name || "—"))}<br><a href="tel:${esc(l.phone)}">${esc(l.phone)}</a>${l.role ? `<br><span class="muted small">${esc(ROLE[l.role] || "")}${l.company ? ", " + esc(l.company) : ""}</span>` : ""}</td>` : "")
-          + `<td>${esc(l.topic || "Заявка")}${it.length ? ` · ${it.length} поз.${l.total ? ", " + fmt(+l.total) + " BYN" : ""}` : ""}${l.comment ? `<br><span class="muted small">${esc(l.comment)}</span>` : ""}`
+          + `<td>${esc(l.topic || "Заявка")}${it.length ? " · " + leadMoney(it, l.total, l.sm) : ""}${l.comment ? `<br><span class="muted small">${esc(l.comment)}</span>` : ""}`
+          + (staff && l.note ? `<br><span class="own-note small">Заметка: ${esc(l.note)}</span>` : "")
           + (l.made ? `<br><span class="muted small">${staff ? "оформил: " + esc(l.made_name || "сотрудник") : "оформлена AllVision"}</span>` : "")
-          + (l.edited_at ? `<br><span class="muted small">${staff ? "изменил: " + esc(l.edited_name || "сотрудник") : "изменена AllVision"} ${day(l.edited_at)}</span>` : "")
+          + (l.edited_at ? `<br><span class="muted small">${staff ? "изменил: " + esc(l.edited_name || "сотрудник") : "изменена AllVision"} ${dayT(l.edited_at)}</span>` : "")
           + (it.length ? `<details><summary>Состав</summary>${ulist(it)}</details>` : "")
-          + (was.length ? `<details><summary>Как прислал клиент</summary>${ulist(was)}${l.total0 ? `<p class="small">Итого ${fmt(+l.total0)} BYN</p>` : ""}</details>` : "")
-          + (it.length || l.sm ? `<p class="acts"><button class="cbtn" type="button" data-lopen="${l.id}">${staff ? "Открыть и поправить" : "Открыть"}</button></p>` : "") + "</td>"
+          + (was.length ? `<details><summary>${l.made ? "Как оформили сначала" : "Как прислал клиент"}</summary>${ulist(was)}<p class="small">${leadMoney(was, l.total0, null)}</p></details>` : "")
+          // сотруднику — у любой заявки, и у «Заказать звонок»: состав можно набрать прямо в ней (06.11.2026)
+          + (staff || it.length || l.sm ? `<p class="acts"><button class="cbtn" type="button" data-lopen="${l.id}">${staff ? "Открыть и поправить" : "Открыть"}</button></p>` : "") + "</td>"
           + `<td>${staff ? `<select data-st="${l.id}" aria-label="Состояние заявки №${l.id}">${Object.entries(ST).map(([k, t]) => `<option value="${k}"${k === l.status ? " selected" : ""}>${t}</option>`).join("")}</select>`
             : `<span class="st ${esc(l.status)}">${ST[l.status] || esc(l.status)}</span>`}</td></tr>`;
       }).join("") + "</tbody></table></div>";
-    const leadNote = () => `<p class="muted small">«Открыть» заменяет текущий список для сметы.${staff ? " Открытую заявку правят на странице сметы и сохраняют кнопкой «Сохранить изменения»: клиент увидит новый состав, а здесь останется, как он прислал." : ""}</p>`;
+    const leadNote = () => `<p class="muted small">«Открыть» заменяет текущий список для сметы.${staff ? " Открытую заявку правят на странице сметы и сохраняют кнопкой «Сохранить»: клиент увидит новый состав, а здесь останется, как он прислал." : ""}</p>`;
     // заявка без состава для правки (до 06.11.2026) — состав из её строк: артикул из каталога — строкой каталога, остальное (своя строка,
     // артикула больше нет) — своей строкой с ценой из заявки, без новой скидки
     const fromRows = rs => {
@@ -1139,35 +1440,95 @@
       });
       return { items, extra, ld: {}, d: null, doc: "" };
     };
-    const replaceOk = what => !Object.keys(load()).length || confirm(`Заменить текущий список для сметы ${what}?`);
+    // заменить текущий список: у сотрудника с открытой правкой — спрашиваем, только если есть несохранённое, и называем документ
+    const replaceOk = what => {
+      const m = smGet();
+      if (staff && m && m.edit) return !dirty(m) || confirm(`Сейчас открыта правка ${edName(m)} — несохранённые изменения пропадут. Продолжить?`);
+      return !(Object.keys(load()).length || (m && (m.extra || []).length)) || confirm(`Заменить текущий список для сметы ${what}?`);
+    };
+    const backHere = def => "/kabinet/" + (location.hash && location.hash !== "#" ? location.hash : def);
+    // открыть — всегда свежую версию с сервера (06.11.2026: после «Назад» открывалась версия до сохранения)
     const openSmeta = s => {
-      if (!s || !replaceOk("этой сметой")) return;
-      // сотрудник — в режиме правки: «Сохранить изменения» на странице сметы пишет в эту же смету; чужая — с личной скидкой её владельца
-      save(s.items); docSet(s.doc);
-      smSet({ d: s.disc, id: s.id, uid: s.user_id, title: s.title, ld: s.ld, extra: s.extra,
-        ...(staff ? { edit: "s", who: s.name || "", wtg: +s.user_id !== +user.id, ...(+s.user_id !== +user.id ? { ud: +s.udisc || 0 } : {}) } : {}) });
+      const cur = smGet();
+      if (staff && cur && cur.edit === "s" && +cur.id === +s.id && dirty(cur)) { location.href = "/smeta/"; return; }  // та же смета с несохранённым — продолжить
+      if (!replaceOk("этой сметой")) return;
+      save(obj(s.items)); docSet(s.doc);
+      const x = { d: s.disc, id: s.id, uid: s.user_id, title: s.title, ld: obj(s.ld), extra: s.extra || [] };
+      // сотрудник — в режиме правки: «Сохранить» на странице сметы пишет в эту же смету; чужая — с личной скидкой её владельца
+      if (staff) Object.assign(x, { edit: "s", who: s.name || "", wtg: +s.user_id !== +user.id, v: s.ver, k: tok(), back: backHere("#smetas"),
+        ...(+s.user_id !== +user.id ? { ud: +s.udisc || 0 } : {}) });
+      smSet(x);
+      if (staff) { const y = smGet(); y.saved = sig(y); smSet(y); }
       location.href = "/smeta/";
     };
     const openLead = l => {
-      if (!l || !replaceOk("этой заявкой")) return;
-      const sm = l.sm || {}, st = Object.keys(sm.items || {}).length || (sm.extra || []).length ? sm : fromRows(jl(l.items));
-      save(st.items || {}); docSet(st.doc || "");
-      // сотрудник — в режиме правки, с личной скидкой клиента; заявка без кабинета — по розничным ценам
-      smSet({ lid: l.id, title: `Заявка №${l.id}`, d: st.d ?? null, ld: st.ld || {}, extra: st.extra || [],
-        ...(staff ? { edit: "l", who: [l.name, l.company].filter(Boolean).join(", "), wtg: !!l.user_id, uid: l.user_id || 0, ph: l.phone || "", ud: l.user_id ? (+l.udisc || 0) : 0 } : {}) });
+      const cur = smGet();
+      if (staff && cur && cur.edit === "l" && +cur.lid === +l.id && dirty(cur)) { location.href = "/smeta/"; return; }
+      if (!replaceOk("этой заявкой")) return;
+      const sm = l.sm || {}, has = Object.keys(obj(sm.items)).length || (sm.extra || []).length, st = has ? sm : fromRows(jl(l.items));
+      save(obj(st.items)); docSet(st.doc || "");
+      const x = { lid: l.id, title: `Заявка №${l.id}`, d: st.d ?? null, ld: obj(st.ld), extra: st.extra || [] };
+      // сотрудник — в режиме правки. Личная скидка — на момент заявки (sm.ud), а не сегодняшняя; сегодняшняя — для «Пересчитать» (udNow).
+      // Заявка без кабинета — по розничным ценам
+      if (staff) {
+        const nm = [l.name, l.company].filter(Boolean).join(", ");
+        Object.assign(x, { edit: "l", who: l.user_id ? nm : l.name || "", wtg: !!l.user_id, uid: l.user_id || 0, ph: l.phone || "",
+          ud: l.user_id ? (st.ud ?? (+l.udisc || 0)) : 0, udNow: l.user_id ? +l.udisc || 0 : 0, v: l.ver, total: l.total, status: l.status, cm: l.comment || "",
+          nt: l.note || "", nt0: l.note || "", who0: l.user_id ? nm : l.name || "", ph0: l.phone || "",
+          had: !!(Object.keys(obj(st.items)).length || (st.extra || []).length), k: tok(), back: backHere("#leads") });
+      }
+      smSet(x);
+      if (staff) { const y = smGet(); y.saved = sig(y); smSet(y); }
       location.href = "/smeta/";
     };
     // новая смета или заявка человеку из карточки или из поиска: пустой список и полоса «Новая смета для …» на странице сметы
-    const newDoc = (kind, p) => {
-      if (Object.keys(load()).length && !confirm("Начать новый документ? Текущий список для сметы очистится.")) return;
+    const newDoc = (kind, p, back) => {
+      if (!replaceOk("новым документом")) return;
       save({}); docSet("");
-      smSet({ edit: kind === "s" ? "ns" : "nl", who: p.name || "", uid: p.id || 0, ph: p.phone || "", wtg: !!p.id, ud: p.id ? (+p.discount || 0) : 0, title: "" });
+      smSet({ edit: kind === "s" ? "ns" : "nl", who: p.name || "", uid: p.id || 0, ph: p.phone || "", wtg: !!p.id, ud: p.id ? (+p.discount || 0) : 0, title: "",
+        k: tok(), back: back || (p.id || pkey(p.phone) ? "/kabinet/#p=" + (p.id ? "u" + p.id : "t" + pkey(p.phone)) : backHere("#leads")) });
       location.href = "/smeta/";
     };
+    // сообщение сверху панели; после «Сохранить и вернуться» — итог сохранения и подсвеченная строка (GOV.UK notification banner)
+    const panelMsg = (text, bad) => panel.insertAdjacentHTML("afterbegin", `<p class="msg ${bad ? "bad" : "ok"} kab-flash" role="status">${esc(text)}</p>`);
+    const flash = () => {
+      let f = null;
+      try { f = JSON.parse(sessionStorage.getItem("hdl-flash")); sessionStorage.removeItem("hdl-flash"); } catch {}
+      if (!f) return;
+      panelMsg(f.text);
+      const b = f.lid ? $(`[data-lopen="${f.lid}"]`, panel) : f.sid ? $(`[data-open="${f.sid}"]`, panel) : null, tr = b && b.closest("tr");
+      if (tr) { tr.classList.add("just-saved"); tr.scrollIntoView({ block: "center" }); }
+    };
+    // личная скидка клиента — правится прямо в карточке (GOV.UK Summary list «Изменить», МойСклад: скидка в карточке контрагента)
+    const pdClick = async ev => {
+      const sp = ev.target.closest("[data-pd]");
+      if (!sp || !PERSON) return false;
+      const p = PERSON;
+      if (ev.target.closest("[data-pd-edit]")) {
+        sp.innerHTML = `скидка <input type="number" min="0" max="50" step="0.5" data-pd-in value="${+p.discount || 0}" aria-label="Личная скидка, %"> % <button class="cbtn" type="button" data-pd-save>Сохранить</button> <button class="cbtn ghost" type="button" data-pd-cancel>Отмена</button> <span class="msg small" data-pd-msg role="status"></span>`;
+        $("[data-pd-in]", sp).select();
+      } else if (ev.target.closest("[data-pd-cancel]")) route();
+      else if (ev.target.closest("[data-pd-save]")) {
+        const v = Math.max(0, Math.min(50, Math.round((+String($("[data-pd-in]", sp).value).replace(",", ".") || 0) * 10) / 10));
+        const r = await kabApi("user_set", { id: p.id, do: "set", discount: v }).catch(() => ({}));
+        if (!r.ok) { const m = $("[data-pd-msg]", sp); m.className = "msg small bad"; m.textContent = r.status === 409 ? "Так нельзя" : "Не удалось сохранить"; return true; }
+        people = null;
+        try { sessionStorage.setItem("hdl-flash", JSON.stringify({ text: `Личная скидка ${v ? pct(v) : "убрана"} — сохранено в ${hhmm()}. Сметы без своей скидки считаются по ней; сохранённые заявки не меняются.` })); } catch {}
+        route();
+      }
+      return true;
+    };
     const listClicks = async ev => {
+      if (await pdClick(ev)) return;
       const o = ev.target.closest("[data-open]"), lo = ev.target.closest("[data-lopen]"), d = ev.target.closest("[data-del]"), nw = ev.target.closest("[data-new]");
-      if (o) openSmeta(SHOWN.smetas.find(x => String(x.id) === o.dataset.open));
-      if (lo) openLead(SHOWN.leads.find(x => String(x.id) === lo.dataset.lopen));
+      if (o || lo) {
+        const b = o || lo;
+        b.disabled = true;
+        const j = await kabApi(o ? "smeta_get&id=" + encodeURIComponent(o.dataset.open) : "lead_get&id=" + encodeURIComponent(lo.dataset.lopen)).catch(() => ({}));
+        b.disabled = false;
+        if (!j.ok) { $(".kab-flash", panel)?.remove(); panelMsg(j.status === 404 ? "Не нашли: возможно, её удалили. Обновите страницу." : "Не удалось открыть — обновите страницу.", true); return; }
+        return o ? openSmeta(j.smeta) : openLead(j.lead);
+      }
       if (nw && PERSON) newDoc(nw.dataset.new, PERSON);
       if (d && confirm("Удалить смету из кабинета?")) { await kabApi("smeta_del", { id: +d.dataset.del }).catch(() => {}); route(); }
     };
@@ -1176,45 +1537,70 @@
       const r = await kabApi("lead_status", { id: +s.dataset.st, status: s.value }).catch(() => ({}));
       s.classList.toggle("bad", !r.ok);
     };
+    const pdKeys = ev => {  // Enter — сохранить, Esc — отмена
+      if (!ev.target.closest("[data-pd-in]")) return;
+      if (ev.key === "Enter") { ev.preventDefault(); $("[data-pd-save]", panel)?.click(); }
+      if (ev.key === "Escape") route();
+    };
 
     const tabSmetas = async () => {
       wait();
       const j = await kabApi("smetas" + (staff ? "&all=1" : "")).catch(() => ({}));
       if (!j.ok) return failed();
-      if (!j.smetas.length) { panel.innerHTML = '<p>Сохранённых смет пока нет. Соберите список в <a href="/katalog/">каталоге</a>, затем на странице <a href="/smeta/">«Смета»</a> нажмите «Сохранить в кабинет».</p>'; return; }
+      if (!j.smetas.length) { panel.innerHTML = '<p>Сохранённых смет пока нет. Соберите список в <a href="/katalog/">каталоге</a>, затем на странице <a href="/smeta/">«Смета»</a> нажмите «Сохранить в кабинет».</p>'; return flash(); }
       SHOWN = { leads: [], smetas: j.smetas };
       panel.innerHTML = smetaTable(j.smetas, staff) + smetaNote();
       panel.onclick = listClicks;
+      flash();
     };
 
     const tabLeads = async () => {
       wait();
       const j = await kabApi("leads").catch(() => ({}));
       if (!j.ok) return failed();
-      if (!j.leads.length) { panel.innerHTML = staff ? "<p>Заявок пока нет.</p>" : "<p>Заявок пока нет. Заявки, отправленные с сайта после входа, появятся здесь вместе с их состоянием.</p>"; return; }
+      if (!j.leads.length) { panel.innerHTML = staff ? "<p>Заявок пока нет.</p>" : "<p>Заявок пока нет. Заявки, отправленные с сайта после входа, появятся здесь вместе с их состоянием.</p>"; return flash(); }
       SHOWN = { leads: j.leads, smetas: [] };
       panel.innerHTML = leadTable(j.leads, staff) + leadNote();
       panel.onclick = listClicks;
       if (staff) panel.onchange = statusChange;
+      flash();
     };
 
     // карточка человека (сотрудник): #p=u<номер> — пользователь кабинета, #p=t<телефон> — оставлял заявки без входа
     const tabPerson = async key => {
       wait();
       const j = await kabApi("person&" + (key[0] === "u" ? "uid=" : "phone=") + encodeURIComponent(key.slice(1))).catch(() => ({}));
-      if (!j.ok) { panel.innerHTML = j.status === 404 ? "<p>Такого человека не нашли. Поищите по имени или телефону.</p>" : ""; if (j.status !== 404) failed(); return; }
+      if (!j.ok) { panel.innerHTML = j.status === 404 ? "<p>Такого человека не нашли. Поищите по имени или телефону.</p>" : ""; if (j.status !== 404) failed(); else flash(); return; }
       const p = PERSON = j.person, blocked = p.status === "blocked";
       SHOWN = { leads: j.leads, smetas: j.smetas };
+      const disc = p.id ? `<span data-pd>${p.discount > 0 ? "скидка " + pct(p.discount) : "без скидки"}${blocked ? "" : ' <button class="cbtn ghost" type="button" data-pd-edit>Изменить</button>'}</span>` : "";
       const info = [p.phone && `<a href="tel:${esc(p.phone)}">${esc(p.phone)}</a>`, p.company && esc(p.company), p.id ? esc(ROLE[p.role] || "") : "без кабинета на сайте",
-        p.discount > 0 && "скидка " + pct(p.discount), p.tg_username && "@" + esc(p.tg_username), blocked && "заблокирован"].filter(Boolean).join(" · ");
+        disc, p.tg_username && "@" + esc(p.tg_username), blocked && "заблокирован"].filter(Boolean).join(" · ");
       panel.innerHTML = `<div class="kab-person"><div><h2>${esc(p.name || "—")}</h2><p class="muted">${info}</p></div>`
         + (blocked ? "" : `<div class="acts">${p.id ? '<button class="btn" type="button" data-new="s">Новая смета</button>' : ""}<button class="btn${p.id ? " ghost" : ""}" type="button" data-new="l">Новая заявка</button></div>`) + "</div>"
         + "<h3>Заявки</h3>" + (j.leads.length ? leadTable(j.leads, false) : '<p class="muted">Заявок нет.</p>')
         + (p.id ? "<h3>Сметы</h3>" + (j.smetas.length ? smetaTable(j.smetas, false) + smetaNote() : '<p class="muted">Смет нет.</p>')
-          : '<p class="muted small">У человека нет кабинета на сайте: смету ему сохранить некуда. Оформите заявку, а PDF или ссылку пошлите сами.</p>');
+          : '<p class="muted small">У человека нет кабинета на сайте: смету ему сохранить некуда. Оформите заявку и пошлите PDF.</p>');
       panel.onclick = listClicks;
       panel.onchange = statusChange;
+      panel.onkeydown = pdKeys;
+      flash();
     };
+
+    // открыта правка, а сотрудник в кабинете — строка «Открыта правка заявки №12 (Иван): Продолжить · Закрыть» над вкладками
+    const edBanner = () => {
+      const el = $("[data-kab-ed]"), m = smGet();
+      if (!el) return;
+      el.hidden = !(staff && m && m.edit);
+      if (el.hidden) return;
+      el.innerHTML = `Открыта правка ${esc(edName(m))}${dirty(m) ? " — <b>есть несохранённые изменения</b>" : ""}: <a href="/smeta/">Продолжить</a> · <button class="cbtn ghost" type="button" data-ed-drop>Закрыть</button>`;
+    };
+    $("[data-kab-ed]")?.addEventListener("click", ev => {
+      if (!ev.target.closest("[data-ed-drop]")) return;
+      const m = smGet();
+      if (m && dirty(m) && !confirm(`В правке ${edName(m)} есть несохранённые изменения. Закрыть без сохранения?`)) return;
+      smSet(null); save({}); docSet(""); edBanner();  // сначала правка, потом список — шапка пересчитывается без неё
+    });
 
     // поиск клиента (сотрудник): имя, телефон, компания, @ник. Список людей грузится один раз и обновляется раз в минуту; ищет страница
     const findBox = $("[data-kab-find]"), findIn = $("[data-kab-q]"), findRes = $("[data-kab-res]");
@@ -1230,9 +1616,10 @@
       if (q.length < 2) { findRes.hidden = true; return; }
       const list = await peopleLoad();
       if (findIn.value.trim() !== q) return;  // пока грузили, запрос сменился
-      let qd = q.replace(/\D/g, "");
+      const toks = q.split(/\s+/).filter(Boolean), isPh = w => /^[+\d()\-]+$/.test(w) && /\d/.test(w);  // телефон — только слова из цифр и знаков
+      let qd = toks.filter(isPh).join("").replace(/\D/g, "");
       if (/^80\d/.test(qd)) qd = "375" + qd.slice(2);  // 8029… — то же, что +37529…
-      const words = low(q).replace(/[+\d()\-]/g, " ").split(/\s+/).filter(w => w.length > 1);
+      const words = toks.filter(w => !isPh(w)).map(w => low(w).replace(/^@/, "")).filter(w => w.length > 1);  // «@ivan», «petr1985» — целиком
       const hit = p => {
         const pd = String(p.phone || "").replace(/\D/g, ""), text = low([p.name, p.company, p.tg_username].join(" "));
         if (qd.length >= 3 && !(pd.includes(qd) || (qd.length >= 7 && pd.endsWith(qd.slice(-9))))) return false;
@@ -1253,12 +1640,12 @@
         if (ev.target.closest("a")) { findRes.hidden = true; return; }
         if (!ev.target.closest("[data-find-new]")) return;
         const q = findIn.value.trim(), ph = (q.match(/\d/g) || []).length >= 7;  // цифры — это телефон, иначе имя
-        newDoc("l", { id: 0, name: ph ? q.replace(/[+\d()\-\s]{7,}/g, "").trim() : q, phone: ph ? (q.match(/[+\d()\-\s]{7,}/) || [""])[0].trim() : "" });
+        newDoc("l", { id: 0, name: ph ? q.replace(/[+\d()\-\s]{7,}/g, "").trim() : q, phone: ph ? (q.match(/[+\d()\-\s]{7,}/) || [""])[0].trim() : "" }, backHere("#leads"));
       });
       document.addEventListener("click", ev => { if (!ev.target.closest("[data-kab-find]")) findRes.hidden = true; });
       findIn.addEventListener("keydown", ev => {
         if (ev.key === "Escape") findRes.hidden = true;
-        if (ev.key === "Enter") { ev.preventDefault(); $("a", findRes)?.click(); }
+        if (ev.key === "Enter") { ev.preventDefault(); clearTimeout(t); findDraw().then(() => { if (!findRes.hidden) $("a", findRes)?.click(); }); }
       });
     }
 
@@ -1489,7 +1876,7 @@
     };
 
     const route = () => {
-      panel.onclick = panel.onchange = panel.oninput = null;
+      panel.onclick = panel.onchange = panel.oninput = panel.onkeydown = null;
       if (!user) return showLogin();
       if (user.status === "form") { main.before(form); setupForm(true); return show(form); }
       show(main); head();
@@ -1501,13 +1888,31 @@
       const cur = pk ? "" : (tabs.find(t => "#" + t[0] === location.hash) || tabs[0])[0];
       $("[data-kab-tabs]").innerHTML = tabs.map(([k, t]) => `<a href="#${k}" class="tab${k === cur ? " on" : ""}"${k === cur ? ' aria-current="page"' : ""}>${t}</a>`).join("");
       if (findBox) findBox.hidden = !staff;
+      edBanner();
       PERSON = null;
       if (pk) return tabPerson(pk);
       ({ users: tabUsers, leads: tabLeads, smetas: tabSmetas, cat: tabCat, docs: tabDocs, mats: tabMats, profile: tabProfile })[cur]();
     };
     addEventListener("hashchange", () => { if (user && user.status !== "form") route(); });
-    $("[data-kab-logout]").addEventListener("click", async () => { await kabApi("logout", {}).catch(() => {}); out(); });
-    kabApi("me").then(j => { if (j.ok) { user = j.user; staff = !!j.staff; admin = !!j.admin; remember(user); setAcc(user); } route(); }).catch(route);
+    $("[data-kab-logout]").addEventListener("click", async () => {
+      const m = smGet();  // правка с несохранённым — после выхода она пропадёт (на общем компьютере её нельзя оставлять)
+      if (staff && m && m.edit && dirty(m) && !confirm(`В правке ${edName(m)} есть несохранённые изменения — после выхода они пропадут. Выйти?`)) return;
+      await kabApi("logout", {}).catch(() => {});
+      out();
+    });
+    const boot = () => kabApi("me").then(j => {
+      if (j.ok) { user = j.user; staff = !!j.staff; admin = !!j.admin; remember(user); setAcc(user); }
+      // личную скидку поменяли, а страница считает по старой (DISC берётся при загрузке) — один раз перезагрузить, как на других страницах
+      const d = j.ok && j.user ? +j.user.discount || 0 : DISC;
+      let again = "";
+      try { again = sessionStorage.getItem("hdl-me-r"); } catch {}
+      if (d !== DISC && again !== location.href) { try { sessionStorage.setItem("hdl-me-r", location.href); } catch {} location.reload(); return; }
+      try { sessionStorage.removeItem("hdl-me-r"); } catch {}
+      route();
+    }).catch(route);
+    boot();
+    // «Назад» вернул кабинет из кэша браузера — списки и карточку заново с сервера (06.11.2026: открывалась версия до сохранения)
+    addEventListener("pageshow", ev => { if (ev.persisted) { people = null; boot(); } });
   }
 
   // ---- снимки в интерьере (data-lb): просмотр поверх страницы вместо нового окна, стрелки листают снимки коллекции по кругу (владелец 03.11.2026).

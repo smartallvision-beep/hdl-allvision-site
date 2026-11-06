@@ -48,18 +48,24 @@ if (empty($in['consent'])) reply(422, ['ok' => false, 'error' => 'consent']);
 $sdisc = is_numeric($in['sdisc'] ?? null) ? max(0.0, min(50.0, round((float) $in['sdisc'], 1))) : null;
 $doc = $clean($in['doc'] ?? '', 80);
 $pct = fn(float $d) => rtrim(rtrim(number_format($d, 1, ',', ''), '0'), ',') . ' %';
+// сумма: 1 503 BYN, с копейками (своя строка «кабель 1,85 за метр») — 9,25 BYN, как на странице сметы
+$money = fn(float $x) => number_format(round($x, 2), abs(round($x, 2) - round($x)) < 0.005 ? 0 : 2, ',', ' ') . ' BYN';
 $items = [];
 $rows = [];  // те же строки для кабинета
 $sum = 0;
 foreach (array_slice(is_array($in['items'] ?? null) ? $in['items'] : [], 0, 100) as $it) {
     if (!is_array($it)) continue;
     $q = max(1, min(9999, (int) ($it['q'] ?? 1)));
-    $b = is_numeric($it['b'] ?? null) ? (int) $it['b'] : null;
+    $b = is_numeric($it['b'] ?? null) ? round(max(0.0, (float) $it['b']), 2) : null;
     if ($b !== null) $sum += $b * $q;
     $items[] = '• ' . $clean($it['a'] ?? '', 60) . ' — ' . $clean($it['n'] ?? '', 160) . ' × ' . $q
-        . ($b !== null ? ' = ' . number_format($b * $q, 0, ',', ' ') . ' BYN' : ' (по запросу)');
-    $rows[] = ['a' => $clean($it['a'] ?? '', 60), 'n' => $clean($it['n'] ?? '', 160), 'q' => $q, 'b' => $b];
+        . ($b !== null ? ' = ' . $money($b * $q) : ' (по запросу)');
+    // rb — цена без скидки, p — скидка строки, %: для расшифровки скидки в кабинете (06.11.2026), как и b — только для справки
+    $rb = $b === null ? null : (is_numeric($it['rb'] ?? null) ? round(max(0.0, (float) $it['rb']), 2) : $b);
+    $p = $b !== null && is_numeric($it['p'] ?? null) ? max(0.0, min(50.0, round((float) $it['p'], 1))) : null;
+    $rows[] = ['a' => $clean($it['a'] ?? '', 60), 'n' => $clean($it['n'] ?? '', 160), 'q' => $q, 'b' => $b, 'rb' => $rb, 'p' => $p];
 }
+$sum = round($sum, 2);
 
 // данные — вне папки сайта, чтобы файл заявок нельзя было скачать по ссылке
 $dir = $cfg['data_dir'] ?? dirname(__DIR__) . '/hdl-data';
@@ -81,9 +87,12 @@ if ($fh = @fopen($dir . '/leads.csv', 'a')) {
 // заявка — и в кабинет (kab.php): сотрудник видит все заявки, вошедший посетитель — свои. Сбой базы заявку не теряет: она в CSV и в Telegram
 $who = null;
 $leadNo = 0;
+$smD = null;   // скидка в смете — проверенная (от сотрудника или из базы), для сообщения; без базы — как прислал браузер
+$docOk = $doc;  // название документа — только из списка сотрудников
 try {
     require_once __DIR__ . '/_kab.php';
     $who = kab_user();
+    $docOk = kab_doc($doc);
     // состав для «Открыть» в кабинете (владелец 06.11.2026): количество — из запроса; скидки по строкам, свои строки и скидку сметы берём
     // только у сотрудника или из базы — из сметы (sid) или заявки (lid) этого же человека, которые подготовил сотрудник; иначе — без них
     $smIn = is_array($in['sm'] ?? null) ? $in['sm'] : [];
@@ -93,28 +102,32 @@ try {
     if ($who && !$smStaff) {
         $src = null;
         if ($sid = (int) ($smIn['sid'] ?? 0)) {
-            $q = kab_db()->prepare('SELECT ld, extra, disc FROM smetas WHERE id = ? AND user_id = ?');
+            $q = kab_db()->prepare('SELECT items, ld, extra, disc FROM smetas WHERE id = ? AND user_id = ?');
             $q->execute([$sid, $who['id']]);
-            if ($r = $q->fetch()) $src = ['ld' => json_decode((string) $r['ld'], true), 'extra' => json_decode((string) $r['extra'], true), 'd' => $r['disc']];
+            // скидки — только у позиций, что есть в самой смете: у убранной позиции скидка могла остаться в базе с 05.11
+            if ($r = $q->fetch()) $src = ['ld' => array_intersect_key(json_decode((string) $r['ld'], true) ?: [], json_decode((string) $r['items'], true) ?: []), 'extra' => json_decode((string) $r['extra'], true), 'd' => $r['disc']];
         } elseif ($lid = (int) ($smIn['lid'] ?? 0)) {
             $q = kab_db()->prepare('SELECT sm FROM leads WHERE id = ? AND user_id = ?');
             $q->execute([$lid, $who['id']]);
-            if ($r = json_decode((string) $q->fetchColumn(), true)) $src = ['ld' => $r['ld'] ?? [], 'extra' => $r['extra'] ?? [], 'd' => $r['d'] ?? null];
+            if ($r = json_decode((string) $q->fetchColumn(), true)) $src = ['ld' => array_intersect_key((array) ($r['ld'] ?? []), (array) ($r['items'] ?? [])), 'extra' => $r['extra'] ?? [], 'd' => $r['d'] ?? null];
         }
         if ($src) {
             $smSt = kab_sm_clean(['items' => $smSt['items'], 'ld' => $src['ld'], 'extra' => $src['extra']], true);
             $smD = kab_disc($src['d']);
         }
     }
-    $smJson = $smSt['items'] || $smSt['extra'] ? json_encode($smSt + ['d' => $smD, 'doc' => kab_doc($doc)], JSON_UNESCAPED_UNICODE) : '';
+    // ud — личная скидка клиента на момент заявки: при «Открыть» заявка считается так же, даже если скидку потом поменяют (владелец 06.11.2026)
+    $smJson = $smSt['items'] || $smSt['extra'] ? kab_sm_json($smSt, ['d' => $smD, 'ud' => $who && !$smStaff && $smD === null ? (float) $who['discount'] : null, 'doc' => $docOk]) : '';
     kab_db()->prepare('INSERT INTO leads (user_id, created_at, name, phone, topic, page, comment, items, total, status, sm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         ->execute([$who ? $who['id'] : null, date('Y-m-d H:i:s'), $lead['name'], $lead['phone'], $lead['topic'], $lead['page'], $lead['comment'],
             json_encode($rows, JSON_UNESCAPED_UNICODE), $rows ? $sum : null, 'new', $smJson]);
     $leadNo = (int) kab_db()->lastInsertId();
     $saved = true;
+    $sdisc = $smD;  // в сообщение — проверенная скидка, а не та, что прислал браузер
 } catch (Throwable $e) {
     @file_put_contents($dir . '/kab-errors.log', date('Y-m-d H:i:s') . ' заявка в базу: ' . $e->getMessage() . "\n", FILE_APPEND);
 }
+$doc = $docOk;
 
 $text = implode("\n", array_filter([
     'Заявка' . ($leadNo ? ' №' . $leadNo : '') . ' с сайта hdl.by' . ($lead['topic'] ? ': ' . $lead['topic'] : ''),
@@ -125,7 +138,7 @@ $text = implode("\n", array_filter([
     'Телефон: ' . $lead['phone'],
     $lead['comment'] ? 'Комментарий: ' . $lead['comment'] : '',
     $items && ($doc !== '' || $sdisc !== null) ? ($doc !== '' ? $doc : 'Смета') . ($sdisc !== null ? ', скидка в смете ' . $pct($sdisc) . ' (цены ниже — уже со скидками, в строках может быть своя)' : '') : '',
-    $items ? "Смета:\n" . implode("\n", $items) . "\nИтого: " . number_format($sum, 0, ',', ' ') . ' BYN' : '',
+    $items ? "Смета:\n" . implode("\n", $items) . "\nИтого: " . $money($sum) : '',
     $lead['page'] ? 'Страница: ' . $lead['page'] : '',
 ]));
 if (mb_strlen($text) > 4000) $text = mb_substr($text, 0, 3990) . '…';  // предел сообщения Telegram

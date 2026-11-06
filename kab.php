@@ -42,23 +42,32 @@ $need = function (bool $cond, int $code = 403) { if (!$cond) reply($code, ['ok' 
 // заявки и сметы — одни строки для вкладок и карточки клиента (поиск, владелец 06.11.2026)
 // заявка: sm — состав для «Открыть» (у старых заявок пусто: собирается из строк items); edited_at — правил сотрудник, made — оформил сотрудник;
 // сотруднику ещё кто правил и оформил, как прислал клиент (items0, total0) и личная скидка клиента (udisc)
-$leadSql = 'SELECT l.id, l.user_id, l.created_at, l.name, l.phone, l.topic, l.page, l.comment, l.items, l.total, l.status, l.status_at, l.sm, l.items0, l.total0, l.edited_at, l.made_by,
+// ver — номер версии для проверки «уже изменил другой»; note — заметка для своих (клиенту не отдаётся)
+$leadSql = 'SELECT l.id, l.user_id, l.created_at, l.name, l.phone, l.topic, l.page, l.comment, l.items, l.total, l.status, l.status_at, l.sm, l.items0, l.total0, l.edited_at, l.made_by, l.ver, l.note,
     u.role, u.company, u.tg_username, u.discount AS udisc, e.name AS edited_name, e.tg_name AS edited_tg, mk.name AS made_name, mk.tg_name AS made_tg
     FROM leads l LEFT JOIN users u ON u.id = l.user_id LEFT JOIN users e ON e.id = l.edited_by LEFT JOIN users mk ON mk.id = l.made_by';
 $leadRow = function (array $r) use ($staff): array {
     $r['sm'] = json_decode((string) $r['sm']) ?: null;
+    // состав, записанный до 06.11.2026 с пустыми items или ld как [] — отдаём объектами, иначе страница теряет скидки в строках
+    if ($r['sm'] instanceof stdClass) {
+        foreach (['items', 'ld'] as $k) $r['sm']->$k = (object) ($r['sm']->$k ?? []);
+        $r['sm']->ld = (object) array_intersect_key((array) $r['sm']->ld, (array) $r['sm']->items);  // скидки убранных позиций не отдаём
+    }
     $r['id'] = (int) $r['id'];
     $r['user_id'] = $r['user_id'] === null ? null : (int) $r['user_id'];
     $r['udisc'] = $r['udisc'] === null ? null : (float) $r['udisc'];
+    $r['total'] = $r['total'] === null ? null : (float) $r['total'];  // с копейками, если они есть у своих строк
+    $r['ver'] = (int) $r['ver'];
+    $r['note'] = (string) $r['note'];
     $r['edited_name'] = $r['edited_at'] ? ($r['edited_name'] ?: $r['edited_tg']) : null;
     $r['made'] = $r['made_by'] !== null;
     $r['made_name'] = $r['made'] ? ($r['made_name'] ?: $r['made_tg']) : null;
     unset($r['edited_tg'], $r['made_tg'], $r['made_by']);
-    if (!$staff) unset($r['role'], $r['company'], $r['tg_username'], $r['udisc'], $r['items0'], $r['total0'], $r['edited_name'], $r['made_name']);
+    if (!$staff) unset($r['role'], $r['company'], $r['tg_username'], $r['udisc'], $r['items0'], $r['total0'], $r['edited_name'], $r['made_name'], $r['note']);
     return $r;
 };
 // смета: правил сотрудник — ему кто, клиенту — что AllVision. udisc — личная скидка владельца сметы: сотрудник, открыв чужую смету, видит его цены
-$smetaSql = 'SELECT s.id, s.user_id, s.title, s.doc, s.disc, s.made_by, s.items, s.ld, s.extra, s.updated_at, s.edited_at, u.name, u.tg_name, u.company, u.role, u.discount AS udisc,
+$smetaSql = 'SELECT s.id, s.user_id, s.title, s.doc, s.disc, s.made_by, s.items, s.ld, s.extra, s.updated_at, s.edited_at, s.ver, u.name, u.tg_name, u.company, u.role, u.discount AS udisc,
     m.name AS made_name, m.tg_name AS made_tg, e.name AS edited_name, e.tg_name AS edited_tg
     FROM smetas s JOIN users u ON u.id = s.user_id LEFT JOIN users m ON m.id = s.made_by LEFT JOIN users e ON e.id = s.edited_by';
 $smetaRow = function (array $r) use ($staff): array {
@@ -67,10 +76,11 @@ $smetaRow = function (array $r) use ($staff): array {
     $r['udisc'] = $staff ? (float) $r['udisc'] : null;
     unset($r['edited_tg'], $r['tg_name']);
     $r['items'] = json_decode((string) $r['items']) ?: new stdClass();
-    $r['ld'] = json_decode((string) $r['ld']) ?: new stdClass();
+    $r['ld'] = (object) array_intersect_key((array) (json_decode((string) $r['ld']) ?: []), (array) $r['items']);  // скидки убранных позиций не отдаём
     $r['extra'] = json_decode((string) $r['extra'], true) ?: [];
     $r['id'] = (int) $r['id'];
     $r['user_id'] = (int) $r['user_id'];
+    $r['ver'] = (int) $r['ver'];
     $r['disc'] = $r['disc'] === null ? null : (float) $r['disc'];
     $r['made_by'] = $r['made_by'] === null ? null : (int) $r['made_by'];
     $r['made_name'] = $staff && $r['made_by'] ? ($r['made_name'] ?: $r['made_tg']) : null;  // клиенту — только что смету подготовила AllVision
@@ -157,6 +167,24 @@ case 'smetas':  // свои сметы (и подготовленные для �
     $q->execute($all ? [] : [$me['id']]);
     reply(200, ['ok' => true, 'smetas' => array_map($smetaRow, $q->fetchAll())]);
 
+// одна смета или заявка — свежая, в момент «Открыть» (владелец 06.11.2026: после сохранения и «Назад» открывалась старая версия).
+// Сотруднику — любая, остальным — только своя
+case 'smeta_get':
+    $need((bool) $me, 401);
+    $q = $db->prepare($smetaSql . ' WHERE s.id = ?' . ($staff ? '' : ' AND s.user_id = ?'));
+    $q->execute($staff ? [(int) ($in['id'] ?? 0)] : [(int) ($in['id'] ?? 0), $me['id']]);
+    $r = $q->fetch();
+    $need((bool) $r, 404);
+    reply(200, ['ok' => true, 'smeta' => $smetaRow($r)]);
+
+case 'lead_get':
+    $need((bool) $me, 401);
+    $q = $db->prepare($leadSql . ' WHERE l.id = ?' . ($staff ? '' : ' AND l.user_id = ?'));
+    $q->execute($staff ? [(int) ($in['id'] ?? 0)] : [(int) ($in['id'] ?? 0), $me['id']]);
+    $r = $q->fetch();
+    $need((bool) $r, 404);
+    reply(200, ['ok' => true, 'lead' => $leadRow($r)]);
+
 case 'smeta_save':  // своя смета в кабинет
 case 'smeta_for':   // сотрудник: смета клиенту или дилеру — у человека в кабинете, со скидкой в смете вместо личной, сообщение в Telegram (владелец 05.11.2026)
     $need($post, 405);
@@ -170,20 +198,36 @@ case 'smeta_for':   // сотрудник: смета клиенту или ди
         $owner = $q->fetch();
         $need($owner && $owner['status'] !== 'blocked', 404);
     }
-    // ручная скидка по строкам и свои строки — только от сотрудника (владелец 05.11.2026); у клиента их нет, чтобы не подделать скидку
-    ['items' => $items, 'ld' => $ld, 'extra' => $extra] = kab_sm_clean($in, $staff);
+    // ручная скидка по строкам и свои строки — только от сотрудника (владелец 05.11.2026); у клиента их нет, чтобы не подделать скидку.
+    // Клиент сохраняет к себе смету или заявку от AllVision (sid / lid) — скидки и свои строки берём из базы, количество — из запроса (06.11.2026)
+    $src = null;
+    if (!$staff && !$for) {
+        if ($sid = (int) ($in['sid'] ?? 0)) {
+            $q = $db->prepare('SELECT items, ld, extra, disc FROM smetas WHERE id = ? AND user_id = ?');
+            $q->execute([$sid, $me['id']]);
+            // скидки — только у позиций, что есть в самой смете: у убранной позиции скидка могла остаться в базе с 05.11
+            if ($r = $q->fetch()) $src = ['ld' => array_intersect_key(json_decode((string) $r['ld'], true) ?: [], json_decode((string) $r['items'], true) ?: []), 'extra' => json_decode((string) $r['extra'], true) ?: [], 'd' => $r['disc']];
+        } elseif ($lid = (int) ($in['lid'] ?? 0)) {
+            $q = $db->prepare('SELECT sm FROM leads WHERE id = ? AND user_id = ?');
+            $q->execute([$lid, $me['id']]);
+            if ($r = json_decode((string) $q->fetchColumn(), true)) $src = ['ld' => array_intersect_key((array) ($r['ld'] ?? []), (array) ($r['items'] ?? [])), 'extra' => (array) ($r['extra'] ?? []), 'd' => $r['d'] ?? null];
+        }
+    }
+    ['items' => $items, 'ld' => $ld, 'extra' => $extra] = $src
+        ? kab_sm_clean(['items' => $in['items'] ?? [], 'ld' => $src['ld'], 'extra' => $src['extra']], true) : kab_sm_clean($in, $staff);
     if (!$items && !$extra) reply(422, ['ok' => false, 'error' => 'empty']);
     $ldJson = json_encode($ld, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT);
     $exJson = json_encode($extra, JSON_UNESCAPED_UNICODE);
     $title = kab_clean($in['title'] ?? '', 120) ?: 'Смета от ' . date('d.m.Y');
     $doc = kab_doc($in['doc'] ?? '');  // название документа — только из списка сотрудников
-    $disc = $for ? max(0.0, min(50.0, round((float) ($in['disc'] ?? 0), 1))) : null;
+    // скидка в смете: пусто — личная скидка человека (NULL), иначе 0–50 (владелец 06.11.2026: пустое поле больше не означает «0 %»)
+    $disc = $for ? kab_disc($in['disc'] ?? null) : ($src ? kab_disc($src['d']) : ($staff ? kab_disc($in['d'] ?? null) : null));
     $json = json_encode($items, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT);
     $id = (int) ($in['id'] ?? 0);
     if ($id) {  // своя — только своя; клиенту — смета этого человека (сотрудник правит открытую из кабинета)
-        $q = $for ? $db->prepare('UPDATE smetas SET title = ?, doc = ?, items = ?, ld = ?, extra = ?, disc = ?, made_by = ?, updated_at = ? WHERE id = ? AND user_id = ?')
-            : $db->prepare('UPDATE smetas SET title = ?, doc = ?, items = ?, ld = ?, extra = ?, updated_at = ? WHERE id = ? AND user_id = ?');
-        $q->execute($for ? [$title, $doc, $json, $ldJson, $exJson, $disc, $me['id'], kab_now(), $id, $owner['id']] : [$title, $doc, $json, $ldJson, $exJson, kab_now(), $id, $me['id']]);
+        $q = $for ? $db->prepare('UPDATE smetas SET title = ?, doc = ?, items = ?, ld = ?, extra = ?, disc = ?, made_by = ?, updated_at = ?, ver = ver + 1, ver_by = ?, ver_at = ? WHERE id = ? AND user_id = ?')
+            : $db->prepare('UPDATE smetas SET title = ?, doc = ?, items = ?, ld = ?, extra = ?, updated_at = ?, ver = ver + 1, ver_by = ?, ver_at = ? WHERE id = ? AND user_id = ?');
+        $q->execute($for ? [$title, $doc, $json, $ldJson, $exJson, $disc, $me['id'], kab_now(), $me['id'], kab_now(), $id, $owner['id']] : [$title, $doc, $json, $ldJson, $exJson, kab_now(), $me['id'], kab_now(), $id, $me['id']]);
         $need($q->rowCount() > 0, 404);
     } else {
         $n = $db->prepare('SELECT COUNT(*) FROM smetas WHERE user_id = ?');
@@ -193,30 +237,49 @@ case 'smeta_for':   // сотрудник: смета клиенту или ди
             ->execute([$owner['id'], $title, $doc, $json, $ldJson, $exJson, $disc, $for ? $me['id'] : null, kab_now(), kab_now()]);
         $id = (int) $db->lastInsertId();
     }
+    $q = $db->prepare('SELECT ver FROM smetas WHERE id = ?');
+    $q->execute([$id]);
+    $ver = (int) $q->fetchColumn();
     $sent = false;
     if ($for && !empty($in['notify'])) {  // написать боту можно, только если человек разрешил при входе
         $what = $doc !== '' ? mb_strtolower(mb_substr($doc, 0, 1)) . mb_substr($doc, 1) : 'смету';
         $sent = kab_say($owner['tg_id'], 'AllVision подготовил для вас ' . $what . ' «' . $title . '» на hdl.by: ' . (count($items) + count($extra)) . ' поз.'
-            . ($disc > 0 ? ', скидка ' . rtrim(rtrim(number_format($disc, 1, ',', ''), '0'), ',') . ' %' : '') . '. Открыть: ' . kab_site() . '/kabinet/#smetas');
+            . ($disc > 0 ? ', скидка ' . kab_pct((float) $disc) : '') . '. Открыть: ' . kab_site() . '/kabinet/#smetas');
     }
-    reply(200, ['ok' => true, 'id' => $id, 'title' => $title, 'sent' => $sent]);
+    reply(200, ['ok' => true, 'id' => $id, 'title' => $title, 'sent' => $sent, 'ver' => $ver, 'disc' => $disc]);
 
-case 'smeta_upd':  // сотрудник: «Сохранить изменения» в открытой смете — любая смета, на месте; чья и кто подготовил — как были (владелец 06.11.2026)
+case 'smeta_upd':  // сотрудник: «Сохранить» в открытой смете — любая смета, на месте; чья и кто подготовил — как были (владелец 06.11.2026)
     $need($post, 405);
     $need($staff);
-    $q = $db->prepare('SELECT s.id, s.title, s.user_id, u.tg_id FROM smetas s JOIN users u ON u.id = s.user_id WHERE s.id = ?');
+    $q = $db->prepare('SELECT s.id, s.title, s.user_id, s.items, s.ld, s.extra, s.doc, s.disc, s.ver, COALESCE(s.ver_at, s.edited_at) AS edited_at, u.tg_id,
+        e.name AS edited_name, e.tg_name AS edited_tg FROM smetas s JOIN users u ON u.id = s.user_id LEFT JOIN users e ON e.id = COALESCE(s.ver_by, s.edited_by) WHERE s.id = ?');
     $q->execute([(int) ($in['id'] ?? 0)]);
     $sm = $q->fetch();
     $need((bool) $sm, 404);
     ['items' => $items, 'ld' => $ld, 'extra' => $extra] = kab_sm_clean($in, true);
     if (!$items && !$extra) reply(422, ['ok' => false, 'error' => 'empty']);
-    $db->prepare('UPDATE smetas SET items = ?, ld = ?, extra = ?, doc = ?, disc = ?, edited_by = ?, edited_at = ?, updated_at = ? WHERE id = ?')
-        ->execute([json_encode($items, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT), json_encode($ld, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT),
-            json_encode($extra, JSON_UNESCAPED_UNICODE), kab_doc($in['doc'] ?? ''), kab_disc($in['disc'] ?? null), $me['id'], kab_now(), kab_now(), $sm['id']]);
+    // скидка сметы: страница шлёт disc (вкладка со старым скриптом — d); нет ни того ни другого — прежняя.
+    // До 06.11.2026 страница слала d, а здесь читалось disc — каждое сохранение стирало скидку
+    $old = $sm['disc'] === null ? null : (float) $sm['disc'];
+    $disc = array_key_exists('disc', $in) ? kab_disc($in['disc']) : (array_key_exists('d', $in) ? kab_disc($in['d']) : $old);
+    $title = kab_clean($in['title'] ?? '', 120) ?: (string) $sm['title'];
+    $doc = kab_doc($in['doc'] ?? '');
+    // ничего не поменялось — ничего не пишем: ни «изменил», ни новой версии, ни сообщения клиенту. Сравнение через json_encode:
+    // нестрогое == считало пустую скидку (личная) и 0 % одним и тем же, и такая правка не сохранялась (06.11.2026)
+    if (json_encode([json_decode((string) $sm['items'], true) ?: [], json_decode((string) $sm['ld'], true) ?: [], json_decode((string) $sm['extra'], true) ?: [], (string) $sm['doc'], $old, (string) $sm['title']])
+        === json_encode([$items, $ld, $extra, $doc, $disc, $title]))
+        reply(200, ['ok' => true, 'same' => true, 'sent' => false, 'ver' => (int) $sm['ver'], 'title' => $title, 'disc' => $disc]);
+    // версия: открыли версию v, а в базе уже другая — смету тем временем сохранил кто-то ещё (или эта же смета в другой вкладке)
+    $v = isset($in['v']) && is_numeric($in['v']) && empty($in['force']) ? (int) $in['v'] : null;
+    $q = $db->prepare('UPDATE smetas SET title = ?, items = ?, ld = ?, extra = ?, doc = ?, disc = ?, edited_by = ?, edited_at = ?, updated_at = ?, ver = ver + 1, ver_by = ?, ver_at = ? WHERE id = ?' . ($v !== null ? ' AND ver = ?' : ''));
+    $q->execute(array_merge([$title, json_encode($items, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT), json_encode($ld, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT),
+        json_encode($extra, JSON_UNESCAPED_UNICODE), $doc, $disc, $me['id'], kab_now(), kab_now(), $me['id'], kab_now(), $sm['id']], $v !== null ? [$v] : []));
+    if ($q->rowCount() === 0) reply(409, ['ok' => false, 'error' => 'stale', 'by' => $sm['edited_name'] ?: $sm['edited_tg'], 'at' => $sm['edited_at']]);
     $sent = false;
     if (!empty($in['notify']) && (int) $sm['user_id'] !== (int) $me['id'])
-        $sent = kab_say($sm['tg_id'], 'AllVision изменил вашу смету «' . $sm['title'] . '» на hdl.by: ' . (count($items) + count($extra)) . ' поз. Открыть: ' . kab_site() . '/kabinet/#smetas');
-    reply(200, ['ok' => true, 'sent' => $sent]);
+        $sent = kab_say($sm['tg_id'], 'AllVision изменил вашу смету «' . $title . '» на hdl.by: ' . (count($items) + count($extra)) . ' поз.'
+            . ($disc > 0 ? ', скидка ' . kab_pct((float) $disc) : '') . '. Открыть: ' . kab_site() . '/kabinet/#smetas');
+    reply(200, ['ok' => true, 'sent' => $sent, 'ver' => (int) $sm['ver'] + 1, 'title' => $title, 'disc' => $disc]);
 
 case 'smeta_del':
     $need($post, 405);
@@ -362,25 +425,62 @@ case 'leads':  // свои заявки; сотрудник — все заяв�
 
 case 'lead_save':  // сотрудник: «Сохранить изменения» в открытой заявке (владелец 06.11.2026). Строки и сумма — как их посчитала страница сметы
     // по сегодняшним ценам; первая правка сохраняет, как прислал клиент (items0, total0); клиент видит новую версию, по галочке — сообщение в Telegram
+    // sm.d — общая скидка (null — личная клиента), sm.ud — личная скидка клиента на момент сохранения: при новом открытии заявка считается
+    // так же, даже если клиенту потом поменяли скидку (владелец 06.11.2026)
     $need($post, 405);
     $need($staff);
-    $q = $db->prepare('SELECT l.id, l.user_id, u.tg_id FROM leads l LEFT JOIN users u ON u.id = l.user_id WHERE l.id = ?');
+    $q = $db->prepare('SELECT l.id, l.user_id, l.items, l.total, l.sm, l.ver, l.note, l.name, l.phone, COALESCE(l.ver_at, l.edited_at) AS edited_at, u.tg_id,
+        e.name AS edited_name, e.tg_name AS edited_tg FROM leads l LEFT JOIN users u ON u.id = l.user_id LEFT JOIN users e ON e.id = COALESCE(l.ver_by, l.edited_by) WHERE l.id = ?');
     $q->execute([(int) ($in['id'] ?? 0)]);
     $ld0 = $q->fetch();
     $need((bool) $ld0, 404);
     $st = kab_sm_clean($in, true);
     if (!$st['items'] && !$st['extra']) reply(422, ['ok' => false, 'error' => 'empty']);
     [$rows, $sum] = kab_lead_rows($in['rows'] ?? null);
-    $sm = json_encode($st + ['d' => kab_disc($in['d'] ?? null), 'doc' => kab_doc($in['doc'] ?? '')], JSON_UNESCAPED_UNICODE);
+    $sm = kab_sm_json($st, ['d' => kab_disc($in['d'] ?? null), 'ud' => kab_disc($in['ud'] ?? null), 'doc' => kab_doc($in['doc'] ?? '')]);
+    // заметка (любой заявке) и имя с телефоном (заявке без кабинета) — в том же сохранении и под той же проверкой версии:
+    // отдельным запросом заметка коллеги затиралась мимо проверки (06.11.2026)
+    $meta = kab_lead_meta($in, $ld0);
+    if (isset($meta['error'])) reply(422, ['ok' => false, 'error' => $meta['error']]);
+    // ничего не поменялось — ничего не пишем: заявка не пересчитывается, клиенту повторно не пишем. Сравнение точное: пустая скидка и 0 % — разное
+    if (!$meta && json_encode(json_decode((string) $ld0['sm'], true)) === json_encode(json_decode($sm, true))
+        && json_encode(json_decode((string) $ld0['items'], true) ?: []) === json_encode($rows) && abs((float) $ld0['total'] - $sum) < 0.005)
+        reply(200, ['ok' => true, 'same' => true, 'sent' => false, 'total' => $sum, 'ver' => (int) $ld0['ver']]);
+    $v = isset($in['v']) && is_numeric($in['v']) && empty($in['force']) ? (int) $in['v'] : null;
+    $set = '';
+    foreach (array_keys($meta) as $c) $set .= ", $c = ?";
     // SQLite берёт справа старые значения строки: items0 и total0 — прежний состав, если правка первая
-    $db->prepare('UPDATE leads SET items0 = COALESCE(items0, items), total0 = CASE WHEN items0 IS NULL THEN total ELSE total0 END,
-        items = ?, total = ?, sm = ?, edited_by = ?, edited_at = ? WHERE id = ?')
-        ->execute([json_encode($rows, JSON_UNESCAPED_UNICODE), $sum, $sm, $me['id'], kab_now(), $ld0['id']]);
+    $q = $db->prepare('UPDATE leads SET items0 = COALESCE(items0, items), total0 = CASE WHEN items0 IS NULL THEN total ELSE total0 END,
+        items = ?, total = ?, sm = ?, edited_by = ?, edited_at = ?, ver = ver + 1, ver_by = ?, ver_at = ?' . $set . ' WHERE id = ?' . ($v !== null ? ' AND ver = ?' : ''));
+    $q->execute(array_merge([json_encode($rows, JSON_UNESCAPED_UNICODE), $sum, $sm, $me['id'], kab_now(), $me['id'], kab_now()], array_values($meta), [$ld0['id']], $v !== null ? [$v] : []));
+    if ($q->rowCount() === 0) reply(409, ['ok' => false, 'error' => 'stale', 'by' => $ld0['edited_name'] ?: $ld0['edited_tg'], 'at' => $ld0['edited_at']]);
     $sent = false;
     if (!empty($in['notify']) && $ld0['tg_id'])
-        $sent = kab_say($ld0['tg_id'], 'AllVision изменил вашу заявку №' . $ld0['id'] . ' на hdl.by: ' . count($rows) . ' поз., итого '
-            . number_format($sum, 0, ',', ' ') . ' BYN. Посмотреть: ' . kab_site() . '/kabinet/#leads');
-    reply(200, ['ok' => true, 'sent' => $sent, 'total' => $sum]);
+        $sent = kab_say($ld0['tg_id'], 'AllVision изменил вашу заявку №' . $ld0['id'] . ' на hdl.by: ' . kab_lead_money($rows, $sum) . '. Посмотреть: ' . kab_site() . '/kabinet/#leads');
+    reply(200, ['ok' => true, 'sent' => $sent, 'total' => $sum, 'ver' => (int) $ld0['ver'] + 1]);
+
+case 'lead_meta':  // сотрудник: заметка для своих (клиент её не видит); у заявки без кабинета — ещё имя и телефон (владелец 06.11.2026).
+    // Только они изменились — состав и цены не трогаем, «изменил» не ставим (клиенту в заявке ничего не поменялось), но версию — да:
+    // коллега с этой же заявкой при сохранении увидит «уже изменил», а не затрёт заметку
+    $need($post, 405);
+    $need($staff);
+    $q = $db->prepare('SELECT l.id, l.user_id, l.note, l.name, l.phone, l.ver, COALESCE(l.ver_at, l.edited_at) AS edited_at, e.name AS edited_name, e.tg_name AS edited_tg
+        FROM leads l LEFT JOIN users e ON e.id = COALESCE(l.ver_by, l.edited_by) WHERE l.id = ?');
+    $q->execute([(int) ($in['id'] ?? 0)]);
+    $l = $q->fetch();
+    $need((bool) $l, 404);
+    $meta = kab_lead_meta($in, $l);
+    if (isset($meta['error'])) reply(422, ['ok' => false, 'error' => $meta['error']]);
+    $v = isset($in['v']) && is_numeric($in['v']) && empty($in['force']) ? (int) $in['v'] : null;
+    // версия — до «без изменений»: здесь сравниваются только заметка и контакты, а состав мог поменять коллега
+    if ($v !== null && $v !== (int) $l['ver']) reply(409, ['ok' => false, 'error' => 'stale', 'by' => $l['edited_name'] ?: $l['edited_tg'], 'at' => $l['edited_at']]);
+    if (!$meta) reply(200, ['ok' => true, 'same' => true, 'ver' => (int) $l['ver']]);
+    $set = [];
+    foreach (array_keys($meta) as $c) $set[] = "$c = ?";
+    $q = $db->prepare('UPDATE leads SET ' . implode(', ', $set) . ', ver = ver + 1, ver_by = ?, ver_at = ? WHERE id = ?' . ($v !== null ? ' AND ver = ?' : ''));
+    $q->execute(array_merge(array_values($meta), [$me['id'], kab_now(), $l['id']], $v !== null ? [$v] : []));
+    if ($q->rowCount() === 0) reply(409, ['ok' => false, 'error' => 'stale', 'by' => $l['edited_name'] ?: $l['edited_tg'], 'at' => $l['edited_at']]);
+    reply(200, ['ok' => true, 'ver' => (int) $l['ver'] + 1]);
 
 case 'people':  // сотрудник: все для поиска — пользователи кабинета и те, кто оставлял заявки без входа (вместе по телефону); фильтрует страница
     $need((bool) $me, 401);
@@ -459,16 +559,15 @@ case 'lead_new':  // сотрудник оформляет заявку: чел�
     $st = kab_sm_clean($in, true);
     if (!$st['items'] && !$st['extra']) reply(422, ['ok' => false, 'error' => 'empty']);
     [$rows, $sum] = kab_lead_rows($in['rows'] ?? null);
-    $sm = json_encode($st + ['d' => kab_disc($in['d'] ?? null), 'doc' => kab_doc($in['doc'] ?? '')], JSON_UNESCAPED_UNICODE);
-    $db->prepare('INSERT INTO leads (user_id, created_at, name, phone, topic, page, comment, items, total, status, status_at, sm, made_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    $sm = kab_sm_json($st, ['d' => kab_disc($in['d'] ?? null), 'ud' => kab_disc($in['ud'] ?? null), 'doc' => kab_doc($in['doc'] ?? '')]);
+    $db->prepare('INSERT INTO leads (user_id, created_at, name, phone, topic, page, comment, items, total, status, status_at, sm, made_by, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         ->execute([$who ? $who['id'] : null, kab_now(), $name, $phone, 'Заявка от AllVision', '/kabinet/', kab_clean($in['comment'] ?? '', 1000),
-            json_encode($rows, JSON_UNESCAPED_UNICODE), $sum, 'work', kab_now(), $sm, $me['id']]);
+            json_encode($rows, JSON_UNESCAPED_UNICODE), $sum, 'work', kab_now(), $sm, $me['id'], kab_text($in['note'] ?? '', 1000)]);
     $id = (int) $db->lastInsertId();
     $sent = false;
     if ($who && !empty($in['notify']))
-        $sent = kab_say($who['tg_id'], 'AllVision оформил для вас заявку №' . $id . ' на hdl.by: ' . count($rows) . ' поз., итого '
-            . number_format($sum, 0, ',', ' ') . ' BYN. Посмотреть: ' . kab_site() . '/kabinet/#leads');
-    reply(200, ['ok' => true, 'id' => $id, 'sent' => $sent, 'total' => $sum]);
+        $sent = kab_say($who['tg_id'], 'AllVision оформил для вас заявку №' . $id . ' на hdl.by: ' . kab_lead_money($rows, $sum) . '. Посмотреть: ' . kab_site() . '/kabinet/#leads');
+    reply(200, ['ok' => true, 'id' => $id, 'sent' => $sent, 'total' => $sum, 'ver' => 0]);
 
 case 'lead_status':
     $need($post, 405);

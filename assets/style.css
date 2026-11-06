@@ -350,6 +350,47 @@ table.specs { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-s
 .smeta-edit .ed-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 15px; } .smeta-edit [data-ed-title] { flex: 1 1 260px; }
 .smeta-edit .ed-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 8px; }
 .smeta-edit .ed-acts .btn { padding: 9px 16px; font-size: 15px; } .smeta-edit .consent { margin: 0; font-size: 15px; }
+/* правка v3 (06.11.2026): закреплённая строка «← клиент · что открыто · сохранено ли · кнопки» под шапкой; на телефоне — внизу экрана */
+.smeta-tools [hidden], .smeta-edit [hidden] { display: none; }  /* .btn { display: inline-block } перебивал hidden — кнопки нельзя было спрятать */
+.ed-strip { position: sticky; top: var(--top-h, 60px); z-index: 15; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; background: #fff; border-bottom: 2px solid var(--brand); padding: 10px 0 8px; margin: 0 0 10px; }
+.ed-strip[hidden] { display: none; }
+.ed-strip .ed-back { font-weight: 600; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 100%; }  /* длинное имя с компанией — с многоточием */
+html.editing { scroll-padding-top: calc(var(--top-h, 60px) + 110px); }  /* поле в фокусе не прячется под закреплённой строкой */
+.ed-strip .ed-back:hover { text-decoration: underline; }
+.ed-strip .ed-head { font-size: 16px; }
+.ed-strip .ed-state { font-size: 14px; }
+.ed-strip .ed-state.clean { color: var(--ok); } .ed-strip .ed-state.dirty, .ed-strip .ed-state.new { color: var(--brand); font-weight: 600; }
+.ed-strip .ed-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.ed-strip .btn { padding: 8px 14px; font-size: 15px; }
+.ed-strip .msg { flex-basis: 100%; margin: 0; font-size: 14px; } .ed-strip .msg:empty { display: none; }
+.ed-strip .msg .cbtn { margin-left: 4px; }
+.smeta-edit .ed-who b { font-weight: 600; }
+.smeta-edit .ed-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.smeta-edit select { font: 15px var(--font); padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--r); background: #fff; color: var(--ink); }
+.smeta-edit .ed-note { display: block; font-size: 15px; margin: 4px 0 8px; }
+.smeta-edit .ed-note textarea { display: block; width: 100%; margin-top: 4px; font: 15px/1.4 var(--font); padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); resize: vertical; }
+.smeta-edit .cbtn { white-space: nowrap; }
+.smeta-staff .sm-dnote { flex: 1 1 100%; }  /* под полем скидки: какая скидка действует, если поле пустое */
+.smeta-tbl .x-n[aria-invalid] { border-color: var(--bad); box-shadow: 0 0 0 2px rgba(161,43,43,.15); }
+.smeta-tbl .m-only { display: none; }
+.stale-note { margin: 0 0 10px; } .stale-note .cbtn { margin-left: 6px; }
+body.stale [data-smeta], body.stale .smeta-staff, body.stale .smeta-tools { opacity: .45; }
+.smeta-link.editing { background: #fff; color: var(--dark); } .smeta-link.editing b { background: var(--brand); color: #fff; }
+dialog.ed-ask { border: 0; border-radius: 14px; padding: 18px 20px; max-width: 460px; box-shadow: 0 18px 40px rgba(31,10,40,.25); }
+dialog.ed-ask::backdrop { background: rgba(31,10,40,.4); }
+dialog.ed-ask p { margin: 0 0 14px; font-size: 16px; }
+.ed-ask-btns { display: flex; flex-wrap: wrap; gap: 8px; } .ed-ask-btns .btn { padding: 9px 14px; font-size: 15px; }
+@media (max-width: 640px) {
+  .ed-strip { position: fixed; left: 0; right: 0; top: auto; bottom: 0; z-index: 40; margin: 0; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); border-bottom: 0; border-top: 2px solid var(--brand); box-shadow: 0 -6px 18px rgba(31,10,40,.12); }
+  .ed-strip .ed-head, .ed-strip .ed-state { font-size: 14px; }
+  .ed-strip .ed-btns { margin-left: 0; width: 100%; } .ed-strip .ed-btns .btn { flex: 1 1 auto; }
+  body.editing { padding-bottom: 150px; }
+  html.editing { scroll-padding-top: calc(var(--top-h, 60px) + 8px); scroll-padding-bottom: 170px; }
+  .top.open, .top.cat-open, .top.search-open { z-index: 45; }  /* открытое меню и каталог — поверх строки правки, нижние ссылки нажимаются */
+  .smeta-tbl .m-only { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 6px; font-size: 14px; color: var(--muted); }
+  .smeta-tbl .m-only label { display: flex; align-items: center; gap: 6px; }
+  .smeta-tbl .m-only .x-b { width: 96px; }
+}
 .smeta-staff .sm-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .smeta-staff label { display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--muted); }
 .smeta-staff input { font: 15px var(--font); padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); color: var(--ink); background: #fff; }
@@ -745,6 +786,15 @@ body[data-page=catalog] .hsearch { display: none; }
 .kab-find-res a:hover { background: var(--bg2); }
 .kab-find-res p { margin: 6px 10px; } .kab-find-res .cbtn { margin: 6px 10px 4px; }
 .kab-person { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin: 0 0 6px; }
+.kab-person [data-pd] input { width: 72px; font: 15px var(--font); padding: 4px 8px; border: 1px solid var(--line); border-radius: var(--r); }
+.kab-ed { margin: 0 0 12px; } .kab-ed .cbtn { margin-left: 4px; }
+.kab-flash { margin: 0 0 12px; padding: 10px 14px; border-radius: 10px; background: #eaf4ee; } .kab-flash.bad { background: #fbeaea; }
+/* итог сохранения и ошибки — закреплены под шапкой: строку прокручивают к центру, а сообщение (в том числе «Telegram не ушёл») остаётся на виду */
+.kab-flash { position: sticky; top: calc(var(--top-h, 60px) + 8px); z-index: 5; box-shadow: 0 6px 18px rgba(31,10,40,.12); }
+.kab-tbl tr.just-saved td { animation: justsaved 3s ease-out; }
+@keyframes justsaved { from { background: #fff1c9; } to { background: transparent; } }
+.kab-tbl .own-note { display: inline-block; margin-top: 2px; padding: 1px 8px; border-radius: 6px; background: #fff6d8; color: #5b4300; white-space: pre-line; }
+.kab-tbl s { color: var(--muted); }
 .kab-person h2 { margin: 0 0 4px; } .kab-person p { margin: 0; } .kab-person .acts { display: flex; gap: 8px; flex-wrap: wrap; }
 .kab-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 16px; }
 .kab-tabs .tab { text-decoration: none; padding: 8px 14px; border-radius: var(--r); border: 1px solid var(--line); color: var(--ink); font-weight: 600; }

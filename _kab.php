@@ -41,13 +41,18 @@ function kab_db(): PDO {
     if ($db) return $db;
     $db = new PDO('sqlite:' . kab_dir() . '/kabinet.sqlite', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
     $db->exec('PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;');
+    // столбцы добавляются при первом запросе после выкладки. Два запроса одновременно: второй получает «duplicate column name» —
+    // столбец уже есть, это не ошибка (06.11.2026: иначе кабинет отвечал 503, а заявка не попадала в кабинет)
+    $alter = function (string $sql) use ($db): void {
+        try { $db->exec($sql); } catch (Throwable $e) { if (stripos($e->getMessage(), 'duplicate column') === false) throw $e; }
+    };
     $db->exec("CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY, tg_id INTEGER UNIQUE NOT NULL, tg_username TEXT DEFAULT '', tg_name TEXT DEFAULT '',
         name TEXT DEFAULT '', phone TEXT DEFAULT '', company TEXT DEFAULT '', unp TEXT DEFAULT '',
         role TEXT DEFAULT 'client', wanted TEXT DEFAULT '', discount REAL DEFAULT 0, status TEXT DEFAULT 'form',
         consent_at TEXT DEFAULT '', created_at TEXT, seen_at TEXT, approved_by INTEGER, approved_at TEXT)");
     // суперадмин (владелец 05.11.2026): столбец добавляется и в уже созданную базу
-    if (!in_array('admin', array_column($db->query('PRAGMA table_info(users)')->fetchAll(), 'name'), true)) $db->exec('ALTER TABLE users ADD COLUMN admin INTEGER DEFAULT 0');
+    if (!in_array('admin', array_column($db->query('PRAGMA table_info(users)')->fetchAll(), 'name'), true)) $alter('ALTER TABLE users ADD COLUMN admin INTEGER DEFAULT 0');
     $db->exec("CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires INTEGER NOT NULL)");
     $db->exec("CREATE TABLE IF NOT EXISTS smetas (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         title TEXT, items TEXT, created_at TEXT, updated_at TEXT)");
@@ -60,21 +65,27 @@ function kab_db(): PDO {
     // название документа идёт вместе со сметой: «Открыть» в кабинете показывает его и клиенту
     // смета клиенту от сотрудника (этап 2, владелец 05.11.2026): disc — скидка в смете вместо личной (NULL — личная), made_by — кто подготовил
     $smCols = array_column($db->query('PRAGMA table_info(smetas)')->fetchAll(), 'name');
-    if (!in_array('doc', $smCols, true)) $db->exec("ALTER TABLE smetas ADD COLUMN doc TEXT DEFAULT ''");
-    if (!in_array('disc', $smCols, true)) $db->exec('ALTER TABLE smetas ADD COLUMN disc REAL');
-    if (!in_array('made_by', $smCols, true)) $db->exec('ALTER TABLE smetas ADD COLUMN made_by INTEGER');
+    if (!in_array('doc', $smCols, true)) $alter("ALTER TABLE smetas ADD COLUMN doc TEXT DEFAULT ''");
+    if (!in_array('disc', $smCols, true)) $alter('ALTER TABLE smetas ADD COLUMN disc REAL');
+    if (!in_array('made_by', $smCols, true)) $alter('ALTER TABLE smetas ADD COLUMN made_by INTEGER');
     // ручная скидка и свои строки (владелец 05.11.2026): ld — скидка по строке {артикул: %}, extra — строки не из каталога [{n, u, q, b, d}]
-    if (!in_array('ld', $smCols, true)) $db->exec("ALTER TABLE smetas ADD COLUMN ld TEXT DEFAULT ''");
-    if (!in_array('extra', $smCols, true)) $db->exec("ALTER TABLE smetas ADD COLUMN extra TEXT DEFAULT ''");
+    if (!in_array('ld', $smCols, true)) $alter("ALTER TABLE smetas ADD COLUMN ld TEXT DEFAULT ''");
+    if (!in_array('extra', $smCols, true)) $alter("ALTER TABLE smetas ADD COLUMN extra TEXT DEFAULT ''");
     // сотрудник открывает и правит любую заявку и смету (владелец 06.11.2026: «Сотрудник компании должен видеть все заказы, мог заходить
     // и их редактировать»). edited_by, edited_at — кто и когда правил. У заявки ещё sm — состав для правки ({items, ld, extra, d, doc}),
     // items0, total0 — как прислал клиент (пишутся при первой правке, дальше не меняются)
-    if (!in_array('edited_by', $smCols, true)) $db->exec('ALTER TABLE smetas ADD COLUMN edited_by INTEGER');
-    if (!in_array('edited_at', $smCols, true)) $db->exec('ALTER TABLE smetas ADD COLUMN edited_at TEXT');
+    if (!in_array('edited_by', $smCols, true)) $alter('ALTER TABLE smetas ADD COLUMN edited_by INTEGER');
+    if (!in_array('edited_at', $smCols, true)) $alter('ALTER TABLE smetas ADD COLUMN edited_at TEXT');
+    // ver — номер версии: растёт при каждом сохранении; сохранение со старым номером — «уже изменил другой» (владелец 06.11.2026)
+    if (!in_array('ver', $smCols, true)) $alter('ALTER TABLE smetas ADD COLUMN ver INTEGER NOT NULL DEFAULT 0');
+    // ver_by, ver_at — кто и когда сохранил последнюю версию (и заметку тоже): их называет «уже изменил(а)». edited_* — только состав, его видит клиент
+    if (!in_array('ver_by', $smCols, true)) $alter('ALTER TABLE smetas ADD COLUMN ver_by INTEGER');
+    if (!in_array('ver_at', $smCols, true)) $alter('ALTER TABLE smetas ADD COLUMN ver_at TEXT');
     $ldCols = array_column($db->query('PRAGMA table_info(leads)')->fetchAll(), 'name');
-    // made_by — заявку оформил сотрудник (поиск клиента, владелец 06.11.2026)
-    foreach (['sm' => "TEXT DEFAULT ''", 'items0' => 'TEXT', 'total0' => 'INTEGER', 'edited_by' => 'INTEGER', 'edited_at' => 'TEXT', 'made_by' => 'INTEGER'] as $c => $t)
-        if (!in_array($c, $ldCols, true)) $db->exec("ALTER TABLE leads ADD COLUMN $c $t");
+    // made_by — заявку оформил сотрудник (поиск клиента, владелец 06.11.2026); ver — как у смет; note — заметка для своих, клиент её не видит
+    foreach (['sm' => "TEXT DEFAULT ''", 'items0' => 'TEXT', 'total0' => 'INTEGER', 'edited_by' => 'INTEGER', 'edited_at' => 'TEXT', 'made_by' => 'INTEGER',
+        'ver' => 'INTEGER NOT NULL DEFAULT 0', 'note' => "TEXT DEFAULT ''", 'ver_by' => 'INTEGER', 'ver_at' => 'TEXT'] as $c => $t)
+        if (!in_array($c, $ldCols, true)) $alter("ALTER TABLE leads ADD COLUMN $c $t");
     // ассортимент из кабинета (этап 3, владелец 05.11.2026): одна правка на артикул — название, розничная цена USD с НДС (NULL — как в прайсе),
     // описание, фото, «скрыть»; is_new — новая позиция (раздел gnum, система platform). synced_at — когда компьютер AllVision забрал её в сборку;
     // deleted — правку отменили, уходит со следующей сборкой. kv — запрос «Обновить сайт сейчас» и итог последней сборки
@@ -148,28 +159,88 @@ function kab_sm_clean($in, bool $trusted): array {
             if ($k !== '' && is_numeric($v)) $ld[$k] = max(0.0, min(50.0, round((float) $v, 1)));
         }
         foreach (array_slice(is_array($in['extra'] ?? null) ? $in['extra'] : [], 0, 100) as $x) {
-            $n = is_array($x) ? kab_clean($x['n'] ?? '', 200) : '';
-            if ($n === '') continue;
-            $extra[] = ['n' => $n, 'u' => kab_clean($x['u'] ?? '', 20) ?: 'шт.', 'q' => max(1, min(9999, (int) ($x['q'] ?? 1))),
-                'b' => is_numeric($x['b'] ?? null) ? round(max(0.0, min(1000000.0, (float) $x['b'])), 2) : null,
-                'd' => is_numeric($x['d'] ?? null) ? max(0.0, min(50.0, round((float) $x['d'], 1))) : null];
+            if (!is_array($x)) continue;
+            $n = kab_clean($x['n'] ?? '', 200);
+            $b = is_numeric($x['b'] ?? null) ? round(max(0.0, min(1000000.0, (float) $x['b'])), 2) : null;
+            if ($n === '' && $b === null) continue;  // пустая строка без цены — лишняя; без названия, но с ценой — «Своя строка», чтобы сумма не разошлась
+            $extra[] = ['n' => $n !== '' ? $n : 'Своя строка', 'u' => kab_clean($x['u'] ?? '', 20) ?: 'шт.', 'q' => max(1, min(9999, (int) ($x['q'] ?? 1))),
+                'b' => $b, 'd' => is_numeric($x['d'] ?? null) ? max(0.0, min(50.0, round((float) $x['d'], 1))) : null];
         }
     }
-    return ['items' => $items, 'ld' => $ld, 'extra' => $extra];
+    // скидка в строке — только у позиций, которые есть в составе: у убранной позиции она оставалась и срабатывала снова,
+    // когда позицию добавляли опять, в том числе в заявке клиента из этой сметы (06.11.2026)
+    return ['items' => $items, 'ld' => array_intersect_key($ld, $items), 'extra' => $extra];
 }
 
-// строки заявки [{a, n, q, b}] — как их посчитала страница сметы (цена за штуку уже со скидкой) — и сумма
+// состав заявки в JSON для базы: items и ld — всегда объекты ({} вместо []), иначе страница получит массив и молча потеряет скидки
+// в строках (06.11.2026); extra — список. $more — d, ud, doc
+function kab_sm_json(array $st, array $more): string {
+    return (string) json_encode(['items' => (object) $st['items'], 'ld' => (object) $st['ld'], 'extra' => array_values($st['extra'])] + $more, JSON_UNESCAPED_UNICODE);
+}
+
+// процент для текстов: 10 → «10 %», 7.5 → «7,5 %»
+function kab_pct(float $d): string {
+    return rtrim(rtrim(number_format($d, 1, ',', ''), '0'), ',') . ' %';
+}
+
+// строки заявки [{a, n, q, b, rb, p}] — как их посчитала страница сметы: b — цена за штуку со скидкой, rb — без скидки, p — скидка строки, % — и сумма.
+// Цены — до копейки: у своих строк бывают копейки (кабель 1,85 за метр), округление до рубля за штуку давало другую сумму, чем на странице (06.11.2026)
 function kab_lead_rows($in): array {
     $rows = [];
-    $sum = 0;
+    $sum = 0.0;
     foreach (array_slice(is_array($in) ? $in : [], 0, 400) as $it) {
         if (!is_array($it)) continue;
         $q = max(1, min(9999, (int) ($it['q'] ?? 1)));
-        $b = is_numeric($it['b'] ?? null) ? (int) round((float) $it['b']) : null;
+        $b = is_numeric($it['b'] ?? null) ? round(max(0.0, (float) $it['b']), 2) : null;
         if ($b !== null) $sum += $b * $q;
-        $rows[] = ['a' => kab_clean($it['a'] ?? '', 60), 'n' => kab_clean($it['n'] ?? '', 220), 'q' => $q, 'b' => $b];
+        $rb = $b === null ? null : (is_numeric($it['rb'] ?? null) ? round(max(0.0, (float) $it['rb']), 2) : $b);
+        $rows[] = ['a' => kab_clean($it['a'] ?? '', 60), 'n' => kab_clean($it['n'] ?? '', 220), 'q' => $q, 'b' => $b, 'rb' => $rb, 'p' => $b === null ? null : kab_disc($it['p'] ?? null)];
     }
-    return [$rows, $sum];
+    return [$rows, round($sum, 2)];
+}
+
+// сумма для текстов: 1 503 BYN, с копейками — 9,25 BYN
+function kab_money(float $x): string {
+    $x = round($x, 2);
+    return number_format($x, abs($x - round($x)) < 0.005 ? 0 : 2, ',', ' ') . ' BYN';
+}
+
+// итог заявки для сообщения: «3 поз., без скидки 1 202 BYN, скидка 10 % −120 BYN, итого 1 082 BYN»; без скидки — «3 поз., итого … BYN».
+// Процент — только если он один у всех строк с ценой (как в итоге на странице сметы): иначе «скидка 10 %» при части строк без скидки вводила в заблуждение
+function kab_lead_money(array $rows, float $sum): string {
+    $full = 0.0;
+    $ps = [];
+    foreach ($rows as $r) {
+        if ($r['b'] === null) continue;
+        $full += ($r['rb'] ?? $r['b']) * $r['q'];
+        $ps[(string) (float) ($r['p'] ?? 0)] = (float) ($r['p'] ?? 0);
+    }
+    $full = round($full, 2);
+    if ($full - $sum < 0.005) return count($rows) . ' поз., итого ' . kab_money($sum);
+    $one = count($ps) === 1 ? reset($ps) : 0.0;
+    return count($rows) . ' поз., без скидки ' . kab_money($full) . ', скидка' . ($one > 0 ? ' ' . kab_pct($one) : '')
+        . ' −' . kab_money($full - $sum) . ', итого ' . kab_money($sum);
+}
+
+// что поменять у заявки помимо состава: заметка (у любой), имя и телефон (только без кабинета — у человека с кабинетом они из анкеты).
+// В запросе только то, что сотрудник менял; совпадает с базой — не пишем. Возвращает [столбец => значение] или ['error' => …]
+function kab_lead_meta(array $in, array $l): array {
+    $set = [];
+    if (array_key_exists('note', $in)) { $v = kab_text($in['note'], 1000); if ($v !== (string) $l['note']) $set['note'] = $v; }
+    if ($l['user_id'] === null) {
+        if (array_key_exists('name', $in)) { $v = kab_clean($in['name'], 120); if ($v !== (string) $l['name']) $set['name'] = $v; }
+        if (array_key_exists('phone', $in)) {
+            $v = kab_clean($in['phone'], 40);
+            if (preg_match_all('/\d/', $v) < 7) return ['error' => 'phone'];
+            if ($v !== (string) $l['phone']) $set['phone'] = $v;
+        }
+    }
+    return $set;
+}
+
+// текст с переносами строк (заметка): лишние пробелы убираются, абзацы остаются
+function kab_text($v, int $max): string {
+    return mb_substr(trim((string) preg_replace("/[ \t]+/u", ' ', str_replace("\r", '', (string) $v))), 0, $max);
 }
 
 // ключ телефона для поиска и сравнения: последние 9 цифр («+375 29 123-45-67», «8029 1234567», «29 1234567» — один ключ); меньше 7 цифр — нет ключа
