@@ -1197,7 +1197,7 @@
       const preview = () => { if (guard()) return; smSet({ ...(smGet() || {}), d: emptyD() ? null : pctIn(), ud: +(F.user.selectedOptions[0]?.dataset.d || 0) }); renderSmeta(); };
       const syncReplace = () => {
         const same = !!(before && before.id && +F.user.value === +before.uid), l = $("[data-for-replace]", forBox);
-        l.innerHTML = `<input type="checkbox" name="replace"${same ? " checked" : ""}> Заменить смету «${esc(before?.title || "")}» у этого человека`;
+        l.innerHTML = `<input type="checkbox" name="replace"> Заменить смету «${esc(before?.title || "")}» у этого человека`;
         l.hidden = !same;
       };
       forBtn.addEventListener("click", async () => {
@@ -1242,6 +1242,7 @@
         if (guard() || editing()) return;
         const msg = $(".msg", forBox), btn = $("button[type=submit]", forBox);
         if (!F.user.value) { msg.className = "msg bad"; msg.textContent = "Выберите, кому сохранить."; return; }
+        if (!Object.keys(load()).length && !((smGet() || {}).extra || []).length) { if (saved) return; msg.className = "msg bad"; msg.textContent = "Список пуст — сохранять нечего. Сохранённую смету откройте кнопкой «Открыть смету» или из кабинета."; return; }  // список уже перенесён
         const ni = ownNoName(smGet());
         if (ni >= 0) { NONAME = ni; renderSmeta(); msg.className = "msg bad"; msg.textContent = "У своей строки нет названия — впишите его или уберите строку (×)."; return; }
         const d = emptyD() ? null : pctIn(), uid = +F.user.value, who = F.user.selectedOptions[0].textContent.split(" — ")[0];
@@ -1251,11 +1252,12 @@
         btn.disabled = false;
         if (!r.ok) { msg.className = "msg bad"; msg.textContent = r.error === "limit" ? "У человека уже 100 смет — пусть удалит старые." : r.status === 403 ? "Нужен вход сотрудника." : "Не удалось сохранить."; return; }
         saved = true;
-        before = { ...(smGet() || {}), d: r.disc ?? null, id: r.id, uid, title: r.title };
-        if (!editing()) { smSet(before); renderSmeta(); }
+        before = { d: r.disc ?? null, id: r.id, uid, title: r.title };
+        // список переносится в смету клиента, здесь остаётся пусто (владелец 06.11.2026); открыть её — кнопкой ниже
+        if (!editing()) { save({}); docSet(""); smSet(null); renderSmeta(); }
         syncReplace(); F.title.value = r.title;
         msg.className = "msg ok";
-        msg.innerHTML = esc(`Сохранено у «${who}»: «${r.title}».` + (F.notify.checked ? (r.sent ? " Сообщение в Telegram отправлено." : " Сообщение в Telegram не ушло: человек не разрешил боту писать — сообщите сами.") : ""))
+        msg.innerHTML = esc(`Сохранено у «${who}»: «${r.title}». Список перенесён в его смету.` + (F.notify.checked ? (r.sent ? " Сообщение в Telegram отправлено." : " Сообщение в Telegram не ушло: человек не разрешил боту писать — сообщите сами.") : ""))
           // дальше — открыть эту смету в правке или в карточку клиента (владелец 06.11.2026)
           + `<span class="for-next"><button class="btn" type="button" data-for-open="${+r.id}">Открыть смету</button> <a class="btn ghost" href="/kabinet/#p=u${uid}" data-for-person="${+r.id}">К клиенту →</a></span>`;
       });
