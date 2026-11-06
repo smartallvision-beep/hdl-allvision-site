@@ -140,6 +140,19 @@
     hs.addEventListener("focus", () => { hsIndex().catch(() => {}); if (hs.value.trim().length > 1) hsRender(); });
     document.addEventListener("click", ev => { if (!ev.target.closest(".hsearch") && !ev.target.closest("[data-search-toggle]")) hsBox.hidden = true; });
     document.addEventListener("keydown", ev => { if (ev.key === "Escape") hsBox.hidden = true; });
+    // подсказка в поле без обрезки (владелец 06.11.2026): самая длинная из тех, что влезают в ширину поля
+    const HS_PH = ["Поиск: артикул или название", "Артикул или название", "Поиск по каталогу", "Поиск"];
+    const hsCtx = document.createElement("canvas").getContext("2d");
+    const hsFit = () => {
+      if (!hs.clientWidth) return;
+      const cs = getComputedStyle(hs);
+      hsCtx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      const room = hs.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 2;
+      hs.placeholder = HS_PH.find(t => hsCtx.measureText(t).width <= room) || HS_PH[HS_PH.length - 1];
+    };
+    if (window.ResizeObserver) new ResizeObserver(hsFit).observe(hs);
+    document.fonts?.ready.then(hsFit);
+    hsFit();
   }
   if (hsToggle) hsToggle.addEventListener("click", () => {
     if (document.body.dataset.page === "catalog") { const c = $("[data-search]"); c?.focus(); c?.scrollIntoView({ block: "center" }); return; }

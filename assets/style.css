@@ -705,9 +705,9 @@ body[data-page=catalog] .hsearch { display: none; }
 .prajs { list-style: none; padding: 0; margin: 20px 0; }
 .prajs li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 14px 0; border-bottom: 1px solid var(--line); }
 .prajs li b { font-size: 18px; }
-.prajs .dl-b { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; }
-.prajs .btn { padding: 9px 16px; font-size: 15px; }
-@media (max-width: 560px) { .prajs .dl-b { margin-left: 0; width: 100%; } }
+.prajs .dl-b { margin-left: auto; display: grid; grid-template-columns: 150px 150px; gap: 8px; }  /* одинаковая ширина — кнопки стоят столбцами */
+.prajs .btn { padding: 9px 12px; font-size: 15px; text-align: center; white-space: nowrap; }
+@media (max-width: 560px) { .prajs .dl-b { margin-left: 0; width: 100%; grid-template-columns: 1fr 1fr; } }
 
 /* кабинет (/kabinet/, app.js + kab.php): кнопка в шапке, вход через Telegram, анкета, вкладки и таблицы; скидка в ценах */
 .acc-link { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; color: #fff; background: rgba(255,255,255,.12); border-radius: 999px; padding: 6px 12px 6px 9px; font-weight: 600; white-space: nowrap; }
