@@ -72,7 +72,8 @@ function kab_db(): PDO {
     if (!in_array('edited_by', $smCols, true)) $db->exec('ALTER TABLE smetas ADD COLUMN edited_by INTEGER');
     if (!in_array('edited_at', $smCols, true)) $db->exec('ALTER TABLE smetas ADD COLUMN edited_at TEXT');
     $ldCols = array_column($db->query('PRAGMA table_info(leads)')->fetchAll(), 'name');
-    foreach (['sm' => "TEXT DEFAULT ''", 'items0' => 'TEXT', 'total0' => 'INTEGER', 'edited_by' => 'INTEGER', 'edited_at' => 'TEXT'] as $c => $t)
+    // made_by — заявку оформил сотрудник (поиск клиента, владелец 06.11.2026)
+    foreach (['sm' => "TEXT DEFAULT ''", 'items0' => 'TEXT', 'total0' => 'INTEGER', 'edited_by' => 'INTEGER', 'edited_at' => 'TEXT', 'made_by' => 'INTEGER'] as $c => $t)
         if (!in_array($c, $ldCols, true)) $db->exec("ALTER TABLE leads ADD COLUMN $c $t");
     // ассортимент из кабинета (этап 3, владелец 05.11.2026): одна правка на артикул — название, розничная цена USD с НДС (NULL — как в прайсе),
     // описание, фото, «скрыть»; is_new — новая позиция (раздел gnum, система platform). synced_at — когда компьютер AllVision забрал её в сборку;
@@ -155,6 +156,26 @@ function kab_sm_clean($in, bool $trusted): array {
         }
     }
     return ['items' => $items, 'ld' => $ld, 'extra' => $extra];
+}
+
+// строки заявки [{a, n, q, b}] — как их посчитала страница сметы (цена за штуку уже со скидкой) — и сумма
+function kab_lead_rows($in): array {
+    $rows = [];
+    $sum = 0;
+    foreach (array_slice(is_array($in) ? $in : [], 0, 400) as $it) {
+        if (!is_array($it)) continue;
+        $q = max(1, min(9999, (int) ($it['q'] ?? 1)));
+        $b = is_numeric($it['b'] ?? null) ? (int) round((float) $it['b']) : null;
+        if ($b !== null) $sum += $b * $q;
+        $rows[] = ['a' => kab_clean($it['a'] ?? '', 60), 'n' => kab_clean($it['n'] ?? '', 220), 'q' => $q, 'b' => $b];
+    }
+    return [$rows, $sum];
+}
+
+// ключ телефона для поиска и сравнения: последние 9 цифр («+375 29 123-45-67», «8029 1234567», «29 1234567» — один ключ); меньше 7 цифр — нет ключа
+function kab_phone_key($phone): string {
+    $d = preg_replace('/\D/', '', (string) $phone);
+    return strlen($d) >= 7 ? substr($d, -9) : '';
 }
 
 // скидка сметы: число 0–50 или null (тогда — личная скидка человека)
