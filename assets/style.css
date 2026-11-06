@@ -343,6 +343,11 @@ table.specs { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-s
 .smeta-doc .doc-new { display: inline-flex; gap: 8px; flex-wrap: wrap; } .smeta-doc .doc-new[hidden] { display: none; } .smeta-doc .msg { margin: 0; }
 /* смета у сотрудника (владелец 05.11.2026): общая скидка, «Добавить» из каталога, свои строки, процент в строке */
 .smeta-staff { background: var(--bg2); border-radius: 14px; padding: 12px 14px; margin: 0 0 8px; }
+/* правка заявки или сметы из кабинета (06.11.2026): заметная полоса сверху */
+.smeta-edit { background: var(--brand-soft); border-left: 4px solid var(--brand); border-radius: 14px; padding: 12px 16px; margin: 0 0 10px; }
+.smeta-edit p { margin: 0 0 6px; } .smeta-edit .msg { margin: 6px 0 0; }
+.smeta-edit .ed-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 8px; }
+.smeta-edit .ed-acts .btn { padding: 9px 16px; font-size: 15px; } .smeta-edit .consent { margin: 0; font-size: 15px; }
 .smeta-staff .sm-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .smeta-staff label { display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--muted); }
 .smeta-staff input { font: 15px var(--font); padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); color: var(--ink); background: #fff; }

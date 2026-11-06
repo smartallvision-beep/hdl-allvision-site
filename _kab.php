@@ -66,6 +66,14 @@ function kab_db(): PDO {
     // ручная скидка и свои строки (владелец 05.11.2026): ld — скидка по строке {артикул: %}, extra — строки не из каталога [{n, u, q, b, d}]
     if (!in_array('ld', $smCols, true)) $db->exec("ALTER TABLE smetas ADD COLUMN ld TEXT DEFAULT ''");
     if (!in_array('extra', $smCols, true)) $db->exec("ALTER TABLE smetas ADD COLUMN extra TEXT DEFAULT ''");
+    // сотрудник открывает и правит любую заявку и смету (владелец 06.11.2026: «Сотрудник компании должен видеть все заказы, мог заходить
+    // и их редактировать»). edited_by, edited_at — кто и когда правил. У заявки ещё sm — состав для правки ({items, ld, extra, d, doc}),
+    // items0, total0 — как прислал клиент (пишутся при первой правке, дальше не меняются)
+    if (!in_array('edited_by', $smCols, true)) $db->exec('ALTER TABLE smetas ADD COLUMN edited_by INTEGER');
+    if (!in_array('edited_at', $smCols, true)) $db->exec('ALTER TABLE smetas ADD COLUMN edited_at TEXT');
+    $ldCols = array_column($db->query('PRAGMA table_info(leads)')->fetchAll(), 'name');
+    foreach (['sm' => "TEXT DEFAULT ''", 'items0' => 'TEXT', 'total0' => 'INTEGER', 'edited_by' => 'INTEGER', 'edited_at' => 'TEXT'] as $c => $t)
+        if (!in_array($c, $ldCols, true)) $db->exec("ALTER TABLE leads ADD COLUMN $c $t");
     // ассортимент из кабинета (этап 3, владелец 05.11.2026): одна правка на артикул — название, розничная цена USD с НДС (NULL — как в прайсе),
     // описание, фото, «скрыть»; is_new — новая позиция (раздел gnum, система platform). synced_at — когда компьютер AllVision забрал её в сборку;
     // deleted — правку отменили, уходит со следующей сборкой. kv — запрос «Обновить сайт сейчас» и итог последней сборки
@@ -122,6 +130,45 @@ function kab_upload_max(): int {
 
 function kab_clean($v, int $max): string {
     return mb_substr(trim((string) preg_replace('/\s+/u', ' ', (string) $v)), 0, $max);
+}
+
+// состав сметы или заявки: items {артикул: количество}; ld — скидка строки {артикул: %}, extra — свои строки [{n, u, q, b, d}].
+// ld и extra принимаются только при $trusted (сотрудник или данные из базы), иначе пустые: клиент скидку не подделает
+function kab_sm_clean($in, bool $trusted): array {
+    $in = is_array($in) ? $in : [];
+    $items = $ld = $extra = [];
+    foreach (array_slice(is_array($in['items'] ?? null) ? $in['items'] : [], 0, 300, true) as $art => $qty) {
+        $art = kab_clean($art, 80);
+        if ($art !== '') $items[$art] = max(1, min(9999, (int) $qty));
+    }
+    if ($trusted) {
+        foreach (array_slice(is_array($in['ld'] ?? null) ? $in['ld'] : [], 0, 300, true) as $k => $v) {
+            $k = kab_clean($k, 80);
+            if ($k !== '' && is_numeric($v)) $ld[$k] = max(0.0, min(50.0, round((float) $v, 1)));
+        }
+        foreach (array_slice(is_array($in['extra'] ?? null) ? $in['extra'] : [], 0, 100) as $x) {
+            $n = is_array($x) ? kab_clean($x['n'] ?? '', 200) : '';
+            if ($n === '') continue;
+            $extra[] = ['n' => $n, 'u' => kab_clean($x['u'] ?? '', 20) ?: 'шт.', 'q' => max(1, min(9999, (int) ($x['q'] ?? 1))),
+                'b' => is_numeric($x['b'] ?? null) ? round(max(0.0, min(1000000.0, (float) $x['b'])), 2) : null,
+                'd' => is_numeric($x['d'] ?? null) ? max(0.0, min(50.0, round((float) $x['d'], 1))) : null];
+        }
+    }
+    return ['items' => $items, 'ld' => $ld, 'extra' => $extra];
+}
+
+// скидка сметы: число 0–50 или null (тогда — личная скидка человека)
+function kab_disc($v): ?float {
+    return is_numeric($v) ? max(0.0, min(50.0, round((float) $v, 1))) : null;
+}
+
+// название документа — только из общего списка сотрудников, иначе пусто
+function kab_doc($v): string {
+    $doc = kab_clean($v ?? '', 80);
+    if ($doc === '') return '';
+    $q = kab_db()->prepare('SELECT 1 FROM doc_titles WHERE title = ?');
+    $q->execute([$doc]);
+    return $q->fetchColumn() ? $doc : '';
 }
 
 function kab_https(): bool {

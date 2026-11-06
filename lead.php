@@ -84,9 +84,32 @@ $leadNo = 0;
 try {
     require_once __DIR__ . '/_kab.php';
     $who = kab_user();
-    kab_db()->prepare('INSERT INTO leads (user_id, created_at, name, phone, topic, page, comment, items, total, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    // состав для «Открыть» в кабинете (владелец 06.11.2026): количество — из запроса; скидки по строкам, свои строки и скидку сметы берём
+    // только у сотрудника или из базы — из сметы (sid) или заявки (lid) этого же человека, которые подготовил сотрудник; иначе — без них
+    $smIn = is_array($in['sm'] ?? null) ? $in['sm'] : [];
+    $smStaff = kab_is_staff($who);
+    $smSt = kab_sm_clean($smIn, $smStaff);
+    $smD = $smStaff ? kab_disc($smIn['d'] ?? null) : null;
+    if ($who && !$smStaff) {
+        $src = null;
+        if ($sid = (int) ($smIn['sid'] ?? 0)) {
+            $q = kab_db()->prepare('SELECT ld, extra, disc FROM smetas WHERE id = ? AND user_id = ?');
+            $q->execute([$sid, $who['id']]);
+            if ($r = $q->fetch()) $src = ['ld' => json_decode((string) $r['ld'], true), 'extra' => json_decode((string) $r['extra'], true), 'd' => $r['disc']];
+        } elseif ($lid = (int) ($smIn['lid'] ?? 0)) {
+            $q = kab_db()->prepare('SELECT sm FROM leads WHERE id = ? AND user_id = ?');
+            $q->execute([$lid, $who['id']]);
+            if ($r = json_decode((string) $q->fetchColumn(), true)) $src = ['ld' => $r['ld'] ?? [], 'extra' => $r['extra'] ?? [], 'd' => $r['d'] ?? null];
+        }
+        if ($src) {
+            $smSt = kab_sm_clean(['items' => $smSt['items'], 'ld' => $src['ld'], 'extra' => $src['extra']], true);
+            $smD = kab_disc($src['d']);
+        }
+    }
+    $smJson = $smSt['items'] || $smSt['extra'] ? json_encode($smSt + ['d' => $smD, 'doc' => kab_doc($doc)], JSON_UNESCAPED_UNICODE) : '';
+    kab_db()->prepare('INSERT INTO leads (user_id, created_at, name, phone, topic, page, comment, items, total, status, sm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         ->execute([$who ? $who['id'] : null, date('Y-m-d H:i:s'), $lead['name'], $lead['phone'], $lead['topic'], $lead['page'], $lead['comment'],
-            json_encode($rows, JSON_UNESCAPED_UNICODE), $rows ? $sum : null, 'new']);
+            json_encode($rows, JSON_UNESCAPED_UNICODE), $rows ? $sum : null, 'new', $smJson]);
     $leadNo = (int) kab_db()->lastInsertId();
     $saved = true;
 } catch (Throwable $e) {

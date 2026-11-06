@@ -109,10 +109,16 @@ case 'delete_me':  // удалить свои данные: пользовате
 case 'smetas':  // свои сметы (и подготовленные для меня сотрудником); сотрудник — все (all=1)
     $need((bool) $me, 401);
     $all = $staff && !empty($in['all']);
-    $q = $db->prepare('SELECT s.id, s.user_id, s.title, s.doc, s.disc, s.made_by, s.items, s.ld, s.extra, s.updated_at, u.name, u.company, u.role, m.name AS made_name, m.tg_name AS made_tg
-        FROM smetas s JOIN users u ON u.id = s.user_id LEFT JOIN users m ON m.id = s.made_by' . ($all ? '' : ' WHERE s.user_id = ?') . ' ORDER BY s.updated_at DESC LIMIT 300');
+    $q = $db->prepare('SELECT s.id, s.user_id, s.title, s.doc, s.disc, s.made_by, s.items, s.ld, s.extra, s.updated_at, s.edited_at, u.name, u.tg_name, u.company, u.role, u.discount AS udisc,
+        m.name AS made_name, m.tg_name AS made_tg, e.name AS edited_name, e.tg_name AS edited_tg
+        FROM smetas s JOIN users u ON u.id = s.user_id LEFT JOIN users m ON m.id = s.made_by LEFT JOIN users e ON e.id = s.edited_by' . ($all ? '' : ' WHERE s.user_id = ?') . ' ORDER BY s.updated_at DESC LIMIT 300');
     $q->execute($all ? [] : [$me['id']]);
     $rows = array_map(function ($r) use ($staff) {
+        // правил сотрудник: ему — кто, клиенту — что AllVision. udisc — личная скидка владельца сметы: сотрудник, открыв чужую смету, видит его цены
+        $r['edited_name'] = $staff && $r['edited_at'] ? ($r['edited_name'] ?: $r['edited_tg']) : null;
+        $r['name'] = $r['name'] ?: $r['tg_name'];
+        $r['udisc'] = $staff ? (float) $r['udisc'] : null;
+        unset($r['edited_tg'], $r['tg_name']);
         $r['items'] = json_decode((string) $r['items']) ?: new stdClass();
         $r['ld'] = json_decode((string) $r['ld']) ?: new stdClass();
         $r['extra'] = json_decode((string) $r['extra'], true) ?: [];
@@ -139,34 +145,13 @@ case 'smeta_for':   // сотрудник: смета клиенту или ди
         $owner = $q->fetch();
         $need($owner && $owner['status'] !== 'blocked', 404);
     }
-    $items = [];
-    foreach (array_slice(is_array($in['items'] ?? null) ? $in['items'] : [], 0, 300, true) as $art => $qty) {
-        $art = kab_clean($art, 80);
-        if ($art !== '') $items[$art] = max(1, min(9999, (int) $qty));
-    }
     // ручная скидка по строкам и свои строки — только от сотрудника (владелец 05.11.2026); у клиента их нет, чтобы не подделать скидку
-    $ld = $extra = [];
-    if ($staff) {
-        foreach (array_slice(is_array($in['ld'] ?? null) ? $in['ld'] : [], 0, 300, true) as $k => $v) {
-            $k = kab_clean($k, 80);
-            if ($k !== '' && is_numeric($v)) $ld[$k] = max(0.0, min(50.0, round((float) $v, 1)));
-        }
-        foreach (array_slice(is_array($in['extra'] ?? null) ? $in['extra'] : [], 0, 100) as $x) {
-            $n = is_array($x) ? kab_clean($x['n'] ?? '', 200) : '';
-            if ($n === '') continue;
-            $extra[] = ['n' => $n, 'u' => kab_clean($x['u'] ?? '', 20) ?: 'шт.', 'q' => max(1, min(9999, (int) ($x['q'] ?? 1))),
-                'b' => is_numeric($x['b'] ?? null) ? round(max(0.0, min(1000000.0, (float) $x['b'])), 2) : null,
-                'd' => is_numeric($x['d'] ?? null) ? max(0.0, min(50.0, round((float) $x['d'], 1))) : null];
-        }
-    }
+    ['items' => $items, 'ld' => $ld, 'extra' => $extra] = kab_sm_clean($in, $staff);
     if (!$items && !$extra) reply(422, ['ok' => false, 'error' => 'empty']);
     $ldJson = json_encode($ld, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT);
     $exJson = json_encode($extra, JSON_UNESCAPED_UNICODE);
     $title = kab_clean($in['title'] ?? '', 120) ?: 'Смета от ' . date('d.m.Y');
-    $doc = kab_clean($in['doc'] ?? '', 80);  // название документа — только из списка сотрудников
-    $q = $db->prepare('SELECT 1 FROM doc_titles WHERE title = ?');
-    $q->execute([$doc]);
-    if (!$q->fetchColumn()) $doc = '';
+    $doc = kab_doc($in['doc'] ?? '');  // название документа — только из списка сотрудников
     $disc = $for ? max(0.0, min(50.0, round((float) ($in['disc'] ?? 0), 1))) : null;
     $json = json_encode($items, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT);
     $id = (int) ($in['id'] ?? 0);
@@ -190,6 +175,23 @@ case 'smeta_for':   // сотрудник: смета клиенту или ди
             . ($disc > 0 ? ', скидка ' . rtrim(rtrim(number_format($disc, 1, ',', ''), '0'), ',') . ' %' : '') . '. Открыть: ' . kab_site() . '/kabinet/#smetas');
     }
     reply(200, ['ok' => true, 'id' => $id, 'title' => $title, 'sent' => $sent]);
+
+case 'smeta_upd':  // сотрудник: «Сохранить изменения» в открытой смете — любая смета, на месте; чья и кто подготовил — как были (владелец 06.11.2026)
+    $need($post, 405);
+    $need($staff);
+    $q = $db->prepare('SELECT s.id, s.title, s.user_id, u.tg_id FROM smetas s JOIN users u ON u.id = s.user_id WHERE s.id = ?');
+    $q->execute([(int) ($in['id'] ?? 0)]);
+    $sm = $q->fetch();
+    $need((bool) $sm, 404);
+    ['items' => $items, 'ld' => $ld, 'extra' => $extra] = kab_sm_clean($in, true);
+    if (!$items && !$extra) reply(422, ['ok' => false, 'error' => 'empty']);
+    $db->prepare('UPDATE smetas SET items = ?, ld = ?, extra = ?, doc = ?, disc = ?, edited_by = ?, edited_at = ?, updated_at = ? WHERE id = ?')
+        ->execute([json_encode($items, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT), json_encode($ld, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT),
+            json_encode($extra, JSON_UNESCAPED_UNICODE), kab_doc($in['doc'] ?? ''), kab_disc($in['disc'] ?? null), $me['id'], kab_now(), kab_now(), $sm['id']]);
+    $sent = false;
+    if (!empty($in['notify']) && (int) $sm['user_id'] !== (int) $me['id'])
+        $sent = kab_say($sm['tg_id'], 'AllVision изменил вашу смету «' . $sm['title'] . '» на hdl.by: ' . (count($items) + count($extra)) . ' поз. Открыть: ' . kab_site() . '/kabinet/#smetas');
+    reply(200, ['ok' => true, 'sent' => $sent]);
 
 case 'smeta_del':
     $need($post, 405);
@@ -329,12 +331,52 @@ case 'cat_done':  // компьютер сборки: итог. Удачно —
 
 case 'leads':  // свои заявки; сотрудник — все заявки с сайта
     $need((bool) $me, 401);
-    $q = $db->prepare('SELECT l.id, l.created_at, l.name, l.phone, l.topic, l.page, l.comment, l.items, l.total, l.status, l.status_at, u.role, u.company, u.tg_username
-        FROM leads l LEFT JOIN users u ON u.id = l.user_id' . ($staff ? '' : ' WHERE l.user_id = ?') . ' ORDER BY l.id DESC LIMIT 300');
+    // sm — состав для «Открыть» (у старых заявок пусто: собирается из строк items); edited_at — заявку правил сотрудник; сотруднику ещё кто правил,
+    // как прислал клиент (items0, total0) и личная скидка клиента (udisc)
+    $q = $db->prepare('SELECT l.id, l.user_id, l.created_at, l.name, l.phone, l.topic, l.page, l.comment, l.items, l.total, l.status, l.status_at, l.sm, l.items0, l.total0, l.edited_at,
+        u.role, u.company, u.tg_username, u.discount AS udisc, e.name AS edited_name, e.tg_name AS edited_tg
+        FROM leads l LEFT JOIN users u ON u.id = l.user_id LEFT JOIN users e ON e.id = l.edited_by' . ($staff ? '' : ' WHERE l.user_id = ?') . ' ORDER BY l.id DESC LIMIT 300');
     $q->execute($staff ? [] : [$me['id']]);
-    $rows = $q->fetchAll();
-    if (!$staff) $rows = array_map(function ($r) { unset($r['role'], $r['company'], $r['tg_username']); return $r; }, $rows);
+    $rows = array_map(function ($r) use ($staff) {
+        $r['sm'] = json_decode((string) $r['sm']) ?: null;
+        $r['user_id'] = $r['user_id'] === null ? null : (int) $r['user_id'];
+        $r['udisc'] = $r['udisc'] === null ? null : (float) $r['udisc'];
+        $r['edited_name'] = $r['edited_at'] ? ($r['edited_name'] ?: $r['edited_tg']) : null;
+        unset($r['edited_tg']);
+        if (!$staff) unset($r['role'], $r['company'], $r['tg_username'], $r['udisc'], $r['items0'], $r['total0'], $r['edited_name']);
+        return $r;
+    }, $q->fetchAll());
     reply(200, ['ok' => true, 'leads' => $rows]);
+
+case 'lead_save':  // сотрудник: «Сохранить изменения» в открытой заявке (владелец 06.11.2026). Строки и сумма — как их посчитала страница сметы
+    // по сегодняшним ценам; первая правка сохраняет, как прислал клиент (items0, total0); клиент видит новую версию, по галочке — сообщение в Telegram
+    $need($post, 405);
+    $need($staff);
+    $q = $db->prepare('SELECT l.id, l.user_id, u.tg_id FROM leads l LEFT JOIN users u ON u.id = l.user_id WHERE l.id = ?');
+    $q->execute([(int) ($in['id'] ?? 0)]);
+    $ld0 = $q->fetch();
+    $need((bool) $ld0, 404);
+    $st = kab_sm_clean($in, true);
+    if (!$st['items'] && !$st['extra']) reply(422, ['ok' => false, 'error' => 'empty']);
+    $rows = [];
+    $sum = 0;
+    foreach (array_slice(is_array($in['rows'] ?? null) ? $in['rows'] : [], 0, 400) as $it) {
+        if (!is_array($it)) continue;
+        $qn = max(1, min(9999, (int) ($it['q'] ?? 1)));
+        $b = is_numeric($it['b'] ?? null) ? (int) round((float) $it['b']) : null;
+        if ($b !== null) $sum += $b * $qn;
+        $rows[] = ['a' => kab_clean($it['a'] ?? '', 60), 'n' => kab_clean($it['n'] ?? '', 220), 'q' => $qn, 'b' => $b];
+    }
+    $sm = json_encode($st + ['d' => kab_disc($in['d'] ?? null), 'doc' => kab_doc($in['doc'] ?? '')], JSON_UNESCAPED_UNICODE);
+    // SQLite берёт справа старые значения строки: items0 и total0 — прежний состав, если правка первая
+    $db->prepare('UPDATE leads SET items0 = COALESCE(items0, items), total0 = CASE WHEN items0 IS NULL THEN total ELSE total0 END,
+        items = ?, total = ?, sm = ?, edited_by = ?, edited_at = ? WHERE id = ?')
+        ->execute([json_encode($rows, JSON_UNESCAPED_UNICODE), $sum, $sm, $me['id'], kab_now(), $ld0['id']]);
+    $sent = false;
+    if (!empty($in['notify']) && $ld0['tg_id'])
+        $sent = kab_say($ld0['tg_id'], 'AllVision изменил вашу заявку №' . $ld0['id'] . ' на hdl.by: ' . count($rows) . ' поз., итого '
+            . number_format($sum, 0, ',', ' ') . ' BYN. Посмотреть: ' . kab_site() . '/kabinet/#leads');
+    reply(200, ['ok' => true, 'sent' => $sent, 'total' => $sum]);
 
 case 'lead_status':
     $need($post, 405);
