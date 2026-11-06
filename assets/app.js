@@ -963,7 +963,7 @@
         + (lead ? `<label class="ed-note">Заметка для своих <span class="muted small">— клиент её не видит</span><textarea data-ed-note rows="2" maxlength="1000" placeholder="Например: перезвонить в пятницу, монтаж после 15-го">${esc(m.nt || "")}</textarea></label>` : "")
         + `<p class="muted small">${nw ? "Добавьте позиции из каталога или своей строкой, затем «Создать»." : "Меняйте количество, позиции, скидки и свои строки, затем «Сохранить»."} Цены — по сегодняшнему каталогу и курсу. `
         + (m.uid || kind === "s" ? `Клиент увидит ${nw ? "документ" : "изменения"} в своём кабинете.` : "У человека нет кабинета на сайте: пошлите ему PDF (кнопка «PDF для клиента»). По ссылке скидки и свои строки не передаются.") + "</p>"
-        + `<div class="ed-acts">${m.wtg ? `<label class="consent"><input type="checkbox" data-ed-tg${m.tg !== false ? " checked" : ""}> Сообщить в Telegram</label>` : ""}`
+        + `<div class="ed-acts">${m.wtg ? `<label class="consent"><input type="checkbox" data-ed-tg${m.tg === true ? " checked" : ""}> Сообщить в Telegram</label>` : ""}`
         + (!nw ? `<button class="cbtn ghost" type="button" data-ed-copy="l">Сделать копией: новая заявка</button>${m.uid ? '<button class="cbtn ghost" type="button" data-ed-copy="s">Сделать копией: новая смета</button>' : ""}` : "")
         + (!m.uid ? '<button class="cbtn ghost" type="button" data-ed-pdf>PDF для клиента</button>' : "") + "</div>";
       drawState();
@@ -1166,7 +1166,7 @@
         forBox.innerHTML = `<h3>Смета для клиента</h3><div class="row3"><label>Кому *<select name="user"><option value="">— выберите клиента или дилера —</option>${opts}</select></label>`
           + `<label>Название сметы<input name="title" maxlength="120" placeholder="Например: квартира, ул. Притыцкого" value="${esc(before?.title || "")}"></label>`
           + `<label>Скидка в смете, %<input name="disc" type="number" min="0" max="50" step="0.5" value="${before?.d ?? ""}" placeholder="личная"></label></div>`
-          + '<label class="consent" data-for-replace hidden></label><label class="consent"><input type="checkbox" name="notify" checked> Сообщить в Telegram</label>'
+          + '<label class="consent" data-for-replace hidden></label><label class="consent"><input type="checkbox" name="notify"> Сообщить в Telegram</label>'
           + `<p class="muted small">Скидка в смете заменяет личную скидку человека; пусто — действует его личная. Название документа — «${esc(docH.textContent)}», меняется выше. Человек увидит смету в кабинете, во вкладке «Сметы».</p>`
           + '<button class="btn" type="submit">Сохранить для клиента</button> <button class="btn ghost" type="button" data-for-close>Закрыть</button><p class="msg" role="status"></p>';
         forBox.hidden = false;
