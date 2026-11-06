@@ -95,6 +95,8 @@ function kab_db(): PDO {
     $trCols = array_column($db->query('PRAGMA table_info(trips)')->fetchAll(), 'name');
     if (!in_array('doc', $trCols, true)) $alter("ALTER TABLE trips ADD COLUMN doc TEXT DEFAULT ''");
     if (!in_array('pub_at', $trCols, true)) $alter('ALTER TABLE trips ADD COLUMN pub_at TEXT');
+    // xdoc — форма КП «подробно» на момент сохранения: из неё компьютер AllVision делает Excel в папку объекта (шаг 3)
+    if (!in_array('xdoc', $trCols, true)) $alter("ALTER TABLE trips ADD COLUMN xdoc TEXT DEFAULT ''");
     $ldCols = array_column($db->query('PRAGMA table_info(leads)')->fetchAll(), 'name');
     // made_by — заявку оформил сотрудник (поиск клиента, владелец 06.11.2026); ver — как у смет; note — заметка для своих, клиент её не видит
     foreach (['sm' => "TEXT DEFAULT ''", 'items0' => 'TEXT', 'total0' => 'INTEGER', 'edited_by' => 'INTEGER', 'edited_at' => 'TEXT', 'made_by' => 'INTEGER',

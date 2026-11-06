@@ -301,6 +301,8 @@ function kpNote(){
 function metaParts(){const {p}=model;const cl=clientName(cur.clientId);return [cur.num?`Расчёт № ${dispNum(cur.num)}${cur.version>1?` (ред. ${cur.version})`:''}`:'',cl?`Клиент: ${cl}`:'',p.place?`Объект: ${p.place}`:'',`Расстояние от Минска: ${int(p.dist)} км`,`Дата расчёта: ${cur.savedAt?new Date(String(cur.savedAt).replace(' ','T')).toLocaleDateString('ru-RU'):today()}`].filter(Boolean);}
 // снимок формы КП — то, что видит клиент (владелец 07.11.2026: ставки и настройки расчёта клиенту не отдаём)
 function docSnap(){return {meta:metaParts(),crew:crewText(),rows:kpRows(),note:kpNote(),view};}
+// форма «подробно» — для Excel в папке объекта, какой бы вид ни был выбран для клиента
+function docDetail(){const v=view;view='detail';const d=docSnap();view=v;return d;}
 function renderKp(){renderDoc(docSnap());}
 function renderDoc(d){
   const rows=d.rows||[];
@@ -462,12 +464,12 @@ async function doSave(asNew){
   try{
     const p=params();
     const wasNum=cur.num;cur.num=asNew?'':cur.num;const snap=docSnap();cur.num=wasNum;
-    const j=await api('trip_save',{num:asNew?'':cur.num,user_id:+cur.clientId||0,project:cur.project||'',place:p.place,dist:p.dist,total:model.total,vat:p.vat,state:snapshotState(),doc:fixDoc(snap,asNew?null:cur)});
+    const j=await api('trip_save',{num:asNew?'':cur.num,user_id:+cur.clientId||0,project:cur.project||'',place:p.place,dist:p.dist,total:model.total,vat:p.vat,state:snapshotState(),doc:fixDoc(snap,asNew?null:cur),xdoc:fixDoc(docDetail(),asNew?null:cur)});
     if(!j.ok){dbMsg(j.status===401||j.status===403?'Нужен вход сотрудника.':j.status===404?'Расчёт или клиент не найден — обновите страницу.':'Не удалось сохранить. Попробуйте ещё раз.',true);return;}
     cur={num:j.num,version:j.version,clientId:cur.clientId,project:cur.project,savedAt:j.saved_at,pub:!!j.pub,pubAt:j.pub_at||''};dirty=false;editMode=false;renderHeader();renderKp();save();
-    return true;
     history.replaceState(null,'','#'+encodeURIComponent(j.num));
     dbMsg(`Сохранено: ${dispNum(j.num)}${j.version>1?', ред. '+j.version:''}.`);
+    return true;
   }catch(e){dbMsg('Не удалось сохранить. Проверьте связь и попробуйте ещё раз.',true);}
   finally{btns.forEach(b=>b.disabled=false);}
 }

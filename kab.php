@@ -339,6 +339,22 @@ case 'proj_export':  // компьютер AllVision: сметы проекто�
             'updated_at' => $r['updated_at'], 'who' => $r['name'] ?: $r['tg_name']];
     }, $q->fetchAll())]);
 
+case 'trip_export':  // компьютер AllVision: расчёты командировок с проектом, новая редакция которых ещё не лежит в папке объекта
+    $need(kab_build_ok());
+    $q = $db->query("SELECT t.num, t.version, t.project, t.place, t.total, t.vat, t.saved_at, t.xdoc, u.name, u.tg_name FROM trips t LEFT JOIN users u ON u.id = t.saved_by
+        WHERE t.project <> '' AND t.xdoc <> '' AND (t.proj_at IS NULL OR t.proj_at < t.saved_at) ORDER BY t.id");
+    reply(200, ['ok' => true, 'trips' => array_map(function ($r) {
+        return ['num' => $r['num'], 'version' => (int) $r['version'], 'project' => $r['project'], 'place' => (string) $r['place'], 'total' => (float) $r['total'],
+            'vat' => (bool) $r['vat'], 'saved_at' => $r['saved_at'], 'who' => $r['name'] ?: $r['tg_name'], 'doc' => json_decode((string) $r['xdoc'], true) ?: []];
+    }, $q->fetchAll())]);
+
+case 'trip_done':  // компьютер AllVision: эти редакции лежат в папках объектов
+    $need(kab_build_ok());
+    $need($post, 405);
+    $u = $db->prepare('UPDATE trips SET proj_at = ? WHERE num = ?');
+    foreach ((array) ($in['done'] ?? []) as $d) $u->execute([(string) ($d['at'] ?? ''), (string) ($d['num'] ?? '')]);
+    reply(200, ['ok' => true]);
+
 case 'proj_done':  // компьютер AllVision: эти версии смет лежат в папках объектов
     $need(kab_build_ok());
     $need($post, 405);
@@ -409,13 +425,14 @@ case 'trip_save':  // сотрудник: сохранить (num — новая
     if ($uid) { $q = $db->prepare('SELECT COUNT(*) FROM users WHERE id = ?'); $q->execute([$uid]); $need((int) $q->fetchColumn() > 0, 404); }
     $proj = kab_clean($in['project'] ?? '', 200);
     $place = kab_clean($in['place'] ?? '', 200);
-    $vals = [$uid, $proj, $place, (float) ($in['dist'] ?? 0), round((float) ($in['total'] ?? 0), 2), empty($in['vat']) ? 0 : 1, $json, $me['id'], kab_now()];
+    $xdoc = is_array($in['xdoc'] ?? null) ? json_encode($in['xdoc'], JSON_UNESCAPED_UNICODE) : '';
+    $vals = [$uid, $proj, $place, (float) ($in['dist'] ?? 0), round((float) ($in['total'] ?? 0), 2), empty($in['vat']) ? 0 : 1, $json, $me['id'], kab_now(), $xdoc];
     $num = (string) ($in['num'] ?? '');
     if ($num !== '') {
         // выложенный клиенту: форма КП у клиента обновляется вместе с расчётом (doc со страницы); сменили клиента — у прежнего убираем
         $docJ = is_array($in['doc'] ?? null) ? json_encode($in['doc'], JSON_UNESCAPED_UNICODE) : null;
         $q = $db->prepare('UPDATE trips SET pub = CASE WHEN COALESCE(user_id, 0) = CAST(? AS INTEGER) THEN pub ELSE 0 END, doc = CASE WHEN pub = 1 AND COALESCE(user_id, 0) = CAST(? AS INTEGER) AND ? IS NOT NULL THEN ? ELSE doc END,
-            user_id = ?, project = ?, place = ?, dist = ?, total = ?, vat = ?, state = ?, saved_by = ?, saved_at = ?, version = version + 1 WHERE num = ?');
+            user_id = ?, project = ?, place = ?, dist = ?, total = ?, vat = ?, state = ?, saved_by = ?, saved_at = ?, xdoc = ?, version = version + 1 WHERE num = ?');
         $q->execute(array_merge([(int) $uid, (int) $uid, $docJ, $docJ], $vals, [$num]));
         $need($q->rowCount() > 0, 404);
     } else {
@@ -425,7 +442,7 @@ case 'trip_save':  // сотрудник: сохранить (num — новая
         $q->execute([$y]);
         $seq = (int) $q->fetchColumn();
         $num = sprintf('КР-%d-%03d', $y, $seq);
-        $db->prepare('INSERT INTO trips (user_id, project, place, dist, total, vat, state, saved_by, saved_at, num, year, seq, version, made_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)')
+        $db->prepare('INSERT INTO trips (user_id, project, place, dist, total, vat, state, saved_by, saved_at, xdoc, num, year, seq, version, made_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)')
             ->execute(array_merge($vals, [$num, $y, $seq, $me['id'], kab_now()]));
         $db->commit();
     }
