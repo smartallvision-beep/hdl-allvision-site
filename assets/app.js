@@ -1014,7 +1014,9 @@
         + (m.uid || kind === "s" ? `Клиент увидит ${nw ? "документ" : "изменения"} в своём кабинете.` : "У человека нет кабинета на сайте: пошлите ему PDF (кнопка «PDF для клиента»). По ссылке скидки и свои строки не передаются.") + "</p>"
         + `<div class="ed-acts">${m.wtg ? `<label class="consent"><input type="checkbox" data-ed-tg${m.tg === true ? " checked" : ""}> Сообщить в Telegram</label>` : ""}`
         + (!nw ? `<button class="cbtn ghost" type="button" data-ed-copy="l">Сделать копией: новая заявка</button>${m.uid ? '<button class="cbtn ghost" type="button" data-ed-copy="s">Сделать копией: новая смета</button>' : ""}` : "")
-        + (!m.uid ? '<button class="cbtn ghost" type="button" data-ed-pdf>PDF для клиента</button>' : "") + "</div>";
+        + (!m.uid ? '<button class="cbtn ghost" type="button" data-ed-pdf>PDF для клиента</button>' : "")
+        + (kind === "s" ? '<button class="cbtn" type="button" data-ed-move>Передать другому человеку…</button>' : "") + "</div>"
+        + '<div class="ed-move" data-ed-mv hidden></div>';
       drawState();
     };
     // уход с несохранённым: окно с тремя выходами (NN/g: подтверждение — только при реальной потере). Без <dialog> — обычный вопрос браузера
@@ -1143,7 +1145,71 @@
         if (r.ok) { out.className = "msg small ok"; out.textContent = "✓ сохранено"; }
         else { out.className = "msg small bad"; out.textContent = "не сохранилось"; s.value = m.status || "new"; }
       });
-      edBox.addEventListener("click", ev => {
+      // передать смету другому человеку (владелец 06.11.2026): выбор из кабинета поиском по имени, телефону, компании; смета уходит целиком,
+      // несохранённые изменения — вместе с ней (smeta_upd с to)
+      let mvPeople = null, mvPick = null;
+      const mvBox = () => $("[data-ed-mv]", edBox);
+      const mvList = () => {
+        const q = low(String($("[data-mv-q]", edBox)?.value || "").trim()), qd = q.replace(/\D/g, ""), m = smGet() || {};
+        const nm = u => u.name || u.tg_name || "—";
+        const hit = (mvPeople || []).filter(u => +u.id !== +m.uid && (!q || low(nm(u) + " " + (u.tg_name || "") + " " + (u.company || "") + " " + (u.tg_username || "")).includes(q)
+          || (qd.length >= 3 && String(u.phone || "").replace(/\D/g, "").includes(qd)))).slice(0, 8);
+        $("[data-mv-res]", edBox).innerHTML = hit.map(u => `<button type="button" class="mv-hit${mvPick && +mvPick.id === +u.id ? " on" : ""}" data-mv-id="${u.id}"><b>${esc(nm(u))}</b> <span class="muted small">${[esc(u.phone || ""), esc(u.company || ""), esc(({ user: "пользователь", client: "клиент", dealer: "дилер", staff: "сотрудник" })[u.role] || "")].filter(Boolean).join(" · ")}${+u.discount ? " · скидка " + pct(+u.discount) : ""}</span></button>`).join("")
+          || '<p class="muted small">Никого не нашли. Передать можно только тому, у кого есть кабинет на сайте.</p>';
+      };
+      const moveDoc = async () => {
+        const m = smGet() || {}, box = mvBox(), out = $("[data-mv-msg]", box), L0 = load();
+        if (!mvPick) { out.className = "msg bad"; out.textContent = "Выберите, кому передать."; return; }
+        if (!Object.keys(L0).length && !(m.extra || []).length) { out.className = "msg bad"; out.textContent = "Список пуст — передавать нечего."; return; }
+        const ni = ownNoName(m);
+        if (ni >= 0) { NONAME = ni; renderSmeta(); out.className = "msg bad"; out.textContent = "У своей строки нет названия — впишите его или уберите строку (×)."; return; }
+        const tg = !!$("[data-mv-tg]", box)?.checked, p = mvPick, btn = $("[data-mv-go]", box);
+        btn.disabled = true; out.className = "msg"; out.textContent = "Передаём…";
+        const r = await kabApi("smeta_upd", { items: L0, ld: obj(m.ld), extra: m.extra || [], doc: docNow(), id: m.id, disc: m.d ?? null, title: m.title || "", v: m.v, to: p.id, notify: tg }).catch(() => ({}));
+        btn.disabled = false;
+        if (stale()) return lockStale();
+        if (!r.ok) {
+          out.className = "msg bad";
+          out.textContent = r.status === 409 ? `Смету уже изменил(а) ${r.by || "другой сотрудник"}${r.at ? " в " + r.at.slice(11, 16) : ""} — не передана. Вернитесь к клиенту и откройте свежую.`
+            : r.error === "limit" ? "У этого человека уже 100 смет — пусть удалит старые." : r.status === 404 ? "Не нашли: смету удалили или человека заблокировали." : "Не удалось передать. Проверьте связь и нажмите ещё раз.";
+          return;
+        }
+        const cur = smGet() || m, who = r.who || p.name || p.tg_name || "";
+        const next = { ...cur, uid: r.to, who, wtg: true, ud: r.ud, udNow: r.ud, title: r.title || cur.title, v: r.ver, back: "/kabinet/#p=u" + r.to };
+        delete next.cat0;
+        next.saved = sig({ ...m, uid: r.to, ud: r.ud, title: next.title }, L0);
+        next.savedAt = hhmm();
+        smSet(next); mvPick = null; drawEdit(); renderSmeta();
+        const m2 = $("[data-ed-msg]", edStrip);
+        if (m2) { m2.className = "msg ok"; m2.textContent = `Смета передана: ${who}, ${next.savedAt}.` + (tg ? (r.sent ? " Ему ушло сообщение в Telegram." : " Сообщение в Telegram не ушло: человек не разрешил боту писать — сообщите сами.") : ""); }
+        scrollTo({ top: 0, behavior: "smooth" });
+      };
+      edBox.addEventListener("input", ev => { if (ev.target.closest("[data-mv-q]")) mvList(); });
+      edBox.addEventListener("keydown", ev => { if (ev.target.closest("[data-mv-q]") && ev.key === "Enter") { ev.preventDefault(); $("[data-mv-id]", edBox)?.click(); } });
+      edBox.addEventListener("click", async ev => {
+        const mv = ev.target.closest("[data-ed-move]"), box = mvBox();
+        if (mv && box) {
+          if (guard()) return;
+          if (!box.hidden) { box.hidden = true; return; }
+          if (!mvPeople) {
+            const j = await kabApi("users").catch(() => ({}));
+            if (!j.ok) { $("[data-ed-msg]", edStrip).textContent = "Не удалось загрузить список людей."; return; }
+            mvPeople = j.users.filter(u => u.status !== "blocked");
+          }
+          const m = smGet() || {};
+          mvPick = null;
+          box.innerHTML = `<p><b>Кому передать смету «${esc(m.title || "")}»</b></p><input type="search" data-mv-q placeholder="Имя, телефон или компания" aria-label="Кому передать">`
+            + '<div class="mv-res" data-mv-res></div><label class="consent"><input type="checkbox" data-mv-tg> Сообщить в Telegram</label>'
+            + `<p class="muted small">Смета уйдёт${m.who ? " от " + esc(m.who) : ""} к выбранному человеку, у прежнего владельца её не останется. Несохранённые изменения сохранятся вместе с ней.`
+            + (m.d == null ? " «Скидка на всё» пустая — смета посчитается с личной скидкой нового владельца." : "") + "</p>"
+            + '<button class="btn" type="button" data-mv-go>Передать</button> <button class="btn ghost" type="button" data-mv-cancel>Отмена</button> <span class="msg" data-mv-msg role="status"></span>';
+          box.hidden = false; mvList(); $("[data-mv-q]", box).focus();
+          return;
+        }
+        const hit = ev.target.closest("[data-mv-id]");
+        if (hit) { mvPick = (mvPeople || []).find(u => +u.id === +hit.dataset.mvId) || null; mvList(); return; }
+        if (ev.target.closest("[data-mv-cancel]")) { mvPick = null; box.hidden = true; return; }
+        if (ev.target.closest("[data-mv-go]")) return moveDoc();
         if (ev.target.closest("[data-ed-pdf]")) return window.print();
         const cp = ev.target.closest("[data-ed-copy]");
         if (!cp || guard()) return;

@@ -264,18 +264,40 @@ case 'smeta_upd':  // сотрудник: «Сохранить» в открыт
     $disc = array_key_exists('disc', $in) ? kab_disc($in['disc']) : (array_key_exists('d', $in) ? kab_disc($in['d']) : $old);
     $title = kab_clean($in['title'] ?? '', 120) ?: (string) $sm['title'];
     $doc = kab_doc($in['doc'] ?? '');
+    // передать смету другому человеку (to — его номер): вместе с составом, под той же проверкой версии (владелец 06.11.2026)
+    $to = null;
+    if ($toId = (int) ($in['to'] ?? 0)) {
+        $q = $db->prepare("SELECT id, tg_id, name, tg_name, discount FROM users WHERE id = ? AND status <> 'blocked'");
+        $q->execute([$toId]);
+        $to = $q->fetch();
+        $need((bool) $to, 404);
+        if ((int) $to['id'] === (int) $sm['user_id']) $to = null;
+        else {
+            $n = $db->prepare('SELECT COUNT(*) FROM smetas WHERE user_id = ?');
+            $n->execute([$to['id']]);
+            if ((int) $n->fetchColumn() >= 100) reply(422, ['ok' => false, 'error' => 'limit']);
+        }
+    }
     // ничего не поменялось — ничего не пишем: ни «изменил», ни новой версии, ни сообщения клиенту. Сравнение через json_encode:
     // нестрогое == считало пустую скидку (личная) и 0 % одним и тем же, и такая правка не сохранялась (06.11.2026)
-    if (json_encode([json_decode((string) $sm['items'], true) ?: [], json_decode((string) $sm['ld'], true) ?: [], json_decode((string) $sm['extra'], true) ?: [], (string) $sm['doc'], $old, (string) $sm['title']])
+    if (!$to && json_encode([json_decode((string) $sm['items'], true) ?: [], json_decode((string) $sm['ld'], true) ?: [], json_decode((string) $sm['extra'], true) ?: [], (string) $sm['doc'], $old, (string) $sm['title']])
         === json_encode([$items, $ld, $extra, $doc, $disc, $title]))
         reply(200, ['ok' => true, 'same' => true, 'sent' => false, 'ver' => (int) $sm['ver'], 'title' => $title, 'disc' => $disc]);
     // версия: открыли версию v, а в базе уже другая — смету тем временем сохранил кто-то ещё (или эта же смета в другой вкладке)
     $v = isset($in['v']) && is_numeric($in['v']) && empty($in['force']) ? (int) $in['v'] : null;
-    $q = $db->prepare('UPDATE smetas SET title = ?, items = ?, ld = ?, extra = ?, doc = ?, disc = ?, edited_by = ?, edited_at = ?, updated_at = ?, ver = ver + 1, ver_by = ?, ver_at = ? WHERE id = ?' . ($v !== null ? ' AND ver = ?' : ''));
+    $q = $db->prepare('UPDATE smetas SET title = ?, items = ?, ld = ?, extra = ?, doc = ?, disc = ?, edited_by = ?, edited_at = ?, updated_at = ?, ver = ver + 1, ver_by = ?, ver_at = ?'
+        . ($to ? ', user_id = ?, made_by = ?' : '') . ' WHERE id = ?' . ($v !== null ? ' AND ver = ?' : ''));
     $q->execute(array_merge([$title, json_encode($items, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT), json_encode($ld, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT),
-        json_encode($extra, JSON_UNESCAPED_UNICODE), $doc, $disc, $me['id'], kab_now(), kab_now(), $me['id'], kab_now(), $sm['id']], $v !== null ? [$v] : []));
+        json_encode($extra, JSON_UNESCAPED_UNICODE), $doc, $disc, $me['id'], kab_now(), kab_now(), $me['id'], kab_now()], $to ? [$to['id'], $me['id']] : [], [$sm['id']], $v !== null ? [$v] : []));
     if ($q->rowCount() === 0) reply(409, ['ok' => false, 'error' => 'stale', 'by' => $sm['edited_name'] ?: $sm['edited_tg'], 'at' => $sm['edited_at']]);
     $sent = false;
+    if ($to) {
+        if (!empty($in['notify']) && (int) $to['id'] !== (int) $me['id'])
+            $sent = kab_say($to['tg_id'], 'AllVision подготовил для вас смету «' . $title . '» на hdl.by: ' . (count($items) + count($extra)) . ' поз.'
+                . ($disc > 0 ? ', скидка ' . kab_pct((float) $disc) : '') . '. Открыть: ' . kab_site() . '/kabinet/#smetas');
+        reply(200, ['ok' => true, 'sent' => $sent, 'ver' => (int) $sm['ver'] + 1, 'title' => $title, 'disc' => $disc,
+            'to' => (int) $to['id'], 'who' => $to['name'] ?: $to['tg_name'], 'ud' => (float) $to['discount']]);
+    }
     if (!empty($in['notify']) && (int) $sm['user_id'] !== (int) $me['id'])
         $sent = kab_say($sm['tg_id'], 'AllVision изменил вашу смету «' . $title . '» на hdl.by: ' . (count($items) + count($extra)) . ' поз.'
             . ($disc > 0 ? ', скидка ' . kab_pct((float) $disc) : '') . '. Открыть: ' . kab_site() . '/kabinet/#smetas');
