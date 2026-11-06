@@ -132,9 +132,11 @@
     const m = smGet(), ed = STAFF && m && m.edit;
     $$(".smeta-link").forEach(a => { a.classList.toggle("editing", !!ed); a.title = ed ? "Открыта правка " + edName(m) : ""; const t = a.firstChild; if (t && t.nodeType === 3) t.textContent = ed ? "Правка " : "Смета "; });
     catBack();
+    if (syncBuyRef) syncBuyRef();
   };
   // каталог во время правки: под шапкой (на телефоне внизу) — «← Вернуться к заявке №12», кто клиент и сколько добавлено (06.11.2026)
   const IN_CAT = location.pathname.startsWith("/katalog/");
+  let syncBuyRef = null;  // карточка товара: поле количества и «Оформить» (задаётся ниже)
   const catBack = () => {
     if (!IN_CAT) return;
     const m = smGet(), on = !!(STAFF && m && m.edit);
@@ -265,7 +267,50 @@
     if (main && b.dataset.img) { main.src = b.dataset.img; $$(".thumbs button").forEach(x => x.removeAttribute("aria-current")); }
   }));
   const qi = $("[data-qty-input]");
-  $$("[data-qty]").forEach(b => b.addEventListener("click", () => { qi.value = Math.max(1, (+qi.value || 1) + +b.dataset.qty); }));
+  // товар уже в смете (владелец 06.11.2026): поле показывает, сколько его в смете, «+» и «−» меняют смету сразу, кнопка «+1 в смету»,
+  // справа «В смете 3 шт. · Оформить →» (во время правки — «Вернуться»). Строка сметы — то же исполнение, угол, цвет и «без драйвера»
+  const buyKey = () => { const a = add && add.dataset.add; return a ? a + (add.dataset.opt || "") + (add.dataset.nodrv ? " · без драйвера" : "") : ""; };
+  let buyGo = null, buyIn = false;
+  syncBuyRef = () => syncBuy();  // счётчик в шапке поменялся (эта вкладка) — и поле, и кнопка  // buyIn — поле сейчас показывает количество в смете
+  const syncBuy = () => {
+    if (!add) return;
+    if (!buyGo) { buyGo = document.createElement("a"); buyGo.className = "btn ghost buy-go"; buyGo.href = "/smeta/"; buyGo.hidden = true; add.after(buyGo); }
+    const k = buyKey(), n = k ? +load()[k] || 0 : 0, m = smGet(), ed = STAFF && m && m.edit;
+    if (n) {
+      if (qi && document.activeElement !== qi) qi.value = n;
+      buyIn = true;
+      if (!/^Добавлено/.test(add.textContent)) add.textContent = "+1 " + addLabel().replace(/^В /, "в ");
+      buyGo.textContent = (ed && m.edit === "l" ? `В заявке №${m.lid}` : ed && m.edit === "nl" ? "В заявке" : "В смете") + ` ${n} шт. · ${ed ? "Вернуться" : "Оформить"} →`;
+      buyGo.hidden = false;
+    } else {
+      if (buyIn && qi) qi.value = 1;  // убрали из сметы — поле снова «сколько добавить»
+      buyIn = false;
+      if (!/^Добавлено/.test(add.textContent)) add.textContent = addLabel();
+      buyGo.hidden = true;
+    }
+  };
+  // изменить количество в смете на dq (и драйвер к светильнику — столько же); до нуля — с вопросом
+  const buySet = q => {
+    const k = buyKey(), s = load(), n = +s[k] || 0, d = add.dataset.add2;
+    if (!n) return;
+    q = Math.round(q);
+    if (q < 1) {
+      if (!confirm("Убрать из сметы?")) { syncBuy(); return; }
+      q = 0;
+    }
+    if (d && s[d]) { s[d] = s[d] + (q - n); if (s[d] < 1) delete s[d]; }
+    if (q) s[k] = q; else delete s[k];
+    save(s); syncBuy();
+  };
+  $$("[data-qty]").forEach(b => b.addEventListener("click", () => {
+    if (buyIn && buyKey() && +load()[buyKey()]) return buySet((+load()[buyKey()] || 0) + +b.dataset.qty);
+    qi.value = Math.max(1, (+qi.value || 1) + +b.dataset.qty);
+  }));
+  qi?.addEventListener("change", () => { if (buyIn && buyKey() && +load()[buyKey()]) buySet(+qi.value || 0); });
+  // исполнение, угол, драйвер, «без драйвера» меняют строку сметы — поле и кнопка справа за ней
+  if (add) new MutationObserver(syncBuy).observe(add, { attributes: true, attributeFilter: ["data-add", "data-opt", "data-nodrv", "data-add2"] });
+  addEventListener("storage", ev => { if ([KEY, SM_KEY, null].includes(ev.key)) syncBuy(); });
+  addEventListener("pageshow", ev => { if (ev.persisted) syncBuy(); });
   let beamOpt = () => "", beamSync = () => {};  // угол и цвет света для строки сметы — задаёт блок «Угол луча» ниже
   let ctlNoDrv = () => {};  // карточка на исполнении без драйвера — задаёт блок «Управление» ниже
   if (add) add.addEventListener("click", () => {
@@ -298,12 +343,14 @@
       return;
     }
     const nodrv = !!add.dataset.nodrv;  // уже согласились без драйвера — та же строка сметы с пометкой
-    const s = load(), q = Math.max(1, +(qi?.value) || 1), d = add.dataset.add2, key = a + (add.dataset.opt || "") + (nodrv ? " · без драйвера" : "");
+    const key0 = a + (add.dataset.opt || "") + (nodrv ? " · без драйвера" : ""), inSm = +load()[key0] || 0;
+    const s = load(), q = inSm ? 1 : Math.max(1, +(qi?.value) || 1), d = add.dataset.add2, key = key0;  // уже в смете — «+1»
     s[key] = (s[key] || 0) + q;
     if (d) s[d] = (s[d] || 0) + q;  // драйвер — по одному на светильник
     save(s);
     add.textContent = (d ? "Добавлено с драйвером" : nodrv ? "Добавлено без драйвера" : "Добавлено") + edTo() + " ✓";
-    setTimeout(() => { add.textContent = addLabel(); }, 1600);
+    syncBuy();
+    setTimeout(() => { add.textContent = ""; syncBuy(); }, 1600);
   });
   // галочка «драйвер у меня есть» открывает выбор светильника и кнопку; «Всё равно в смету без драйвера» — только с выбранным исполнением;
   // в строке сметы пометка «без драйвера»
@@ -323,7 +370,7 @@
     if (!v) { err.textContent = "Выберите светильник."; return; }
     const va = v.value, s = load(), q = Math.max(1, +(qi?.value) || 1), key = va + beamOpt(va) + " · без драйвера";
     s[key] = (s[key] || 0) + q;
-    save(s);
+    save(s); syncBuy();
     go.textContent = "Добавлено без драйвера ✓"; go.disabled = true;
     setTimeout(() => {  // подсказка закрывается, карточка остаётся на этом исполнении без драйвера
       needBox.hidden = true; $("[data-need-nd]", needBox).innerHTML = "";
@@ -454,6 +501,8 @@
     document.addEventListener("click", ev => { if (ev.target.closest('.variants button, .ctl-opts button[data-v="*"]')) setTimeout(() => render(true), 0); });
     render(true);
   }
+
+  syncBuy();
 
   // ---- «В смету» прямо с карточки в сетке ----
   document.addEventListener("click", ev => {
