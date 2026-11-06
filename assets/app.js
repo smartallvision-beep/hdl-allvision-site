@@ -1792,6 +1792,28 @@
       flash();
     };
 
+    // командировочные бригады (владелец 07.11.2026): расчёты сотрудников с номерами КР-ГГГГ-NNN; сам расчёт — /kabinet/komandirovki/
+    const tabTrips = async () => {
+      wait();
+      const j = await kabApi("trips").catch(() => ({}));
+      if (!j.ok) return failed();
+      const fm = v => Math.round(v).toLocaleString("ru-RU");
+      const draw = q => {
+        q = low(q.trim());
+        const rows = j.trips.filter(t => !q || low([t.num, t.who, t.place, t.project, t.saved_at ? day(t.saved_at) : ""].join(" ")).includes(q));
+        $("[data-trips-list]", panel).innerHTML = rows.length ? `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Номер</th><th>Клиент · объект</th><th>Проект</th><th class="num">Сумма</th><th>Сохранён</th></tr></thead><tbody>`
+          + rows.map(t => `<tr><td><a href="/kabinet/komandirovki/#${encodeURIComponent(t.num)}"><b>${esc(t.num)}</b></a>${t.version > 1 ? `<br><span class="muted small">ред. ${t.version}</span>` : ""}</td>`
+            + `<td>${esc(t.who || "без клиента")}${t.place ? ` · ${esc(t.place)}` : ""}${t.dist ? `<br><span class="muted small">${fm(t.dist)} км</span>` : ""}</td><td>${esc(t.project || "—")}</td>`
+            + `<td class="num">${fm(t.total)} BYN${t.vat ? '<br><span class="muted small">с НДС</span>' : ""}</td><td>${t.saved_at ? day(t.saved_at) : ""}${t.saved_by ? `<br><span class="muted small">${esc(t.saved_by)}</span>` : ""}</td></tr>`).join("")
+          + "</tbody></table></div>" : `<p>${j.trips.length ? "Ничего не найдено." : "Расчётов пока нет."}</p>`;
+      };
+      panel.innerHTML = '<div class="kab-trips-top"><input type="search" data-trips-q placeholder="Поиск: номер, клиент, объект, дата" aria-label="Поиск расчётов"> <a class="btn" href="/kabinet/komandirovki/">Новый расчёт</a></div><div data-trips-list></div>'
+        + '<p class="muted small">Расчёт командировочных и транспортных расходов бригады: питание, жильё, транспорт, прочие строки. Номер даётся при первом сохранении, каждое следующее сохранение — новая редакция того же номера.</p>';
+      draw("");
+      panel.oninput = ev => { if (ev.target.closest("[data-trips-q]")) draw(ev.target.value); };
+      flash();
+    };
+
     const tabLeads = async () => {
       wait();
       const j = await kabApi("leads").catch(() => ({}));
@@ -2131,7 +2153,7 @@
       if (user.status === "form") { main.before(form); setupForm(true); return show(form); }
       show(main); head();
       // документы — клиентам (владелец 03.11.2026: у дилера их нет), материалы — только сотрудникам
-      const tabs = staff ? [["users", "Пользователи"], ["leads", "Заявки"], ["smetas", "Сметы"], ["projects", "Проекты"], ["cat", "Ассортимент"], ["docs", "Документы"], ["mats", "Материалы"], ["profile", "Мои данные"]]
+      const tabs = staff ? [["users", "Пользователи"], ["leads", "Заявки"], ["smetas", "Сметы"], ["projects", "Проекты"], ["trips", "Командировки"], ["cat", "Ассортимент"], ["docs", "Документы"], ["mats", "Материалы"], ["profile", "Мои данные"]]
         : [["smetas", "Сметы"], ["leads", "Заявки"], ...(user.role === "client" ? [["docs", "Документы"]] : []), ["profile", "Мои данные"]];
       // карточка человека из поиска: #p=u<номер> или #p=t<телефон> — вкладки без выбранной (владелец 06.11.2026)
       const pk = staff && /^#p=[ut]\d+$/.test(location.hash) ? location.hash.slice(3) : "";
@@ -2141,7 +2163,7 @@
       edBanner();
       PERSON = null;
       if (pk) return tabPerson(pk);
-      ({ users: tabUsers, leads: tabLeads, smetas: tabSmetas, projects: tabProjects, cat: tabCat, docs: tabDocs, mats: tabMats, profile: tabProfile })[cur]();
+      ({ users: tabUsers, leads: tabLeads, smetas: tabSmetas, projects: tabProjects, trips: tabTrips, cat: tabCat, docs: tabDocs, mats: tabMats, profile: tabProfile })[cur]();
     };
     addEventListener("hashchange", () => { if (user && user.status !== "form") route(); });
     $("[data-kab-logout]").addEventListener("click", async () => {

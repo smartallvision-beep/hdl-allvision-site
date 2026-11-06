@@ -86,6 +86,11 @@ function kab_db(): PDO {
     if (!in_array('project', $smCols, true)) $alter("ALTER TABLE smetas ADD COLUMN project TEXT DEFAULT ''");
     if (!in_array('proj_at', $smCols, true)) $alter('ALTER TABLE smetas ADD COLUMN proj_at TEXT');
     $db->exec('CREATE TABLE IF NOT EXISTS projects (name TEXT PRIMARY KEY, pos INTEGER DEFAULT 0)');
+    // командировочные бригады (владелец 07.11.2026): расчёт сотрудника с номером КР-ГГГГ-NNN, редакции (version), state — всё, что ввели
+    // на странице расчёта; user_id — клиент из кабинета, project — папка объекта, pub — выложен клиенту, proj_at — когда забрал компьютер
+    $db->exec("CREATE TABLE IF NOT EXISTS trips (id INTEGER PRIMARY KEY, num TEXT UNIQUE NOT NULL, year INTEGER, seq INTEGER, version INTEGER DEFAULT 1,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, project TEXT DEFAULT '', place TEXT DEFAULT '', dist REAL DEFAULT 0, total REAL DEFAULT 0,
+        vat INTEGER DEFAULT 0, state TEXT, pub INTEGER DEFAULT 0, made_by INTEGER, saved_by INTEGER, created_at TEXT, saved_at TEXT, proj_at TEXT)");
     $ldCols = array_column($db->query('PRAGMA table_info(leads)')->fetchAll(), 'name');
     // made_by — заявку оформил сотрудник (поиск клиента, владелец 06.11.2026); ver — как у смет; note — заметка для своих, клиент её не видит
     foreach (['sm' => "TEXT DEFAULT ''", 'items0' => 'TEXT', 'total0' => 'INTEGER', 'edited_by' => 'INTEGER', 'edited_at' => 'TEXT', 'made_by' => 'INTEGER',

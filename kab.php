@@ -346,6 +346,61 @@ case 'proj_done':  // компьютер AllVision: эти версии смет
     foreach ((array) ($in['done'] ?? []) as $d) $u->execute([(string) ($d['at'] ?? ''), (int) ($d['id'] ?? 0)]);
     reply(200, ['ok' => true]);
 
+// ---- командировочные бригады (владелец 07.11.2026): калькулятор с claude.ai перенесён на сайт, /kabinet/komandirovki/ ----
+case 'trips':  // сотрудник: все расчёты, без содержимого
+    $need($staff);
+    $q = $db->query('SELECT t.num, t.version, t.user_id, t.project, t.place, t.dist, t.total, t.vat, t.pub, t.saved_at, u.name, u.tg_name, s.name AS saved_name, s.tg_name AS saved_tg
+        FROM trips t LEFT JOIN users u ON u.id = t.user_id LEFT JOIN users s ON s.id = t.saved_by ORDER BY t.year DESC, t.seq DESC');
+    reply(200, ['ok' => true, 'trips' => array_map(function ($r) {
+        return ['num' => $r['num'], 'version' => (int) $r['version'], 'user_id' => $r['user_id'] === null ? null : (int) $r['user_id'], 'who' => $r['name'] ?: $r['tg_name'],
+            'project' => (string) $r['project'], 'place' => (string) $r['place'], 'dist' => (float) $r['dist'], 'total' => (float) $r['total'], 'vat' => (bool) $r['vat'],
+            'pub' => (bool) $r['pub'], 'saved_at' => $r['saved_at'], 'saved_by' => $r['saved_name'] ?: $r['saved_tg']];
+    }, $q->fetchAll())]);
+
+case 'trip_get':  // сотрудник — любой расчёт; клиент — только выложенный ему
+    $need((bool) $me, 401);
+    $q = $db->prepare('SELECT t.*, u.name, u.tg_name FROM trips t LEFT JOIN users u ON u.id = t.user_id WHERE t.num = ?' . ($staff ? '' : ' AND t.user_id = ? AND t.pub = 1'));
+    $q->execute($staff ? [(string) ($in['num'] ?? '')] : [(string) ($in['num'] ?? ''), $me['id']]);
+    $r = $q->fetch();
+    $need((bool) $r, 404);
+    $st = json_decode((string) $r['state'], true) ?: [];
+    reply(200, ['ok' => true, 'trip' => ['num' => $r['num'], 'version' => (int) $r['version'], 'user_id' => $r['user_id'] === null ? null : (int) $r['user_id'],
+        'who' => $r['name'] ?: $r['tg_name'], 'project' => $staff ? (string) $r['project'] : '', 'total' => (float) $r['total'], 'pub' => (bool) $r['pub'],
+        'saved_at' => $r['saved_at'], 'state' => $st]]);
+
+case 'trip_save':  // сотрудник: сохранить (num — новая редакция того же номера) или «как новый» (без num) — следующий номер года
+    $need($staff);
+    $need($post, 405);
+    $st = $in['state'] ?? null;
+    $need(is_array($st), 422);
+    $json = json_encode($st, JSON_UNESCAPED_UNICODE);
+    $need(strlen($json) < 200000, 413);
+    $uid = (int) ($in['user_id'] ?? 0) ?: null;
+    if ($uid) { $q = $db->prepare('SELECT COUNT(*) FROM users WHERE id = ?'); $q->execute([$uid]); $need((int) $q->fetchColumn() > 0, 404); }
+    $proj = kab_clean($in['project'] ?? '', 200);
+    $place = kab_clean($in['place'] ?? '', 200);
+    $vals = [$uid, $proj, $place, (float) ($in['dist'] ?? 0), round((float) ($in['total'] ?? 0), 2), empty($in['vat']) ? 0 : 1, $json, $me['id'], kab_now()];
+    $num = (string) ($in['num'] ?? '');
+    if ($num !== '') {
+        $q = $db->prepare('UPDATE trips SET user_id = ?, project = ?, place = ?, dist = ?, total = ?, vat = ?, state = ?, saved_by = ?, saved_at = ?, version = version + 1 WHERE num = ?');
+        $q->execute(array_merge($vals, [$num]));
+        $need($q->rowCount() > 0, 404);
+    } else {
+        $y = (int) date('Y');
+        $db->beginTransaction();
+        $q = $db->prepare('SELECT COALESCE(MAX(seq), 0) + 1 FROM trips WHERE year = ?');
+        $q->execute([$y]);
+        $seq = (int) $q->fetchColumn();
+        $num = sprintf('КР-%d-%03d', $y, $seq);
+        $db->prepare('INSERT INTO trips (user_id, project, place, dist, total, vat, state, saved_by, saved_at, num, year, seq, version, made_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)')
+            ->execute(array_merge($vals, [$num, $y, $seq, $me['id'], kab_now()]));
+        $db->commit();
+    }
+    $q = $db->prepare('SELECT version, saved_at FROM trips WHERE num = ?');
+    $q->execute([$num]);
+    $r = $q->fetch();
+    reply(200, ['ok' => true, 'num' => $num, 'version' => (int) $r['version'], 'saved_at' => $r['saved_at']]);
+
 case 'smeta_del':
     $need($post, 405);
     $need((bool) $me, 401);

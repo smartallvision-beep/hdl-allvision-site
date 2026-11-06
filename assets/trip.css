@@ -1,0 +1,113 @@
+/* Командировочные бригады — калькулятор с claude.ai (06.11.2026), перенесён на сайт 07.11.2026; всё внутри .trip */
+/* Layout: inputs left, sticky total right; full-width KP estimate form below; everything stacks on phones */
+.trip{
+--bg:transparent; --panel:#ffffff; --ink:#16181d; --muted:#5d6370; --line:#dfe2e8;
+--accent:#9a2174; --accent-soft:#f6e6f1; --good:#1f7a4d; --good-soft:#e5f4ec;
+--field:#f8f9fb; --off:#a3a8b2;
+--sans:var(--font, system-ui, sans-serif);
+--mono:ui-monospace,Consolas,monospace;
+}
+.trip *{box-sizing:border-box}
+.trip [hidden]{display:none!important}
+.trip{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.45}
+.trip .wrap{max-width:1200px;margin:0 auto;padding-block:0 32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:20px}
+.trip header h1{font-size:26px;margin:0;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
+.trip .sub{color:var(--muted);margin:4px 0 0;max-width:72ch}
+.trip .grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px;align-items:start}
+@media (max-width:900px){.trip .grid{grid-template-columns:minmax(0,1fr)}}
+.trip .col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.trip section.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;min-width:0}
+.trip h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 12px;font-weight:600}
+.trip h4{margin:4px 0 0;font-size:14px;font-weight:600}
+.trip .fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px 14px}
+.trip label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);min-width:0}
+.trip label b{color:var(--ink);font-weight:500;font-size:14px}
+.trip input,.trip select,.trip textarea{font:inherit;font-family:var(--mono);font-size:15px;color:var(--ink);background:var(--field);border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%;min-width:0}
+.trip select,.trip textarea,.trip input[type="text"]{font-family:var(--sans)}
+.trip input[type="checkbox"]{width:18px;height:18px;padding:0;margin:0;accent-color:var(--accent);flex:none}
+.trip input:disabled{opacity:.5}
+.trip input:focus-visible,.trip select:focus-visible,.trip textarea:focus-visible,.trip button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.trip .hint{font-size:12px;color:var(--muted)}
+.trip .stack{display:flex;flex-direction:column;gap:12px}
+.trip .groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.trip .group{border:1px solid var(--line);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.trip .ghead{display:flex;gap:8px;align-items:center}
+.trip .ghead input{font-weight:600}
+.trip .x{font:inherit;border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:6px;width:34px;height:34px;cursor:pointer;flex:none}
+.trip .x:hover{color:var(--accent);border-color:var(--accent)}
+.trip .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.trip .checks{display:flex;flex-direction:column;gap:7px;border-top:1px solid var(--line);padding-top:10px}
+.trip .checkrow{display:flex;flex-wrap:wrap;gap:8px 22px}
+.trip .check{display:flex;flex-direction:row;align-items:center;gap:9px;color:var(--ink);font-size:14px;cursor:pointer}
+.trip .check.off span{color:var(--off)}
+.trip .tip{font-size:12.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.trip .tip b{color:var(--good);font-weight:600}
+.trip .link{font:inherit;font-size:12.5px;background:none;border:none;padding:0;color:var(--accent);cursor:pointer;text-decoration:underline}
+.trip .btn{font:inherit;font-weight:600;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:6px;padding:8px 12px;cursor:pointer}
+.trip .btn.ghost{background:transparent;color:var(--accent)}
+.trip .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.trip .sep{border-top:1px solid var(--line);padding-top:12px}
+.trip aside{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px)}
+@media (max-width:900px){.trip aside{position:static}}
+.trip .total{font-family:var(--mono);font-size:34px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.trip .total small{font-size:15px;color:var(--muted);font-weight:400;margin-left:6px}
+.trip .usd{color:var(--muted);font-family:var(--mono);font-size:13px}
+.trip table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.trip td,.trip th{padding:6px 0;border-bottom:1px solid var(--line);text-align:left;font-weight:400;vertical-align:top}
+.trip th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+.trip td.n,.trip th.n{text-align:right;font-family:var(--mono);white-space:nowrap;padding-left:10px}
+.trip tr.sum td{font-weight:600;border-bottom:none}
+.trip tr.det td{font-size:12.5px;color:var(--muted);padding:2px 0 2px 12px;border-bottom:none}
+/* rows: transport cars and custom lines */
+.trip .trow{display:grid;grid-template-columns:minmax(140px,2fr) minmax(64px,.6fr) minmax(64px,.6fr) minmax(80px,.8fr) auto;gap:8px;align-items:end}
+.trip .custom{display:grid;grid-template-columns:auto minmax(140px,2fr) minmax(60px,.7fr) minmax(70px,.8fr) minmax(80px,.9fr) auto;gap:8px;align-items:center}
+.trip .chead{margin-bottom:-4px}
+@media (max-width:640px){.trip .trow{grid-template-columns:1fr 1fr}.trip .trow .x{justify-self:end}.trip .custom{grid-template-columns:auto 1fr 1fr}.trip .custom .cname{grid-column:2 / span 2}.trip .chead{display:none}}
+/* KP form */
+.trip .kp-tools{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;justify-content:space-between;margin-bottom:14px}
+.trip .seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.trip .seg label{flex-direction:row;gap:0;font-size:13.5px;color:var(--ink);position:relative}
+.trip .seg input{position:absolute;opacity:0;width:1px;height:1px}
+.trip .seg span{padding:7px 12px;cursor:pointer;display:block}
+.trip .seg input:checked + span{background:var(--accent);color:#fff}
+.trip .seg input:focus-visible + span{outline:2px solid var(--accent);outline-offset:-2px}
+.trip .doc{border:1px solid var(--line);border-radius:8px;padding:22px 22px 18px;background:var(--panel)}
+.trip .doc .org{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.trip .doc h3{margin:4px 0 6px;font-size:20px}
+.trip .doc .meta{display:flex;flex-wrap:wrap;gap:4px 18px;color:var(--muted);font-size:13.5px}
+.trip .doc .crew{font-size:13.5px;margin:6px 0 14px;color:var(--ink)}
+.trip .kp td,.trip .kp th{padding:7px 8px;border:1px solid var(--line)}
+.trip .kp th{background:var(--field);text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--ink);font-weight:600}
+.trip .kp td.c{text-align:center;color:var(--muted);white-space:nowrap}
+.trip .kp tr.sec td{background:var(--field);font-weight:600}
+.trip .kp tr.subt td{font-weight:600}
+.trip .kp tr.grand td{font-weight:700;font-size:16px}
+.trip .kp .num{width:40px}
+.trip .doc .note{font-size:13px;color:var(--muted);margin:12px 0 0;white-space:pre-wrap}
+.trip .scroll{overflow-x:auto}
+.trip .msg{font-size:13px;color:var(--good);min-height:1.2em;margin:6px 0 0}
+.trip #copyOut{min-height:120px;font-size:13px;margin-top:8px}
+.trip .src{font-size:13px;color:var(--muted);margin:0;padding-left:18px}
+.trip .src li{margin-bottom:4px}
+.trip .src a{color:var(--accent)}
+/* saved calculations bar */
+.trip .calcbar{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px 20px;align-items:start}
+@media (max-width:900px){.trip .calcbar{grid-template-columns:minmax(0,1fr)}}
+.trip .cnum{font-family:var(--mono);font-size:20px;font-weight:600}
+.trip .cnum small{font-size:13px;color:var(--muted);font-weight:400;margin-left:8px;font-family:var(--sans)}
+.trip .dbmsg{font-size:12.5px;color:var(--muted);min-height:1.2em}
+.trip .dbmsg.err{color:var(--accent)}
+.trip .clist{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.trip .citem{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 12px;padding:8px 10px;border-bottom:1px solid var(--line);cursor:pointer;background:transparent;border-left:0;border-right:0;border-top:0;width:100%;text-align:left;font:inherit;color:var(--ink)}
+.trip .citem:last-child{border-bottom:0}
+.trip .citem:hover,.trip .citem.cur{background:var(--field)}
+.trip .citem .n1{font-family:var(--mono);font-weight:600;white-space:nowrap}
+.trip .citem .n2{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trip .citem .n3{font-family:var(--mono);white-space:nowrap;text-align:right}
+.trip .citem .n4{grid-column:2 / span 2;font-size:12px;color:var(--muted)}
+.trip .newcl{display:flex;gap:8px}
+/* на сайте: под шапкой сайта, ссылка назад, итог прилипает под шапкой */
+.trip .trip-back{margin:0}
+.trip aside{top:calc(var(--top-h,76px) + 12px)}
+.trip h1{font-size:30px}
+.trip:not(.ok) section.panel,.trip:not(.ok) .grid{visibility:hidden}

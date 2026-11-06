@@ -1035,3 +1035,6 @@ body[data-page=catalog] .hsearch { display: none; }
 
 .kab-proj { margin: 0 0 22px; } .kab-proj h3 { margin: 0 0 8px; font-size: 19px; }
 .kab-proj-empty { margin: 4px 0 14px; }
+
+.kab-trips-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
+.kab-trips-top input { flex: 1 1 260px; max-width: 480px; font: 16px var(--font); padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--r); }
