@@ -111,3 +111,14 @@
 .trip aside{top:calc(var(--top-h,76px) + 12px)}
 .trip h1{font-size:30px}
 .trip:not(.ok) section.panel,.trip:not(.ok) .grid{visibility:hidden}
+/* выложить клиенту; вид клиента — только форма КП (07.11.2026) */
+.trip .pubrow{gap:8px 16px;border-top:1px solid var(--line);padding-top:10px}
+.trip .pubstate{font-size:14px}
+.trip.client .kp-tools,.trip.client #noteExtra,.trip.client label:has(#noteExtra),.trip.client #copyMsg,.trip.client #copyOut,.trip.client .trip-back,.trip.client #kpPanel>h2{display:none!important}
+.trip.client .cl-only{display:flex!important;margin-bottom:12px}
+@media print{.trip .trip-back,.trip header,.trip .cl-only,.trip .kp-tools,.trip label:has(#noteExtra),.trip #copyMsg{display:none!important}.trip section.panel{border:0;padding:0}.trip .doc{border:0;padding:0}}
+/* сохранённый расчёт — как документ, правка по «Редактировать» (07.11.2026) */
+.trip .savedok{color:var(--good);font-weight:600;margin-right:6px}
+.trip.locked .grid input:disabled,.trip.locked .grid select:disabled,.trip.locked #client:disabled,.trip.locked #project:disabled,.trip.locked #noteExtra:disabled{opacity:1;background:transparent;border-color:transparent;color:var(--ink)}
+.trip.locked .grid .x,.trip.locked .grid .btn,.trip.locked .grid .link{display:none}
+.trip.locked .grid input[type=checkbox]:disabled{opacity:.8}

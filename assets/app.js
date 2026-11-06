@@ -1764,11 +1764,17 @@
 
     const tabSmetas = async () => {
       wait();
-      const j = await kabApi("smetas" + (staff ? "&all=1" : "")).catch(() => ({}));
+      const [j, tj] = await Promise.all([kabApi("smetas" + (staff ? "&all=1" : "")).catch(() => ({})), staff ? Promise.resolve({}) : kabApi("trips_my").catch(() => ({}))]);
       if (!j.ok) return failed();
-      if (!j.smetas.length) { panel.innerHTML = '<p>Сохранённых смет пока нет. Соберите список в <a href="/katalog/">каталоге</a>, затем на странице <a href="/smeta/">«Смета»</a> нажмите «Сохранить в кабинет».</p>'; return flash(); }
+      // расчёты командировочных, выложенные клиенту сотрудником (07.11.2026) — отдельным разделом над сметами
+      const tl = tj.ok ? tj.trips : [], fm = v => Math.round(v).toLocaleString("ru-RU");
+      const trips = tl.length ? `<h3 class="kab-sub">Командировочные расходы</h3><div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Расчёт</th><th>Объект</th><th class="num">Сумма</th><th>Обновлён</th><th></th></tr></thead><tbody>`
+        + tl.map(t => `<tr><td><b>${esc(t.num)}</b></td><td>${esc(t.place || "—")}</td><td class="num">${fm(t.total)} BYN${t.vat ? '<br><span class="muted small">с НДС</span>' : ""}</td><td>${day(t.saved_at)}</td>`
+          + `<td><a class="cbtn" href="/kabinet/komandirovki/#${encodeURIComponent(t.num)}">Открыть</a></td></tr>`).join("") + "</tbody></table></div>"
+        + (j.smetas.length ? '<h3 class="kab-sub">Сметы</h3>' : "") : "";
+      if (!j.smetas.length) { panel.innerHTML = trips + (tl.length ? "" : '<p>Сохранённых смет пока нет. Соберите список в <a href="/katalog/">каталоге</a>, затем на странице <a href="/smeta/">«Смета»</a> нажмите «Сохранить в кабинет».</p>'); return flash(); }
       SHOWN = { leads: [], smetas: j.smetas };
-      panel.innerHTML = smetaTable(j.smetas, staff) + smetaNote();
+      panel.innerHTML = trips + smetaTable(j.smetas, staff) + smetaNote();
       panel.onclick = listClicks;
       flash();
     };
@@ -1801,10 +1807,11 @@
       const draw = q => {
         q = low(q.trim());
         const rows = j.trips.filter(t => !q || low([t.num, t.who, t.place, t.project, t.saved_at ? day(t.saved_at) : ""].join(" ")).includes(q));
-        $("[data-trips-list]", panel).innerHTML = rows.length ? `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Номер</th><th>Клиент · объект</th><th>Проект</th><th class="num">Сумма</th><th>Сохранён</th></tr></thead><tbody>`
+        $("[data-trips-list]", panel).innerHTML = rows.length ? `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Номер</th><th>Клиент · объект</th><th>Проект</th><th class="num">Сумма</th><th>Сохранён</th><th>У клиента</th></tr></thead><tbody>`
           + rows.map(t => `<tr><td><a href="/kabinet/komandirovki/#${encodeURIComponent(t.num)}"><b>${esc(t.num)}</b></a>${t.version > 1 ? `<br><span class="muted small">ред. ${t.version}</span>` : ""}</td>`
             + `<td>${esc(t.who || "без клиента")}${t.place ? ` · ${esc(t.place)}` : ""}${t.dist ? `<br><span class="muted small">${fm(t.dist)} км</span>` : ""}</td><td>${esc(t.project || "—")}</td>`
-            + `<td class="num">${fm(t.total)} BYN${t.vat ? '<br><span class="muted small">с НДС</span>' : ""}</td><td>${t.saved_at ? day(t.saved_at) : ""}${t.saved_by ? `<br><span class="muted small">${esc(t.saved_by)}</span>` : ""}</td></tr>`).join("")
+            + `<td class="num">${fm(t.total)} BYN${t.vat ? '<br><span class="muted small">с НДС</span>' : ""}</td><td>${t.saved_at ? day(t.saved_at) : ""}${t.saved_by ? `<br><span class="muted small">${esc(t.saved_by)}</span>` : ""}</td>`
+            + `<td>${t.pub ? `<span class="st ok">выложен</span><br><span class="muted small">${day(t.pub_at)}</span>` : '<span class="muted small">нет</span>'}</td></tr>`).join("")
           + "</tbody></table></div>" : `<p>${j.trips.length ? "Ничего не найдено." : "Расчётов пока нет."}</p>`;
       };
       panel.innerHTML = '<div class="kab-trips-top"><input type="search" data-trips-q placeholder="Поиск: номер, клиент, объект, дата" aria-label="Поиск расчётов"> <a class="btn" href="/kabinet/komandirovki/">Новый расчёт</a></div><div data-trips-list></div>'

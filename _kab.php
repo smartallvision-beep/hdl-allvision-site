@@ -91,6 +91,10 @@ function kab_db(): PDO {
     $db->exec("CREATE TABLE IF NOT EXISTS trips (id INTEGER PRIMARY KEY, num TEXT UNIQUE NOT NULL, year INTEGER, seq INTEGER, version INTEGER DEFAULT 1,
         user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, project TEXT DEFAULT '', place TEXT DEFAULT '', dist REAL DEFAULT 0, total REAL DEFAULT 0,
         vat INTEGER DEFAULT 0, state TEXT, pub INTEGER DEFAULT 0, made_by INTEGER, saved_by INTEGER, created_at TEXT, saved_at TEXT, proj_at TEXT)");
+    // doc — форма КП, как её видит клиент (снимок со страницы расчёта: строки, итог, примечание; ставок и настроек нет); pub_at — когда выложили
+    $trCols = array_column($db->query('PRAGMA table_info(trips)')->fetchAll(), 'name');
+    if (!in_array('doc', $trCols, true)) $alter("ALTER TABLE trips ADD COLUMN doc TEXT DEFAULT ''");
+    if (!in_array('pub_at', $trCols, true)) $alter('ALTER TABLE trips ADD COLUMN pub_at TEXT');
     $ldCols = array_column($db->query('PRAGMA table_info(leads)')->fetchAll(), 'name');
     // made_by — заявку оформил сотрудник (поиск клиента, владелец 06.11.2026); ver — как у смет; note — заметка для своих, клиент её не видит
     foreach (['sm' => "TEXT DEFAULT ''", 'items0' => 'TEXT', 'total0' => 'INTEGER', 'edited_by' => 'INTEGER', 'edited_at' => 'TEXT', 'made_by' => 'INTEGER',

@@ -349,12 +349,12 @@ case 'proj_done':  // компьютер AllVision: эти версии смет
 // ---- командировочные бригады (владелец 07.11.2026): калькулятор с claude.ai перенесён на сайт, /kabinet/komandirovki/ ----
 case 'trips':  // сотрудник: все расчёты, без содержимого
     $need($staff);
-    $q = $db->query('SELECT t.num, t.version, t.user_id, t.project, t.place, t.dist, t.total, t.vat, t.pub, t.saved_at, u.name, u.tg_name, s.name AS saved_name, s.tg_name AS saved_tg
+    $q = $db->query('SELECT t.num, t.version, t.user_id, t.project, t.place, t.dist, t.total, t.vat, t.pub, t.pub_at, t.saved_at, u.name, u.tg_name, s.name AS saved_name, s.tg_name AS saved_tg
         FROM trips t LEFT JOIN users u ON u.id = t.user_id LEFT JOIN users s ON s.id = t.saved_by ORDER BY t.year DESC, t.seq DESC');
     reply(200, ['ok' => true, 'trips' => array_map(function ($r) {
         return ['num' => $r['num'], 'version' => (int) $r['version'], 'user_id' => $r['user_id'] === null ? null : (int) $r['user_id'], 'who' => $r['name'] ?: $r['tg_name'],
             'project' => (string) $r['project'], 'place' => (string) $r['place'], 'dist' => (float) $r['dist'], 'total' => (float) $r['total'], 'vat' => (bool) $r['vat'],
-            'pub' => (bool) $r['pub'], 'saved_at' => $r['saved_at'], 'saved_by' => $r['saved_name'] ?: $r['saved_tg']];
+            'pub' => (bool) $r['pub'], 'pub_at' => $r['pub_at'], 'saved_at' => $r['saved_at'], 'saved_by' => $r['saved_name'] ?: $r['saved_tg']];
     }, $q->fetchAll())]);
 
 case 'trip_get':  // сотрудник — любой расчёт; клиент — только выложенный ему
@@ -363,10 +363,40 @@ case 'trip_get':  // сотрудник — любой расчёт; клиен�
     $q->execute($staff ? [(string) ($in['num'] ?? '')] : [(string) ($in['num'] ?? ''), $me['id']]);
     $r = $q->fetch();
     $need((bool) $r, 404);
-    $st = json_decode((string) $r['state'], true) ?: [];
-    reply(200, ['ok' => true, 'trip' => ['num' => $r['num'], 'version' => (int) $r['version'], 'user_id' => $r['user_id'] === null ? null : (int) $r['user_id'],
-        'who' => $r['name'] ?: $r['tg_name'], 'project' => $staff ? (string) $r['project'] : '', 'total' => (float) $r['total'], 'pub' => (bool) $r['pub'],
-        'saved_at' => $r['saved_at'], 'state' => $st]]);
+    // клиенту — только форма КП (doc), без ставок и настроек расчёта
+    $t = ['num' => $r['num'], 'version' => (int) $r['version'], 'total' => (float) $r['total'], 'vat' => (bool) $r['vat'], 'place' => (string) $r['place'],
+        'saved_at' => $r['saved_at'], 'doc' => json_decode((string) $r['doc'], true) ?: null];
+    if ($staff) $t += ['user_id' => $r['user_id'] === null ? null : (int) $r['user_id'], 'who' => $r['name'] ?: $r['tg_name'], 'project' => (string) $r['project'],
+        'pub' => (bool) $r['pub'], 'pub_at' => $r['pub_at'], 'state' => json_decode((string) $r['state'], true) ?: []];
+    reply(200, ['ok' => true, 'trip' => $t]);
+
+case 'trips_my':  // клиент: расчёты командировочных, выложенные ему
+    $need((bool) $me, 401);
+    $q = $db->prepare('SELECT num, version, place, total, vat, saved_at FROM trips WHERE user_id = ? AND pub = 1 ORDER BY year DESC, seq DESC');
+    $q->execute([$me['id']]);
+    reply(200, ['ok' => true, 'trips' => array_map(function ($r) {
+        return ['num' => $r['num'], 'version' => (int) $r['version'], 'place' => (string) $r['place'], 'total' => (float) $r['total'], 'vat' => (bool) $r['vat'], 'saved_at' => $r['saved_at']];
+    }, $q->fetchAll())]);
+
+case 'trip_pub':  // сотрудник: выложить клиенту (on) или убрать; doc — форма КП со страницы; notify — сообщить в Telegram
+    $need($staff);
+    $need($post, 405);
+    $q = $db->prepare('SELECT t.num, t.user_id, t.total, t.vat, t.place, u.tg_id FROM trips t LEFT JOIN users u ON u.id = t.user_id WHERE t.num = ?');
+    $q->execute([(string) ($in['num'] ?? '')]);
+    $r = $q->fetch();
+    $need((bool) $r, 404);
+    $on = !empty($in['on']);
+    if ($on && !$r['user_id']) reply(422, ['ok' => false, 'error' => 'client']);
+    $doc = $in['doc'] ?? null;
+    if ($on) $need(is_array($doc), 422);
+    $now = kab_now();
+    $db->prepare('UPDATE trips SET pub = ?, pub_at = ?' . ($on ? ', doc = ?' : '') . ' WHERE num = ?')
+        ->execute($on ? [1, $now, json_encode($doc, JSON_UNESCAPED_UNICODE), $r['num']] : [0, null, $r['num']]);
+    $sent = false;
+    if ($on && !empty($in['notify']))
+        $sent = kab_say($r['tg_id'], 'AllVision подготовил для вас расчёт командировочных и транспортных расходов ' . $r['num'] . ($r['place'] !== '' ? ' (' . $r['place'] . ')' : '')
+            . ' на hdl.by: ' . number_format((float) $r['total'], 2, ',', ' ') . ' BYN' . ($r['vat'] ? ' с НДС' : '') . '. Открыть: ' . kab_site() . '/kabinet/#smetas');
+    reply(200, ['ok' => true, 'pub' => $on, 'pub_at' => $on ? $now : null, 'sent' => $sent]);
 
 case 'trip_save':  // сотрудник: сохранить (num — новая редакция того же номера) или «как новый» (без num) — следующий номер года
     $need($staff);
@@ -382,8 +412,11 @@ case 'trip_save':  // сотрудник: сохранить (num — новая
     $vals = [$uid, $proj, $place, (float) ($in['dist'] ?? 0), round((float) ($in['total'] ?? 0), 2), empty($in['vat']) ? 0 : 1, $json, $me['id'], kab_now()];
     $num = (string) ($in['num'] ?? '');
     if ($num !== '') {
-        $q = $db->prepare('UPDATE trips SET user_id = ?, project = ?, place = ?, dist = ?, total = ?, vat = ?, state = ?, saved_by = ?, saved_at = ?, version = version + 1 WHERE num = ?');
-        $q->execute(array_merge($vals, [$num]));
+        // выложенный клиенту: форма КП у клиента обновляется вместе с расчётом (doc со страницы); сменили клиента — у прежнего убираем
+        $docJ = is_array($in['doc'] ?? null) ? json_encode($in['doc'], JSON_UNESCAPED_UNICODE) : null;
+        $q = $db->prepare('UPDATE trips SET pub = CASE WHEN COALESCE(user_id, 0) = CAST(? AS INTEGER) THEN pub ELSE 0 END, doc = CASE WHEN pub = 1 AND COALESCE(user_id, 0) = CAST(? AS INTEGER) AND ? IS NOT NULL THEN ? ELSE doc END,
+            user_id = ?, project = ?, place = ?, dist = ?, total = ?, vat = ?, state = ?, saved_by = ?, saved_at = ?, version = version + 1 WHERE num = ?');
+        $q->execute(array_merge([(int) $uid, (int) $uid, $docJ, $docJ], $vals, [$num]));
         $need($q->rowCount() > 0, 404);
     } else {
         $y = (int) date('Y');
@@ -396,10 +429,10 @@ case 'trip_save':  // сотрудник: сохранить (num — новая
             ->execute(array_merge($vals, [$num, $y, $seq, $me['id'], kab_now()]));
         $db->commit();
     }
-    $q = $db->prepare('SELECT version, saved_at FROM trips WHERE num = ?');
+    $q = $db->prepare('SELECT version, saved_at, pub, pub_at FROM trips WHERE num = ?');
     $q->execute([$num]);
     $r = $q->fetch();
-    reply(200, ['ok' => true, 'num' => $num, 'version' => (int) $r['version'], 'saved_at' => $r['saved_at']]);
+    reply(200, ['ok' => true, 'num' => $num, 'version' => (int) $r['version'], 'saved_at' => $r['saved_at'], 'pub' => (bool) $r['pub'], 'pub_at' => $r['pub_at']]);
 
 case 'smeta_del':
     $need($post, 405);

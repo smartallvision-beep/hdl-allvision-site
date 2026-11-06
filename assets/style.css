@@ -1038,3 +1038,6 @@ body[data-page=catalog] .hsearch { display: none; }
 
 .kab-trips-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
 .kab-trips-top input { flex: 1 1 260px; max-width: 480px; font: 16px var(--font); padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--r); }
+
+.kab-sub { margin: 4px 0 10px; font-size: 19px; }
+.st.ok { background: #e5f4ec; color: #1f7a4d; }

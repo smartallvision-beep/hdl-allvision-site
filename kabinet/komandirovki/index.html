@@ -13,7 +13,7 @@
 <meta property="og:locale" content="ru_RU">
 <meta property="og:image" content="https://hdl.by/img/og.jpg">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="build" content="2026-11-07 02:05">
+<meta name="build" content="2026-11-07 02:14">
 
 <script>if((function(){try{return localStorage.getItem("hdl-cookie")!=="no"}catch(e){return true}})()){(function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};m[i].l=1*new Date();for(var j=0;j<document.scripts.length;j++){if(document.scripts[j].src===r){return;}}k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})(window,document,"script","https://mc.yandex.ru/metrika/tag.js?id=114023661","ym");ym(114023661,"init",{ssr:true,clickmap:true,referrer:document.referrer,url:location.href,accurateTrackBounce:true,trackLinks:true});}</script>
 <link rel="icon" href="/favicon.ico" sizes="48x48">
@@ -21,7 +21,7 @@
 <link rel="icon" href="/img/icon-96.png" sizes="96x96" type="image/png">
 <link rel="icon" href="/img/icon-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
-<link rel="stylesheet" href="/assets/style.css?v=202611070205">
+<link rel="stylesheet" href="/assets/style.css?v=202611070214">
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Главная", "item": "https://hdl.by/"}, {"@type": "ListItem", "position": 2, "name": "Кабинет", "item": "https://hdl.by/kabinet/"}, {"@type": "ListItem", "position": 3, "name": "Командировки"}]}</script>
 </head>
 <body data-page="kabinet">
@@ -58,7 +58,7 @@
 </form></dialog>
 <main>
 <div class="wrap"><nav class="crumbs" aria-label="Навигация"><a href="/">Главная</a> / <a href="/kabinet/">Кабинет</a> / <span>Командировки</span></nav></div>
-<link rel="stylesheet" href="/assets/trip.css?v=202611070205"><section class="trip no-pad" data-trip data-rate="2.9915" data-rate-date="2026-11-06"><div class="wrap">
+<link rel="stylesheet" href="/assets/trip.css?v=202611070214"><section class="trip no-pad" data-trip data-rate="2.9915" data-rate-date="2026-11-06"><div class="wrap">
 <p class="trip-back"><a href="/kabinet/#trips">← Все расчёты</a></p>
 <header>
   <h1>Командировочные бригады</h1>
@@ -74,9 +74,17 @@
       <label><b>Проект</b><select id="project"><option value="">— без проекта —</option></select><span class="hint">папка объекта на компьютере AllVision</span></label>
     </div>
     <div class="row">
+      <span class="savedok" id="savedOk" hidden></span>
+      <button class="btn" id="editBtn" type="button" hidden>Редактировать</button>
       <button class="btn" id="saveBtn" type="button">Сохранить</button>
+      <button class="btn ghost" id="cancelBtn" type="button" hidden>Отменить правки</button>
       <button class="btn ghost" id="saveNewBtn" type="button">Сохранить как новый</button>
       <button class="btn ghost" id="newCalcBtn" type="button">Новый расчёт</button>
+    </div>
+    <div class="row pubrow">
+      <span class="pubstate" id="pubState"></span>
+      <label class="check"><input id="pubTg" type="checkbox"><span>Сообщить в Telegram</span></label>
+      <button class="btn ghost" id="pubBtn" type="button">Выложить клиенту</button>
     </div>
     <div class="dbmsg" id="dbMsg"></div>
   </div>
@@ -187,8 +195,9 @@
 </aside>
 </div>
 
-<section class="panel">
+<section class="panel" id="kpPanel">
   <h2>Форма для КП</h2>
+  <div class="row cl-only" hidden><button class="btn" id="printBtn" type="button">Распечатать или сохранить PDF</button> <a class="btn ghost" href="/kabinet/#smetas">← В кабинет</a></div>
   <div class="kp-tools">
     <div class="seg" role="radiogroup" aria-label="Вид таблицы">
       <label><input type="radio" name="view" value="detail" checked><span>Подробно</span></label>
@@ -224,7 +233,7 @@
   </ul>
 </section>
 </div>
-</section><script src="/assets/trip.js?v=202611070205" defer></script>
+</section><script src="/assets/trip.js?v=202611070214" defer></script>
 </main>
 <footer class="foot">
   <div class="wrap foot-in">
@@ -237,7 +246,7 @@
 </footer>
 <div class="cookie" id="cookie" role="region" aria-label="Файлы cookie" hidden><p>Мы используем cookie, необходимые для работы сайта.</p>
   <div class="cookie-b"><button class="btn" type="button" data-cookie="ok">Принять</button><button class="btn ghost" type="button" data-cookie="no">Отклонить</button></div></div>
-<script src="/assets/data.js?v=202611070205"></script>
-<script src="/assets/app.js?v=202611070205"></script>
+<script src="/assets/data.js?v=202611070214"></script>
+<script src="/assets/app.js?v=202611070214"></script>
 </body>
 </html>

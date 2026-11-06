@@ -298,11 +298,14 @@ function kpNote(){
   if(p.noteExtra) parts.push(p.noteExtra);
   return parts.join('\n');
 }
-function metaParts(){const {p}=model;const cl=clientName(cur.clientId);return [cur.num?`Расчёт № ${dispNum(cur.num)}${cur.version>1?` (ред. ${cur.version})`:''}`:'',cl?`Клиент: ${cl}`:'',p.place?`Объект: ${p.place}`:'',`Расстояние от Минска: ${int(p.dist)} км`,`Дата расчёта: ${cur.savedAt?new Date(cur.savedAt).toLocaleDateString('ru-RU'):today()}`].filter(Boolean);}
-function renderKp(){
-  const rows=kpRows();
-  $('kpMeta').innerHTML=metaParts().map(x=>`<span>${esc(x)}</span>`).join('');
-  const crew=crewText(); $('kpCrew').textContent=crew?`Бригада: ${crew}.`:'';
+function metaParts(){const {p}=model;const cl=clientName(cur.clientId);return [cur.num?`Расчёт № ${dispNum(cur.num)}${cur.version>1?` (ред. ${cur.version})`:''}`:'',cl?`Клиент: ${cl}`:'',p.place?`Объект: ${p.place}`:'',`Расстояние от Минска: ${int(p.dist)} км`,`Дата расчёта: ${cur.savedAt?new Date(String(cur.savedAt).replace(' ','T')).toLocaleDateString('ru-RU'):today()}`].filter(Boolean);}
+// снимок формы КП — то, что видит клиент (владелец 07.11.2026: ставки и настройки расчёта клиенту не отдаём)
+function docSnap(){return {meta:metaParts(),crew:crewText(),rows:kpRows(),note:kpNote(),view};}
+function renderKp(){renderDoc(docSnap());}
+function renderDoc(d){
+  const rows=d.rows||[];
+  $('kpMeta').innerHTML=(d.meta||[]).map(x=>`<span>${esc(x)}</span>`).join('');
+  const crew=d.crew||''; $('kpCrew').textContent=crew?`Бригада: ${crew}.`:'';
   let h='<thead><tr><th class="num">№</th><th>Наименование</th><th>Ед. изм.</th><th class="n">Кол-во</th><th class="n">Цена, BYN</th><th class="n">Сумма, BYN</th></tr></thead><tbody>';
   rows.forEach(r=>{
     if(r.t==='sec') h+=`<tr class="sec"><td colspan="6">${esc(r.name)}</td></tr>`;
@@ -310,7 +313,7 @@ function renderKp(){
     else h+=`<tr class="${r.t}"><td></td><td colspan="4">${esc(r.name)}</td><td class="n">${money(r.sum)}</td></tr>`;
   });
   $('kpTable').innerHTML=h+'</tbody>';
-  $('kpNote').textContent=kpNote();
+  $('kpNote').textContent=d.note||'';
 }
 function kpTsv(){
   const rows=kpRows(); const out=['ЧТУП «ОллВижн»','Командировочные и транспортные расходы',metaParts().join('; ')];
@@ -395,9 +398,15 @@ $('resetBtn').addEventListener('click',()=>{
 });
 /* ---------- сохранённые расчёты — в базе сайта (kab.php: trips, trip_get, trip_save), владелец 07.11.2026 ----------
    Номер КР-ГГГГ-NNN даёт сервер. Каждое «Сохранить» — новая редакция того же номера. Черновик на этой странице — в памяти браузера (KEY). */
-function blankCur(){return {num:'',version:0,clientId:'',project:'',savedAt:''};}
+function blankCur(){return {num:'',version:0,clientId:'',project:'',savedAt:'',pub:false,pubAt:''};}
 var cur=blankCur();
-let clients=[], dirty=false, staff=false;
+let clients=[], dirty=false, staff=false, editMode=false;
+// сохранённый расчёт закрыт для правки, пока не нажали «Редактировать»; новый — открыт сразу
+function applyLock(){
+  const lk=!!cur.num&&!editMode&&staff;
+  const r=document.querySelector('.trip'); if(r)r.classList.toggle('locked',lk);
+  document.querySelectorAll('.trip .grid input,.trip .grid select,.trip .grid textarea,.trip .grid button,#client,#project,#noteExtra').forEach(el=>{el.disabled=lk;});
+}
 const dispNum=n=>String(n).replace(/^KR-/,'КР-');
 function clientName(id){const c=clients.find(x=>String(x.id)===String(id));return c?c.name:'';}
 function dbMsg(t,err){const m=$('dbMsg');m.textContent=t||'';m.classList.toggle('err',!!err);}
@@ -416,8 +425,13 @@ function applyState(o){
 }
 function renderHeader(){
   $('calcNum').innerHTML=cur.num?`${esc(dispNum(cur.num))}<small>${cur.version>1?'ред. '+cur.version+' · ':''}${cur.savedAt?esc(new Date(isoAt(cur.savedAt)).toLocaleString('ru-RU',{dateStyle:'short',timeStyle:'short'})):''}${dirty?' · есть несохранённые правки':''}</small>`:`Новый расчёт<small>${dirty?'не сохранён':'не сохранён'}</small>`;
+  const lk=!!cur.num&&!editMode;
   $('saveBtn').textContent=cur.num?'Сохранить изменения':'Сохранить';
+  $('saveBtn').hidden=lk; $('editBtn').hidden=!lk; $('cancelBtn').hidden=!(cur.num&&editMode);
   $('saveNewBtn').hidden=!cur.num;
+  const ok=$('savedOk'); ok.hidden=!lk; ok.textContent=lk&&cur.savedAt?`✓ Сохранено ${new Date(isoAt(cur.savedAt)).toLocaleString('ru-RU',{dateStyle:'short',timeStyle:'short'})}`:'';
+  applyLock();
+  renderPub();
   document.title=(cur.num?dispNum(cur.num)+' — ':'')+'Командировочные бригады — HDL в Беларуси';
 }
 function renderClients(){
@@ -434,8 +448,8 @@ async function openNum(num){
   const j=await api('trip_get&num='+encodeURIComponent(num));
   if(!j.ok){dbMsg(j.status===404?`Расчёт ${num} не найден.`:'Не удалось открыть расчёт.',true);return;}
   const t=j.trip;
-  cur={num:t.num,version:t.version||1,clientId:t.user_id?String(t.user_id):'',project:t.project||'',savedAt:t.saved_at||''};
-  applyState(t.state||{});dirty=false;renderClients();$('project').value=cur.project;renderHeader();renderKp();save();dbMsg(`Открыт ${dispNum(t.num)}.`);
+  cur={num:t.num,version:t.version||1,clientId:t.user_id?String(t.user_id):'',project:t.project||'',savedAt:t.saved_at||'',pub:!!t.pub,pubAt:t.pub_at||''};
+  editMode=false;applyState(t.state||{});dirty=false;renderClients();$('project').value=cur.project;renderHeader();renderKp();save();dbMsg(`Открыт ${dispNum(t.num)}.`);
 }
 let leaveArmed=0;
 function confirmLeave(){ // два нажатия вместо окна
@@ -447,23 +461,50 @@ async function doSave(asNew){
   const btns=[$('saveBtn'),$('saveNewBtn')];btns.forEach(b=>b.disabled=true);dbMsg('Сохраняю…');
   try{
     const p=params();
-    const j=await api('trip_save',{num:asNew?'':cur.num,user_id:+cur.clientId||0,project:cur.project||'',place:p.place,dist:p.dist,total:model.total,vat:p.vat,state:snapshotState()});
+    const wasNum=cur.num;cur.num=asNew?'':cur.num;const snap=docSnap();cur.num=wasNum;
+    const j=await api('trip_save',{num:asNew?'':cur.num,user_id:+cur.clientId||0,project:cur.project||'',place:p.place,dist:p.dist,total:model.total,vat:p.vat,state:snapshotState(),doc:fixDoc(snap,asNew?null:cur)});
     if(!j.ok){dbMsg(j.status===401||j.status===403?'Нужен вход сотрудника.':j.status===404?'Расчёт или клиент не найден — обновите страницу.':'Не удалось сохранить. Попробуйте ещё раз.',true);return;}
-    cur={num:j.num,version:j.version,clientId:cur.clientId,project:cur.project,savedAt:j.saved_at};dirty=false;renderHeader();renderKp();save();
+    cur={num:j.num,version:j.version,clientId:cur.clientId,project:cur.project,savedAt:j.saved_at,pub:!!j.pub,pubAt:j.pub_at||''};dirty=false;editMode=false;renderHeader();renderKp();save();
+    return true;
     history.replaceState(null,'','#'+encodeURIComponent(j.num));
     dbMsg(`Сохранено: ${dispNum(j.num)}${j.version>1?', ред. '+j.version:''}.`);
   }catch(e){dbMsg('Не удалось сохранить. Проверьте связь и попробуйте ещё раз.',true);}
   finally{btns.forEach(b=>b.disabled=false);}
 }
+// номер и редакция в шапке формы клиента — как будут после сохранения
+function fixDoc(d,c){if(!c||!c.num)return d;const m=d.meta.slice();m[0]=`Расчёт № ${dispNum(c.num)} (ред. ${(c.version||0)+1})`;return Object.assign({},d,{meta:m});}
+// выложить клиенту / убрать (владелец 07.11.2026). Несохранённое — сначала сохраняем: клиент видит сохранённую редакцию
+function renderPub(){
+  const b=$('pubBtn'),st=$('pubState'),tg=$('pubTg').closest('label');
+  const at=cur.pubAt?new Date(String(cur.pubAt).replace(' ','T')).toLocaleString('ru-RU',{dateStyle:'short',timeStyle:'short'}):'';
+  b.textContent=cur.pub?'Убрать у клиента':'Выложить клиенту';
+  tg.hidden=cur.pub;
+  st.innerHTML=cur.pub?`<b>У клиента:</b> выложен ${esc(at)}${dirty?' · несохранённые правки клиент не видит':''}`:(cur.clientId?'Клиент расчёт пока не видит.':'Чтобы выложить, выберите клиента.');
+}
+$('pubBtn').addEventListener('click',async()=>{
+  if(!staff)return;
+  const on=!cur.pub;
+  if(on&&!cur.clientId){dbMsg('Выберите клиента — кому выложить расчёт.',true);$('client').focus();return;}
+  if(on&&(!cur.num||dirty)){if(!(await doSave(false)))return;}
+  const b=$('pubBtn');b.disabled=true;
+  const j=await api('trip_pub',{num:cur.num,on,doc:on?docSnap():null,notify:on&&$('pubTg').checked});
+  b.disabled=false;
+  if(!j.ok){dbMsg(j.error==='client'?'Сначала выберите клиента и сохраните.':'Не удалось. Попробуйте ещё раз.',true);return;}
+  cur.pub=j.pub;cur.pubAt=j.pub_at||'';$('pubTg').checked=false;save();renderHeader();
+  dbMsg(on?`Выложено клиенту: ${clientName(cur.clientId)}. Он увидит расчёт в кабинете, во вкладке «Сметы».`+($('pubTg')&&j.sent?' Ему ушло сообщение в Telegram.':''):'Убрано: клиент расчёт больше не видит.');
+});
 $('saveBtn').addEventListener('click',()=>doSave(false));
+$('editBtn').addEventListener('click',()=>{editMode=true;renderHeader();dbMsg('Правка: поменяйте нужное и нажмите «Сохранить изменения».');});
+$('cancelBtn').addEventListener('click',async()=>{if(dirty&&!confirmLeave())return;dirty=false;await openNum(cur.num);dbMsg('Правки отменены — расчёт как был сохранён.');});
 $('saveNewBtn').addEventListener('click',()=>doSave(true));
 $('newCalcBtn').addEventListener('click',()=>{
   if(dirty&&!confirmLeave())return;
-  const keep={clientId:cur.clientId,project:cur.project}; cur=Object.assign(blankCur(),keep); dirty=false;
+  const keep={clientId:cur.clientId,project:cur.project}; cur=Object.assign(blankCur(),keep); dirty=false; editMode=false;
   history.replaceState(null,'',location.pathname);
   renderHeader();renderKp();save();dbMsg('Новый расчёт: цифры оставлены, номер присвоится при сохранении.');
 });
-$('client').addEventListener('change',e=>{cur.clientId=e.target.value;markDirty();renderKp();save();});
+$('client').addEventListener('change',e=>{cur.clientId=e.target.value;markDirty();renderKp();save();renderPub();});
+$('printBtn').addEventListener('click',()=>window.print());
 $('project').addEventListener('change',e=>{cur.project=e.target.value;markDirty();save();});
 function markDirty(){if(!dirty){dirty=true;renderHeader();}}
 const grid=document.querySelector('.trip .grid');
@@ -482,13 +523,31 @@ renderGroups();renderCars();renderCustom();calc();renderHeader();
 (async()=>{
   const me=await api('me');
   staff=!!(me.ok&&me.user&&me.user.role==='staff');
-  if(!staff){document.querySelectorAll('.trip section.panel, .trip .grid').forEach(x=>{x.hidden=true;});document.querySelector('[data-trip-deny]').hidden=false;return;}  // не сотрудник — только пояснение и вход
+  if(!staff){
+    document.querySelectorAll('.trip section.panel, .trip .grid').forEach(x=>{x.hidden=true;});
+    const want=decodeURIComponent(location.hash.slice(1));
+    const j=me.ok&&want?await api('trip_get&num='+encodeURIComponent(want)):null;
+    if(j&&j.ok&&j.trip.doc){  // клиент: расчёт, выложенный ему, — только форма КП
+      root.classList.add('ok','client');
+      try{localStorage.removeItem(KEY);}catch(e){}
+      $('kpPanel').hidden=false;
+      document.querySelector('.trip header h1').textContent='Расчёт '+dispNum(j.trip.num);
+      document.querySelector('.trip header .sub').textContent='Расчёт от ЧТУП «ОллВижн». Чтобы сохранить, нажмите «Распечатать или сохранить PDF».';
+      renderDoc(j.trip.doc);
+      document.title=dispNum(j.trip.num)+' — командировочные расходы — HDL в Беларуси';
+      return;
+    }
+    document.querySelector('[data-trip-deny]').hidden=false;
+    if(me.ok&&want)document.querySelector('[data-trip-deny]').textContent='Расчёт не найден: возможно, его убрали. Откройте кабинет.';
+    return;
+  }  // не сотрудник — только пояснение и вход
   root.classList.add('ok');  // сотрудник: расчёт виден (до проверки скрыт — черновик в памяти браузера не показываем другим)
   const [u,pr]=await Promise.all([api('users'),api('projects')]);
   clients=(u.users||[]).filter(x=>x.status!=='blocked').map(x=>({id:String(x.id),name:(x.name||x.tg_name||'—')+(x.company?' · '+x.company:'')}));
   renderClients();renderProjects(pr.projects||[]);
   const want=decodeURIComponent(location.hash.slice(1));
-  if(want&&want!==cur.num)await openNum(want);
+  if(want)await openNum(want);
+  else renderHeader();
   renderKp();
 })();
 addEventListener('hashchange',()=>{const want=decodeURIComponent(location.hash.slice(1));if(staff&&want&&want!==cur.num)openNum(want);});
