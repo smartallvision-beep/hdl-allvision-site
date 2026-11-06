@@ -1834,8 +1834,18 @@
       if (!j.ok) return failed();
       // категорию, суперадмина, подтверждение запросов и блокировку меняет суперадмин; сотрудник — только скидку (владелец 05.11.2026)
       const who = u => u.owner ? "суперадмин, владелец" : u.admin ? "суперадмин" : ROLE[u.role];
-      panel.innerHTML = `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Кто</th><th>Категория</th><th>Скидка, %</th><th></th></tr></thead><tbody>`
-        + j.users.map(u => {
+      // фильтр по категории (владелец 07.11.2026): кнопки с числом людей, выбор запоминается
+      const UCAT = [["all", "Все", () => true], ["new", "Без прав", u => u.status !== "blocked" && u.role === "user" && !u.wanted], ["wait", "Запросы", u => !!u.wanted],
+        ["client", "Клиенты", u => u.status !== "blocked" && u.role === "client"], ["dealer", "Дилеры", u => u.status !== "blocked" && u.role === "dealer"],
+        ["staff", "Сотрудники", u => u.status !== "blocked" && u.role === "staff"], ["blocked", "Заблокированные", u => u.status === "blocked"]];
+      let uf = "all"; try { uf = localStorage.getItem("hdl-kf") || "all"; } catch {}
+      const ucnt = Object.fromEntries(UCAT.map(([k, , f]) => [k, j.users.filter(f).length]));
+      if (!UCAT.some(c => c[0] === uf) || (uf !== "all" && !ucnt[uf])) uf = "all";  // в выбранной категории никого не осталось — все
+      const shown = j.users.filter(UCAT.find(c => c[0] === uf)[2]);
+      panel.innerHTML = `<div class="kab-cats" role="group" aria-label="Категория"><span class="muted small">Категория:</span>`
+        + UCAT.filter(([k]) => k === "all" || ucnt[k] || k === "new").map(([k, t]) => `<button type="button" class="kab-cat${k === uf ? " on" : ""}" data-ucat="${k}" aria-pressed="${k === uf}">${t} <b>${ucnt[k]}</b></button>`).join("") + "</div>"
+        + `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Кто</th><th>Категория</th><th>Скидка, %</th><th></th></tr></thead><tbody>`
+        + shown.map(u => {
           const self = +u.id === +j.me, blocked = u.status === "blocked", edit = admin && !self && !u.owner;
           const info = [u.phone, u.company, u.unp && "УНП " + u.unp, u.status === "form" && "анкета не заполнена"].filter(Boolean).map(esc).join(" · ");
           const role = u.wanted ? `<span class="st wait">хочет: ${ROLE[u.wanted]}</span><br><span class="muted small">сейчас: ${ROLE[u.role]}</span>`
@@ -1863,6 +1873,8 @@
         if (m && d !== "block" && d !== "unblock") { m.className = "msg small ok"; m.textContent = "Сохранено"; }
       };
       panel.onclick = ev => {
+        const c = ev.target.closest("[data-ucat]");
+        if (c) { try { localStorage.setItem("hdl-kf", c.dataset.ucat); } catch {} return tabUsers(); }
         const b = ev.target.closest("[data-do]"); if (!b) return;
         if (b.dataset.do === "block" && !confirm("Заблокировать? Человек не сможет войти, пока его не разблокируют.")) return;
         send(b.closest("tr"), b.dataset.do, b);
