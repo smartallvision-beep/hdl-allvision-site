@@ -2113,7 +2113,9 @@
       let uf = "all"; try { uf = localStorage.getItem("hdl-kf") || "all"; } catch {}
       const ucnt = Object.fromEntries(UCAT.map(([k, , f]) => [k, j.users.filter(f).length]));
       if (!UCAT.some(c => c[0] === uf) || (uf !== "all" && !ucnt[uf])) uf = "all";  // в выбранной категории никого не осталось — все
-      const shown = j.users.filter(UCAT.find(c => c[0] === uf)[2]);
+      // сверху — у кого неоплаченные заказы, потом частично оплаченные, потом по числу активных; остальные — как отдал сервер (07.11.2026)
+      const shown = j.users.filter(UCAT.find(c => c[0] === uf)[2]).map((u, i) => [u, i])
+        .sort(([a, i], [b, k]) => (b.unpaid - a.unpaid) || (b.part - a.part) || (b.active - a.active) || i - k).map(([u]) => u);
       panel.innerHTML = `<div class="kab-cats" role="group" aria-label="Категория"><span class="muted small">Категория:</span>`
         + UCAT.filter(([k]) => k === "all" || ucnt[k] || k === "new").map(([k, t]) => `<button type="button" class="kab-cat${k === uf ? " on" : ""}" data-ucat="${k}" aria-pressed="${k === uf}">${t} <b>${ucnt[k]}</b></button>`).join("") + "</div>"
         + `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Кто</th><th>Категория</th><th class="num">Активных заказов</th><th>Скидка, %</th><th></th></tr></thead><tbody>`
@@ -2128,7 +2130,7 @@
               : '<span class="muted small">Подтверждает суперадмин</span>')
             : '<button class="cbtn ghost" type="button" data-do="set">Сохранить</button>' + (edit ? ` <button class="cbtn ghost" type="button" data-do="${blocked ? "unblock" : "block"}">${blocked ? "Разблокировать" : "Заблокировать"}</button>` : "");
           return `<tr data-id="${u.id}"${blocked ? ' class="blocked"' : ""}><td><a href="#p=u${u.id}"><b>${esc(u.name || u.tg_name || "—")}</b></a>${u.tg_username ? ` · @${esc(u.tg_username)}` : ""}${blocked ? " · заблокирован" : ""}${u.role === "user" && !u.wanted && !blocked ? ' <span class="st new">без прав</span>' : ""}<br><span class="muted small">${info}</span></td>`
-            + `<td>${role}</td><td class="num">${u.active ? `<a href="#p=u${u.id}"><b>${u.active}</b></a>` : '<span class="muted">—</span>'}</td><td><input class="pct" type="number" min="0" max="50" step="0.5" value="${+u.discount || 0}" data-disc aria-label="Скидка, %"></td><td class="acts">${acts}<p class="msg small"></p></td></tr>`;
+            + `<td>${role}</td><td class="num">${u.active ? `<a href="#p=u${u.id}"><b>${u.active}</b></a>` + (u.unpaid ? `<br><span class="pay-b none">${u.unpaid} не оплачено</span>` : "") + (u.part ? `<br><span class="pay-b part">${u.part} частично</span>` : "") : '<span class="muted">—</span>'}</td><td><input class="pct" type="number" min="0" max="50" step="0.5" value="${+u.discount || 0}" data-disc aria-label="Скидка, %"></td><td class="acts">${acts}<p class="msg small"></p></td></tr>`;
         }).join("") + '</tbody></table></div><p class="muted small">'
         + (admin ? "Все регистрируются пользователями — им доступны сметы и заявки. Категорию и скидку отмечаете вы, затем «Сохранить»; человеку придёт сообщение в Telegram. Клиент — ещё документы по объекту, дилер — цены дилера. Суперадмин — сотрудник, который тоже может блокировать и назначать категории."
           : "Вы можете менять скидку: впишите процент и нажмите «Сохранить», человеку придёт сообщение в Telegram. Категорию, блокировку и подтверждение запросов меняет суперадмин.")

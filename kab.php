@@ -963,9 +963,17 @@ case 'users':  // сотрудник: все пользователи, снач�
     $rows = $db->query("SELECT id, tg_id, tg_username, tg_name, name, phone, company, unp, role, wanted, discount, status, admin, created_at, seen_at
         FROM users ORDER BY (wanted <> '') DESC, (role = 'user' AND status = 'active') DESC, (status = 'blocked'), created_at DESC LIMIT 1000")->fetchAll();  // сначала — кому ещё не отмечены права
     // active — заявок человека не в состоянии «Закрыта» (владелец 07.11.2026: «должны видеть количество активных заказов»)
-    $act = $db->query("SELECT user_id, COUNT(*) FROM leads WHERE user_id IS NOT NULL AND status <> 'closed' GROUP BY user_id")->fetchAll(PDO::FETCH_KEY_PAIR);
+    // unpaid — активных заявок с суммой и без оплат, part — оплаченных частично: по ним список сортируется (владелец 07.11.2026)
+    $act = [];
+    foreach ($db->query("SELECT user_id, COUNT(*) AS n, SUM(CASE WHEN total > 0 AND paid <= 0.004 THEN 1 ELSE 0 END) AS unpaid,
+            SUM(CASE WHEN total > 0 AND paid > 0.004 AND paid + 0.005 < total THEN 1 ELSE 0 END) AS part
+        FROM (SELECT l.user_id, COALESCE(l.total, 0) AS total, (SELECT COALESCE(SUM(p.to_lead), 0) FROM pays p WHERE p.lead_id = l.id AND p.deleted_at IS NULL) AS paid
+            FROM leads l WHERE l.user_id IS NOT NULL AND l.status <> 'closed') GROUP BY user_id") as $a) $act[(int) $a['user_id']] = $a;
     $rows = array_map(function ($r) use ($act) {  // числа числами при любой версии PHP; суперадмин и владелец — флажками, номер Telegram наружу не отдаём
-        $r['active'] = (int) ($act[(int) $r['id']] ?? 0);
+        $a = $act[(int) $r['id']] ?? null;
+        $r['active'] = $a ? (int) $a['n'] : 0;
+        $r['unpaid'] = $a ? (int) $a['unpaid'] : 0;
+        $r['part'] = $a ? (int) $a['part'] : 0;
         $r['admin'] = kab_is_admin($r);
         $r['owner'] = kab_is_owner($r);
         $r['id'] = (int) $r['id'];
