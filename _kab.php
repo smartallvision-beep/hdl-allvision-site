@@ -103,6 +103,9 @@ function kab_db(): PDO {
         amount REAL NOT NULL, paid_on TEXT, note TEXT DEFAULT '', made_by INTEGER, created_at TEXT, deleted_at TEXT, deleted_by INTEGER)");
     // баланс клиента (07.11.2026): kind — in приходный ордер, alloc зачёт аванса с баланса в заказ, out выдача клиенту с баланса;
     // to_lead — сколько из суммы ушло в оплату заказа (остаток приходного — на баланс); ckey — чьи деньги: u<пользователь> или t<телефон>; lead_id 0 — без заказа
+    // расходные накладные (07.11.2026): отгрузка по заявке, lines — [{k, a, n, q}], k — позиция заявки (артикул или «x:» + название своей строки)
+    $db->exec("CREATE TABLE IF NOT EXISTS ships (id INTEGER PRIMARY KEY, num TEXT UNIQUE NOT NULL, year INTEGER, seq INTEGER, lead_id INTEGER NOT NULL,
+        shipped_on TEXT, note TEXT DEFAULT '', lines TEXT, made_by INTEGER, created_at TEXT, deleted_at TEXT, deleted_by INTEGER)");
     $pyCols = array_column($db->query('PRAGMA table_info(pays)')->fetchAll(), 'name');
     if (!in_array('kind', $pyCols, true)) $alter("ALTER TABLE pays ADD COLUMN kind TEXT NOT NULL DEFAULT 'in'");
     if (!in_array('to_lead', $pyCols, true)) $alter('ALTER TABLE pays ADD COLUMN to_lead REAL');

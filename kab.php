@@ -125,6 +125,29 @@ $payIn = function (array $in): array {  // сумма и дата из форм�
     return [$amt, $on];
 };
 
+// отгрузки (07.11.2026): позиции заявки по ключу — артикул, своя строка — «x:» + название; сколько заказано и сколько уже отгружено
+$shipNeed = function (array $items): array {
+    $o = [];
+    foreach ($items as $r) {
+        if (!is_array($r)) continue;
+        $a = (string) ($r['a'] ?? '');
+        $n = (string) ($r['n'] ?? '');
+        $k = $a === '' || $a === 'своя строка' ? 'x:' . mb_substr($n, 0, 120) : $a;
+        if (!isset($o[$k])) $o[$k] = ['k' => $k, 'a' => $a, 'n' => $n, 'q' => 0];
+        $o[$k]['q'] += max(1, (int) ($r['q'] ?? 1));
+    }
+    return $o;
+};
+$shipDone = function (array $ids) use ($db): array {  // [заявка][ключ] => отгружено
+    $done = [];
+    if (!$ids) return $done;
+    $q = $db->prepare('SELECT lead_id, lines FROM ships WHERE deleted_at IS NULL AND lead_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
+    $q->execute(array_values($ids));
+    foreach ($q->fetchAll() as $s)
+        foreach (json_decode((string) $s['lines'], true) ?: [] as $x) $done[(int) $s['lead_id']][(string) $x['k']] = ($done[(int) $s['lead_id']][(string) $x['k']] ?? 0) + (int) $x['q'];
+    return $done;
+};
+
 // смета: правил сотрудник — ему кто, клиенту — что AllVision. udisc — личная скидка владельца сметы: сотрудник, открыв чужую смету, видит его цены
 $smetaSql = 'SELECT s.id, s.user_id, s.title, s.doc, s.disc, s.made_by, s.items, s.ld, s.extra, s.updated_at, s.edited_at, s.ver, s.project, u.name, u.tg_name, u.company, u.role, u.discount AS udisc,
     m.name AS made_name, m.tg_name AS made_tg, e.name AS edited_name, e.tg_name AS edited_tg
@@ -782,7 +805,31 @@ case 'person':  // сотрудник: карточка — человек, ег
                 'paid_on' => $r['paid_on'], 'note' => (string) $r['note'], 'created_at' => $r['created_at'], 'who' => $r['name'] ?: $r['tg_name']];
         }, $q->fetchAll());
     }
-    $out = ['ok' => true, 'person' => $p, 'leads' => $leads, 'smetas' => $smetas];
+    // отгрузки: у заявки ship (done — всё, part — частично, '' — нет), ship_need — позиции с отгруженным; накладные человека
+    $done = $shipDone($ids);
+    foreach ($leads as &$l) {
+        $nd = $shipNeed(json_decode((string) $l['items'], true) ?: []);
+        $all = (bool) $nd;
+        $any = false;
+        foreach ($nd as $k => &$x) {
+            $x['done'] = (int) ($done[$l['id']][$k] ?? 0);
+            if ($x['done'] < $x['q']) $all = false;
+            if ($x['done'] > 0) $any = true;
+        }
+        unset($x);
+        $l['ship'] = $all ? 'done' : ($any ? 'part' : '');
+        $l['ship_need'] = array_values($nd);
+    }
+    unset($l);
+    $ships = [];
+    if ($ids) {
+        $q = $db->prepare('SELECT s.id, s.num, s.lead_id, s.shipped_on, s.note, s.lines, u.name, u.tg_name FROM ships s LEFT JOIN users u ON u.id = s.made_by
+            WHERE s.deleted_at IS NULL AND s.lead_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY s.shipped_on, s.id');
+        $q->execute($ids);
+        foreach ($q->fetchAll() as $s) $ships[] = ['id' => (int) $s['id'], 'num' => $s['num'], 'lead_id' => (int) $s['lead_id'], 'shipped_on' => $s['shipped_on'],
+            'note' => (string) $s['note'], 'lines' => json_decode((string) $s['lines'], true) ?: [], 'who' => $s['name'] ?: $s['tg_name']];
+    }
+    $out = ['ok' => true, 'person' => $p, 'leads' => $leads, 'smetas' => $smetas, 'ships' => $ships];
     if ($admin) $out += ['pays' => $pays, 'balance' => $payBal($pk), 'ckey' => $pk[0] ?? ''];
     reply(200, $out);
 
@@ -823,6 +870,46 @@ case 'pay_out':  // суперадмин: выдать клиенту деньг
     if ($amt > $payBal($keys) + 0.005) reply(422, ['ok' => false, 'error' => 'balance']);
     $num = $payIns('out', $on, 0, $amt, 0.0, $keys[0], (string) ($in['note'] ?? ''));
     reply(200, ['ok' => true, 'num' => $num, 'amount' => $amt]);
+
+case 'ship_add':  // сотрудник: расходная накладная — что отгружено по заявке, можно частями; больше заказанного нельзя
+    $need($post, 405);
+    $need($staff);
+    $q = $db->prepare('SELECT id, items FROM leads WHERE id = ?');
+    $q->execute([(int) ($in['lead_id'] ?? 0)]);
+    $l = $q->fetch();
+    $need((bool) $l, 404);
+    $lid = (int) $l['id'];
+    $needs = $shipNeed(json_decode((string) $l['items'], true) ?: []);
+    $done = $shipDone([$lid])[$lid] ?? [];
+    $lines = [];
+    foreach (array_slice((array) ($in['lines'] ?? []), 0, 400) as $x) {
+        $k = (string) ($x['k'] ?? '');
+        $qq = (int) ($x['q'] ?? 0);
+        if ($qq <= 0) continue;
+        if (!isset($needs[$k])) reply(422, ['ok' => false, 'error' => 'line']);
+        if ($qq > $needs[$k]['q'] - ($done[$k] ?? 0)) reply(422, ['ok' => false, 'error' => 'more']);
+        $lines[] = ['k' => $k, 'a' => $needs[$k]['a'], 'n' => $needs[$k]['n'], 'q' => $qq];
+    }
+    if (!$lines) reply(422, ['ok' => false, 'error' => 'empty']);
+    $on = (string) ($in['date'] ?? '');
+    if (!preg_match('/^(20\d\d)-(\d\d)-(\d\d)$/', $on, $m) || !checkdate((int) $m[2], (int) $m[3], (int) $m[1])) $on = date('Y-m-d');
+    $y = (int) substr($on, 0, 4);
+    $db->beginTransaction();
+    $q = $db->prepare('SELECT COALESCE(MAX(seq), 0) + 1 FROM ships WHERE year = ?');
+    $q->execute([$y]);
+    $seq = (int) $q->fetchColumn();
+    $num = sprintf('РН-%d-%03d', $y, $seq);
+    $db->prepare('INSERT INTO ships (num, year, seq, lead_id, shipped_on, note, lines, made_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        ->execute([$num, $y, $seq, $lid, $on, kab_clean($in['note'] ?? '', 300), json_encode($lines, JSON_UNESCAPED_UNICODE), $me['id'], kab_now()]);
+    $db->commit();
+    reply(200, ['ok' => true, 'num' => $num, 'n' => count($lines), 'q' => array_sum(array_column($lines, 'q'))]);
+
+case 'ship_del':  // сотрудник: удалить накладную, проведённую по ошибке; номер остаётся занятым
+    $need($post, 405);
+    $need($staff);
+    $q = $db->prepare('UPDATE ships SET deleted_at = ?, deleted_by = ? WHERE id = ? AND deleted_at IS NULL');
+    $q->execute([kab_now(), $me['id'], (int) ($in['id'] ?? 0)]);
+    reply(200, ['ok' => $q->rowCount() > 0]);
 
 case 'pay_del':  // суперадмин: удалить документ, внесённый по ошибке; номер остаётся занятым. Приходный, чьи деньги с баланса уже ушли, — нельзя
     $need($post, 405);

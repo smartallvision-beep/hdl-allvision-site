@@ -1649,7 +1649,10 @@
     const fm2 = v => (+v).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\s/g, " ");  // деньги оплат — с копейками
     const PAYT = { paid: "оплачен", part: "оплачен частично", none: "не оплачен", nosum: "сумма не задана" };
     const payLeft = l => Math.max(0, Math.round((+l.total - +(l.paid || 0)) * 100) / 100);
-    const payCell = l => !l.pay ? "" : `<br><span class="pay-b ${l.pay}">${PAYT[l.pay]}</span>`
+    // отгрузка (07.11.2026): метка и «+ Отгрузка» — в карточке клиента у сотрудника
+    const shipCell = l => (l.ship ? `<br><span class="pay-b ${l.ship === "done" ? "paid" : "part"}">${l.ship === "done" ? "отгружен" : "отгружен частично"}</span>` : "")
+      + (staff && l.ship !== "done" && (l.ship_need || []).length ? `<br><button class="cbtn ghost ship-new" type="button" data-ship-new="${l.id}">+ Отгрузка</button>` : "");
+    const payCell = l => shipCell(l) + (!l.pay ? "" : `<br><span class="pay-b ${l.pay}">${PAYT[l.pay]}</span>`)
       + (admin && l.paid > 0 ? `<br><span class="muted small">оплачено ${fm2(l.paid)}${+l.total > 0 ? " из " + fm2(+l.total) : ""} BYN</span>` : "");
     const leadTable = (list, who, pay) => `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>№</th><th>Дата</th>${who ? "<th>Кто</th>" : ""}<th>Что</th><th>Состояние</th></tr></thead><tbody>`
       + list.map(l => {
@@ -1845,9 +1848,78 @@
       }
       return false;
     };
+    // расходные накладные (сотрудник, 07.11.2026)
+    const shipTable = list => `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Накладная</th><th>Дата</th><th>Заказ</th><th>Что отгружено</th><th></th></tr></thead><tbody>`
+      + list.map(s => `<tr><td>${esc(s.num)}${s.note ? `<br><span class="small">${esc(s.note)}</span>` : ""}<br><span class="muted small">провёл(а): ${esc(s.who || "—")}</span></td>`
+        + `<td>${day(s.shipped_on)}</td><td>Заявка №${s.lead_id}</td><td>${s.lines.length} поз., ${s.lines.reduce((t, x) => t + x.q, 0)} шт.`
+        + `<details><summary>Состав</summary><ul>${s.lines.map(x => `<li>${x.a && x.a !== "своя строка" ? esc(x.a) + " — " : ""}${esc(x.n)} × ${x.q}</li>`).join("")}</ul></details></td>`
+        + `<td class="acts"><button class="cbtn ghost" type="button" data-ship-pdf="${s.id}">PDF</button> <button class="cbtn ghost" type="button" data-ship-del="${s.id}" data-ship-num="${esc(s.num)}">Удалить</button></td></tr>`).join("")
+      + "</tbody></table></div>";
+    const shipPrint = s => {  // накладная для печати: шапка, покупатель, основание, позиции, подписи — без цен
+      // печать через скрытую рамку: без всплывающего окна, которое браузер может заблокировать; имя файла PDF — номер накладной
+      const p = PERSON || {}, f = document.createElement("iframe");
+      f.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
+      document.body.appendChild(f);
+      const w = f.contentWindow;
+      w.document.open();
+      w.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${esc(s.num)}</title><style>body{font:14px/1.45 Arial,sans-serif;margin:28px;color:#111}h1{font-size:20px;margin:6px 0 14px}table{width:100%;border-collapse:collapse;margin:14px 0}td,th{border:1px solid #999;padding:6px 8px;text-align:left}th{background:#eee}.n{text-align:right}.sig{display:flex;gap:40px;margin-top:40px}.sig div{flex:1;border-top:1px solid #333;padding-top:4px;font-size:12px;color:#444}@media print{body{margin:10mm}}</style></head><body>`
+        + `<div>ЧТУП «ОллВижн» · hdl.by · +375 (29) 370-20-20</div><h1>Расходная накладная ${esc(s.num)} от ${day(s.shipped_on)}</h1>`
+        + `<div>Покупатель: <b>${esc(p.name || "—")}</b>${p.company ? ", " + esc(p.company) : ""}${p.phone ? ", " + esc(p.phone) : ""}</div><div>Основание: заявка №${s.lead_id}</div>${s.note ? `<div>Комментарий: ${esc(s.note)}</div>` : ""}`
+        + `<table><tr><th>№</th><th>Артикул</th><th>Наименование</th><th class="n">Кол-во</th><th>Ед.</th></tr>${s.lines.map((x, i) => `<tr><td>${i + 1}</td><td>${x.a && x.a !== "своя строка" ? esc(x.a) : ""}</td><td>${esc(x.n)}</td><td class="n">${x.q}</td><td>шт.</td></tr>`).join("")}`
+        + `<tr><td colspan="3"><b>Всего</b></td><td class="n"><b>${s.lines.reduce((t, x) => t + x.q, 0)}</b></td><td></td></tr></table>`
+        + `<div class="sig"><div>Отпустил (подпись, ФИО)</div><div>Получил (подпись, ФИО)</div></div></body></html>`);
+      w.document.close();
+      const t0 = document.title;
+      document.title = s.num;
+      setTimeout(() => { w.focus(); w.print(); document.title = t0; setTimeout(() => f.remove(), 60000); }, 300);
+    };
+    const shipClick = async ev => {
+      const box = $("[data-ship-box]", panel), nb = ev.target.closest("[data-ship-new]");
+      if (nb && box) {
+        const l = SHOWN.leads.find(x => +x.id === +nb.dataset.shipNew);
+        if (!l) return true;
+        box.dataset.lid = l.id;
+        box.innerHTML = `<h4>Расходная накладная по заявке №${l.id}</h4><div class="pay-f"><label>Дата<input type="date" data-ship-date value="${new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)}"></label>`
+          + `<label class="wide">Комментарий<input type="text" maxlength="300" data-ship-note placeholder="самовывоз / доставка, кто забрал"></label></div>`
+          + `<div class="tbl-wrap"><table class="kab-tbl ship-tbl"><thead><tr><th>Позиция</th><th class="num">В заказе</th><th class="num">Отгружено раньше</th><th class="num">Отгрузить сейчас</th></tr></thead><tbody>`
+          + l.ship_need.map(x => { const left = x.q - x.done;
+            return `<tr><td>${x.a && x.a !== "своя строка" ? esc(x.a) + " — " : ""}${esc(x.n)}</td><td class="num">${x.q}</td><td class="num">${x.done}</td><td class="num">${left > 0 ? `<input type="number" min="0" max="${left}" step="1" value="${left}" data-ship-q="${esc(x.k)}" aria-label="Отгрузить сейчас">` : '<span class="muted">отгружено</span>'}</td></tr>`; }).join("")
+          + `</tbody></table></div><p class="acts"><button class="btn" type="button" data-ship-go>Провести</button> <button class="btn ghost" type="button" data-ship-x>Отмена</button> <span class="msg small" data-ship-msg role="status"></span></p>`;
+        box.hidden = false;
+        box.scrollIntoView({ block: "start", behavior: "smooth" });
+        return true;
+      }
+      if (ev.target.closest("[data-ship-x]") && box) { box.hidden = true; box.innerHTML = ""; return true; }
+      const go = ev.target.closest("[data-ship-go]");
+      if (go && box) {
+        const msg = $("[data-ship-msg]", box), lid = +box.dataset.lid, bad = t => { msg.textContent = t; msg.className = "msg small bad"; return true; };
+        const lines = $$("[data-ship-q]", box).map(i => ({ k: i.dataset.shipQ, q: Math.floor(+i.value || 0), max: +i.max })).filter(x => x.q > 0);
+        if (lines.some(x => x.q > x.max)) return bad("Больше, чем осталось отгрузить, нельзя.");
+        if (!lines.length) return bad("Впишите, сколько отгружаете.");
+        go.disabled = true; msg.textContent = "Проводим…"; msg.className = "msg small";
+        const r = await kabApi("ship_add", { lead_id: lid, date: $("[data-ship-date]", box).value, note: $("[data-ship-note]", box).value, lines: lines.map(({ k, q }) => ({ k, q })) }).catch(() => ({}));
+        go.disabled = false;
+        if (!r.ok) return bad(r.error === "more" ? "Больше, чем осталось отгрузить, — обновите страницу." : "Не удалось провести — обновите страницу и попробуйте ещё раз.");
+        try { sessionStorage.setItem("hdl-flash", JSON.stringify({ text: `Расходная накладная ${r.num} проведена: ${r.n} поз., ${r.q} шт. по заявке №${lid}.`, lid })); } catch {}
+        route();
+        return true;
+      }
+      const pdf = ev.target.closest("[data-ship-pdf]");
+      if (pdf) { const s = SHOWN.ships.find(x => +x.id === +pdf.dataset.shipPdf); if (s) shipPrint(s); return true; }
+      const del = ev.target.closest("[data-ship-del]");
+      if (del) {
+        if (!confirm(`Удалить ${del.dataset.shipNum}? Отгрузка по заказу пересчитается.`)) return true;
+        const r = await kabApi("ship_del", { id: +del.dataset.shipDel }).catch(() => ({}));
+        if (r.ok) try { sessionStorage.setItem("hdl-flash", JSON.stringify({ text: `${del.dataset.shipNum} удалена.` })); } catch {}
+        route();
+        return true;
+      }
+      return false;
+    };
     const listClicks = async ev => {
       if (await pdClick(ev)) return;
       if (await payClick(ev)) return;
+      if (await shipClick(ev)) return;
       const o = ev.target.closest("[data-open]"), lo = ev.target.closest("[data-lopen]"), d = ev.target.closest("[data-del]"), nw = ev.target.closest("[data-new]");
       if (o || lo) {
         const b = o || lo;
@@ -1948,15 +2020,16 @@
       const j = await kabApi("person&" + (key[0] === "u" ? "uid=" : "phone=") + encodeURIComponent(key.slice(1))).catch(() => ({}));
       if (!j.ok) { panel.innerHTML = j.status === 404 ? "<p>Такого человека не нашли. Поищите по имени или телефону.</p>" : ""; if (j.status !== 404) failed(); else flash(); return; }
       const p = PERSON = j.person, blocked = p.status === "blocked";
-      SHOWN = { leads: j.leads, smetas: j.smetas, pays: j.pays || [], balance: +j.balance || 0, ckey: j.ckey || "" };
+      SHOWN = { leads: j.leads, smetas: j.smetas, pays: j.pays || [], balance: +j.balance || 0, ckey: j.ckey || "", ships: j.ships || [] };
       const disc = p.id ? `<span data-pd>${p.discount > 0 ? "скидка " + pct(p.discount) : "без скидки"}${blocked ? "" : ' <button class="cbtn ghost" type="button" data-pd-edit>Изменить</button>'}</span>` : "";
       const info = [p.phone && `<a href="tel:${esc(p.phone)}">${esc(p.phone)}</a>`, p.company && esc(p.company), p.id ? esc(ROLE[p.role] || "") : "без кабинета на сайте",
         disc, p.tg_username && "@" + esc(p.tg_username), blocked && "заблокирован"].filter(Boolean).join(" · ");
       panel.innerHTML = `<div class="kab-person"><div><h2>${esc(p.name || "—")}</h2><p class="muted">${info}</p></div>`
         + (blocked ? "" : `<div class="acts">${p.id ? '<button class="btn" type="button" data-new="s">Новая смета</button>' : ""}<button class="btn${p.id ? " ghost" : ""}" type="button" data-new="l">Новая заявка</button></div>`) + "</div>"
-        + "<h3>Заявки</h3>" + (admin && j.ckey ? payBar(j) : "")
+        + "<h3>Заявки</h3>" + (admin && j.ckey ? payBar(j) : "") + '<div class="pay-box" data-ship-box hidden></div>'
         + (j.leads.length ? leadTable(j.leads, false, true) + '<p class="muted small pay-legend"><span class="pay-b paid">оплачен</span> <span class="pay-b part">частично</span> <span class="pay-b none">не оплачен</span></p>' : '<p class="muted">Заявок нет.</p>')
         + (admin && (j.pays || []).length ? "<h3>Движение денег</h3>" + payTable(j.pays) : "")
+        + ((j.ships || []).length ? "<h3>Отгрузки</h3>" + shipTable(j.ships) : "")
         + (p.id ? "<h3>Сметы</h3>" + (j.smetas.length ? smetaTable(j.smetas, false) + smetaNote() : '<p class="muted">Смет нет.</p>')
           : '<p class="muted small">У человека нет кабинета на сайте: смету ему сохранить некуда. Оформите заявку и пошлите PDF.</p>');
       panel.onclick = listClicks;
