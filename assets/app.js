@@ -1674,10 +1674,14 @@
     const PAYT = { paid: "оплачен", part: "оплачен частично", none: "не оплачен", nosum: "сумма не задана" };
     const payLeft = l => Math.max(0, Math.round((+l.total - +(l.paid || 0)) * 100) / 100);
     // отгрузка (07.11.2026): метка и «+ Отгрузка» — в карточке клиента у сотрудника
-    const shipCell = l => (l.ship ? `<br><span class="pay-b ${l.ship === "done" ? "paid" : "part"}">${l.ship === "done" ? "отгружен" : "отгружен частично"}</span>` : "")
-      + (staff && l.ship !== "done" && (l.ship_need || []).length ? `<br><button class="cbtn ghost ship-new" type="button" data-ship-new="${l.id}">+ Отгрузка</button>` : "");
-    const payCell = l => shipCell(l) + (!l.pay ? "" : `<br><span class="pay-b ${l.pay}">${PAYT[l.pay]}</span>`)
-      + (admin && l.paid > 0 ? `<br><span class="muted small">оплачено ${fm2(l.paid)}${+l.total > 0 ? " из " + fm2(+l.total) : ""} BYN</span>` : "");
+    // блок состояния ровной колонкой (07.11.2026): метки оплаты и отгрузки — одной строкой, под ними сумма оплат и «+ Отгрузка» на всю ширину
+    const payCell = l => {
+      const badges = (l.pay ? `<span class="pay-b ${l.pay}">${PAYT[l.pay]}</span>` : "")
+        + (l.ship ? `<span class="pay-b ${l.ship === "done" ? "paid" : "part"}">${l.ship === "done" ? "отгружен" : "отгружен частично"}</span>` : "");
+      return (badges ? `<div class="st-badges">${badges}</div>` : "")
+        + (admin && l.paid > 0 ? `<span class="muted small">оплачено ${fm2(l.paid)}${+l.total > 0 ? " из " + fm2(+l.total) : ""} BYN</span>` : "")
+        + (staff && l.ship !== "done" && (l.ship_need || []).length ? `<button class="cbtn ghost ship-new" type="button" data-ship-new="${l.id}">+ Отгрузка</button>` : "");
+    };
     const leadTable = (list, who, pay) => `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>№</th><th>Дата</th>${who ? "<th>Кто</th>" : ""}<th>Что</th><th>Состояние</th></tr></thead><tbody>`
       + list.map(l => {
         const it = jl(l.items), was = staff ? jl(l.items0) : [];
@@ -1691,8 +1695,8 @@
           + (was.length ? `<details><summary>${l.made ? "Как оформили сначала" : "Как прислал клиент"}</summary>${ulist(was)}<p class="small">${leadMoney(was, l.total0, null)}</p></details>` : "")
           // сотруднику — у любой заявки, и у «Заказать звонок»: состав можно набрать прямо в ней (06.11.2026)
           + (staff || it.length || l.sm ? `<p class="acts"><button class="cbtn" type="button" data-lopen="${l.id}">${staff ? "Открыть и поправить" : "Открыть"}</button></p>` : "") + "</td>"
-          + `<td>${staff ? `<select data-st="${l.id}" aria-label="Состояние заявки №${l.id}">${Object.entries(ST).map(([k, t]) => `<option value="${k}"${k === l.status ? " selected" : ""}>${t}</option>`).join("")}</select>`
-            : `<span class="st ${esc(l.status)}">${ST[l.status] || esc(l.status)}</span>`}${pay ? payCell(l) : ""}</td></tr>`;
+          + `<td>${staff ? `<div class="st-col"><select data-st="${l.id}" data-prev="${esc(l.status)}" data-tg="${l.tg ? 1 : ""}" aria-label="Состояние заявки №${l.id}">${Object.entries(ST).map(([k, t]) => `<option value="${k}"${k === l.status ? " selected" : ""}>${t}</option>`).join("")}</select><div class="st-conf" hidden></div><span class="st-note small" hidden></span>${pay ? payCell(l) : ""}</div>`
+            : `<span class="st ${esc(l.status)}">${ST[l.status] || esc(l.status)}</span>`}</td></tr>`;
       }).join("") + "</tbody></table></div>";
     const leadNote = () => `<p class="muted small">«Открыть» заменяет текущий список для сметы.${staff ? " Открытую заявку правят на странице сметы и сохраняют кнопкой «Сохранить»: клиент увидит новый состав, а здесь останется, как он прислал." : ""}</p>`;
     // заявка без состава для правки (до 06.11.2026) — состав из её строк: артикул из каталога — строкой каталога, остальное (своя строка,
@@ -1957,16 +1961,32 @@
       if (nw && PERSON) newDoc(nw.dataset.new, PERSON);
       if (d && confirm("Удалить смету из кабинета?")) { await kabApi("smeta_del", { id: +d.dataset.del }).catch(() => {}); route(); }
     };
-    const statusChange = async ev => {
+    // смена состояния — только по «Подтвердить»; галка «Сообщить клиенту в Telegram» по умолчанию включена (владелец 07.11.2026)
+    const statusChange = ev => {
       const s = ev.target.closest("[data-st]"); if (!s) return;
-      const r = await kabApi("lead_status", { id: +s.dataset.st, status: s.value }).catch(() => ({}));
-      s.classList.toggle("bad", !r.ok);
-      // что ушло клиенту (владелец 07.11.2026: при смене состояния — сообщение в Telegram сразу)
-      let n = s.nextElementSibling;
-      if (!n || !n.classList.contains("st-note")) { s.insertAdjacentHTML("afterend", '<span class="st-note small"></span>'); n = s.nextElementSibling; }
-      n.className = "st-note small " + (r.sent ? "ok" : "muted");
-      n.textContent = !r.ok ? "" : r.sent ? "✓ Клиенту ушло сообщение в Telegram" : !r.tg ? "У клиента нет Telegram — позвоните" : s.value === "new" ? "" : r.same ? "" : "Сообщение в Telegram не ушло";
+      const col = s.closest(".st-col"), conf = $(".st-conf", col), note = $(".st-note", col);
+      note.hidden = true;
+      if (s.value === s.dataset.prev) { conf.hidden = true; return; }
+      const tg = !!s.dataset.tg, msg = s.value !== "new";
+      conf.innerHTML = (msg ? `<label class="${tg ? "" : "muted"}"><input type="checkbox" data-st-tg${tg ? " checked" : " disabled"}> Сообщить клиенту в Telegram</label>${tg ? "" : '<span class="muted small">у клиента нет Telegram — позвоните</span>'}` : "")
+        + '<span class="st-btns"><button class="cbtn" type="button" data-st-ok>Подтвердить</button><button class="cbtn ghost" type="button" data-st-x>Отмена</button></span>';
+      conf.hidden = false;
     };
+    panel.addEventListener("click", async ev => {
+      const ok = ev.target.closest("[data-st-ok]"), x = ev.target.closest("[data-st-x]");
+      if (!ok && !x) return;
+      const col = (ok || x).closest(".st-col"), s = $("[data-st]", col), conf = $(".st-conf", col), note = $(".st-note", col);
+      if (x) { s.value = s.dataset.prev; conf.hidden = true; return; }
+      const notify = !!$("[data-st-tg]", conf)?.checked;
+      ok.disabled = true;
+      const r = await kabApi("lead_status", { id: +s.dataset.st, status: s.value, notify }).catch(() => ({}));
+      ok.disabled = false;
+      if (!r.ok) { note.className = "st-note small bad"; note.textContent = "Не сохранилось — обновите страницу."; note.hidden = false; return; }
+      s.dataset.prev = s.value; conf.hidden = true;
+      note.className = "st-note small ok";
+      note.textContent = "✓ Сохранено" + (r.sent ? ", клиенту ушло сообщение в Telegram" : notify && r.tg ? ", но сообщение в Telegram не ушло" : "");
+      note.hidden = false;
+    });
     const pdKeys = ev => {  // Enter — сохранить, Esc — отмена
       if (!ev.target.closest("[data-pd-in]")) return;
       if (ev.key === "Enter") { ev.preventDefault(); $("[data-pd-save]", panel)?.click(); }

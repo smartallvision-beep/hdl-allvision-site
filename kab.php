@@ -45,7 +45,7 @@ $need = function (bool $cond, int $code = 403) { if (!$cond) reply($code, ['ok' 
 // ver — номер версии для проверки «уже изменил другой»; note — заметка для своих (клиенту не отдаётся)
 // paid — сумма приходных ордеров по заявке (07.11.2026): сотруднику отдаётся только состояние оплаты (pay), суперадмину ещё сумма
 $leadSql = 'SELECT l.id, l.user_id, l.created_at, l.name, l.phone, l.topic, l.page, l.comment, l.items, l.total, l.status, l.status_at, l.sm, l.items0, l.total0, l.edited_at, l.made_by, l.ver, l.note,
-    (SELECT COALESCE(SUM(p.to_lead), 0) FROM pays p WHERE p.lead_id = l.id AND p.deleted_at IS NULL) AS paid,
+    (SELECT COALESCE(SUM(p.to_lead), 0) FROM pays p WHERE p.lead_id = l.id AND p.deleted_at IS NULL) AS paid, (u.tg_id IS NOT NULL) AS tg, u.status AS ust,
     u.role, u.company, u.tg_username, u.discount AS udisc, e.name AS edited_name, e.tg_name AS edited_tg, mk.name AS made_name, mk.tg_name AS made_tg
     FROM leads l LEFT JOIN users u ON u.id = l.user_id LEFT JOIN users e ON e.id = l.edited_by LEFT JOIN users mk ON mk.id = l.made_by';
 $leadRow = function (array $r) use ($staff, $admin): array {
@@ -65,12 +65,14 @@ $leadRow = function (array $r) use ($staff, $admin): array {
     if ($staff) $r['pay'] = $paid <= 0 ? ((float) $r['total'] > 0 ? 'none' : 'nosum') : ((float) $r['total'] > 0 && $paid + 0.005 < (float) $r['total'] ? 'part' : 'paid');
     if ($admin) $r['paid'] = $paid;
     $r['ver'] = (int) $r['ver'];
+    $r['tg'] = (bool) $r['tg'] && $r['ust'] !== 'blocked';
+    unset($r['ust']);  // у клиента есть Telegram — галка «Сообщить клиенту» при смене состояния
     $r['note'] = (string) $r['note'];
     $r['edited_name'] = $r['edited_at'] ? ($r['edited_name'] ?: $r['edited_tg']) : null;
     $r['made'] = $r['made_by'] !== null;
     $r['made_name'] = $r['made'] ? ($r['made_name'] ?: $r['made_tg']) : null;
     unset($r['edited_tg'], $r['made_tg'], $r['made_by']);
-    if (!$staff) unset($r['role'], $r['company'], $r['tg_username'], $r['udisc'], $r['items0'], $r['total0'], $r['edited_name'], $r['made_name'], $r['note']);
+    if (!$staff) unset($r['role'], $r['company'], $r['tg_username'], $r['udisc'], $r['items0'], $r['total0'], $r['edited_name'], $r['made_name'], $r['note'], $r['tg']);
     return $r;
 };
 // деньги клиента (07.11.2026): ключи — пользователь кабинета и его телефон (заявки без входа с того же номера); первый ключ — основной
@@ -959,12 +961,12 @@ case 'lead_status':
     $l = $q->fetch();
     $need((bool) $l, 404);
     $db->prepare('UPDATE leads SET status = ?, status_at = ? WHERE id = ?')->execute([$st, kab_now(), (int) $l['id']]);
-    // клиенту с кабинетом — сообщение в Telegram при каждой смене, кроме «Новая» (владелец 07.11.2026: «Сразу»)
+    // клиенту с кабинетом — сообщение в Telegram при смене, кроме «Новая»; по галке notify, она по умолчанию включена (владелец 07.11.2026)
     $texts = ['work' => 'AllVision взял в работу вашу заявку №%d на hdl.by. Менеджер свяжется с вами. Заявка: %s/kabinet/#leads',
         'kp' => 'По вашей заявке №%d на hdl.by подготовлено коммерческое предложение. Посмотреть: %s/kabinet/#leads',
         'closed' => 'Заявка №%d на hdl.by закрыта. Спасибо, что выбрали AllVision! Ваши заявки: %s/kabinet/#leads'];
     $tg = $l['tg_id'] !== null && $l['ust'] !== 'blocked';
-    $sent = $tg && $st !== $l['status'] && isset($texts[$st]) ? kab_say($l['tg_id'], sprintf($texts[$st], (int) $l['id'], kab_site())) : false;
+    $sent = $tg && !empty($in['notify']) && $st !== $l['status'] && isset($texts[$st]) ? kab_say($l['tg_id'], sprintf($texts[$st], (int) $l['id'], kab_site())) : false;
     reply(200, ['ok' => true, 'sent' => $sent, 'tg' => $tg, 'same' => $st === $l['status']]);
 
 case 'users':  // сотрудник: все пользователи, сначала ждущие подтверждения

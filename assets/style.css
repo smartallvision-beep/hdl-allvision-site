@@ -1102,3 +1102,15 @@ form.lead.flash-on { animation: flashOn 1.6s ease-out; }
 .sent-ok { padding: 12px 16px; border-radius: 12px; background: #eaf4ee; }
 
 .st-note { display: block; margin-top: 4px; } .st-note.ok { color: var(--ok); }
+
+/* блок состояния заявки — ровной колонкой, смена по «Подтвердить» (07.11.2026) */
+.st-col { display: flex; flex-direction: column; gap: 8px; width: 230px; max-width: 100%; }
+.st-col select { width: 100%; }
+.st-col .st-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.st-col .st-badges .pay-b { margin-top: 0; }
+.st-col .ship-new { width: 100%; margin-top: 0; }
+.st-conf { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; border: 1.5px solid var(--brand); border-radius: 10px; font-size: 14px; }
+.st-conf[hidden], .st-col .st-note[hidden] { display: none; }
+.st-conf label { display: flex; align-items: center; gap: 6px; }
+.st-btns { display: flex; gap: 6px; }
+.st-col .st-note { display: block; margin: 0; } .st-note.bad { color: var(--bad); }
