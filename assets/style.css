@@ -1119,3 +1119,6 @@ form.lead.flash-on { animation: flashOn 1.6s ease-out; }
 .st-conf { border: 0; padding: 0; gap: 6px; }
 .st-conf label { font-size: 14px; }
 .kab-tbl td .pay-b { margin-top: 0; vertical-align: 1px; }
+
+/* правка: блок клиента под таблицей, кнопки сохранения сразу под ним (07.11.2026) */
+.smeta-edit { margin: 16px 0 6px; }
