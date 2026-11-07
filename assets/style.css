@@ -1114,3 +1114,8 @@ form.lead.flash-on { animation: flashOn 1.6s ease-out; }
 .st-conf label { display: flex; align-items: center; gap: 6px; }
 .st-btns { display: flex; gap: 6px; }
 .st-col .st-note { display: block; margin: 0; } .st-note.bad { color: var(--bad); }
+
+/* строка заявки, вариант А (07.11.2026): подтверждение без рамки, кнопки в строку */
+.st-conf { border: 0; padding: 0; gap: 6px; }
+.st-conf label { font-size: 14px; }
+.kab-tbl td .pay-b { margin-top: 0; vertical-align: 1px; }

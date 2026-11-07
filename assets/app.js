@@ -1675,27 +1675,25 @@
     const payLeft = l => Math.max(0, Math.round((+l.total - +(l.paid || 0)) * 100) / 100);
     // отгрузка (07.11.2026): метка и «+ Отгрузка» — в карточке клиента у сотрудника
     // блок состояния ровной колонкой (07.11.2026): метки оплаты и отгрузки — одной строкой, под ними сумма оплат и «+ Отгрузка» на всю ширину
-    const payCell = l => {
-      const badges = (l.pay ? `<span class="pay-b ${l.pay}">${PAYT[l.pay]}</span>` : "")
-        + (l.ship ? `<span class="pay-b ${l.ship === "done" ? "paid" : "part"}">${l.ship === "done" ? "отгружен" : "отгружен частично"}</span>` : "");
-      return (badges ? `<div class="st-badges">${badges}</div>` : "")
-        + (admin && l.paid > 0 ? `<span class="muted small">оплачено ${fm2(l.paid)}${+l.total > 0 ? " из " + fm2(+l.total) : ""} BYN</span>` : "")
-        + (staff && l.ship !== "done" && (l.ship_need || []).length ? `<button class="cbtn ghost ship-new" type="button" data-ship-new="${l.id}">+ Отгрузка</button>` : "");
-    };
+    // строка заявки, вариант А (владелец 07.11.2026): метки — за суммой, «+ Отгрузка» — рядом с «Открыть и поправить», справа только состояние
+    const payBadges = l => (l.pay ? ` <span class="pay-b ${l.pay}">${PAYT[l.pay]}</span>` : "")
+      + (l.ship ? ` <span class="pay-b ${l.ship === "done" ? "paid" : "part"}">${l.ship === "done" ? "отгружен" : "отгружен частично"}</span>` : "")
+      + (admin && l.paid > 0 ? `<br><span class="muted small">оплачено ${fm2(l.paid)}${+l.total > 0 ? " из " + fm2(+l.total) : ""} BYN</span>` : "");
+    const shipBtn = l => staff && l.ship !== "done" && (l.ship_need || []).length ? ` <button class="cbtn ghost" type="button" data-ship-new="${l.id}">+ Отгрузка</button>` : "";
     const leadTable = (list, who, pay) => `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>№</th><th>Дата</th>${who ? "<th>Кто</th>" : ""}<th>Что</th><th>Состояние</th></tr></thead><tbody>`
       + list.map(l => {
         const it = jl(l.items), was = staff ? jl(l.items0) : [];
         return `<tr${pay && l.pay && l.pay !== "nosum" ? ` class="pay-${l.pay}"` : ""}><td>${l.id}</td><td>${day(l.created_at)}</td>`
           + (who ? `<td>${pLink(l.user_id, l.phone, esc(l.name || "—"))}<br><a href="tel:${esc(l.phone)}">${esc(l.phone)}</a>${l.role ? `<br><span class="muted small">${esc(ROLE[l.role] || "")}${l.company ? ", " + esc(l.company) : ""}</span>` : ""}</td>` : "")
-          + `<td>${esc(l.topic || "Заявка")}${it.length ? " · " + leadMoney(it, l.total, l.sm) : ""}${l.comment ? `<br><span class="muted small">${esc(l.comment)}</span>` : ""}`
+          + `<td>${esc(l.topic || "Заявка")}${it.length ? " · " + leadMoney(it, l.total, l.sm) : ""}${pay ? payBadges(l) : ""}${l.comment ? `<br><span class="muted small">${esc(l.comment)}</span>` : ""}`
           + (staff && l.note ? `<br><span class="own-note small">Заметка: ${esc(l.note)}</span>` : "")
           + (l.made ? `<br><span class="muted small">${staff ? "оформил: " + esc(l.made_name || "сотрудник") : "оформлена AllVision"}</span>` : "")
           + (l.edited_at ? `<br><span class="muted small">${staff ? "изменил: " + esc(l.edited_name || "сотрудник") : "изменена AllVision"} ${dayT(l.edited_at)}</span>` : "")
           + (it.length ? `<details><summary>Состав</summary>${ulist(it)}</details>` : "")
           + (was.length ? `<details><summary>${l.made ? "Как оформили сначала" : "Как прислал клиент"}</summary>${ulist(was)}<p class="small">${leadMoney(was, l.total0, null)}</p></details>` : "")
           // сотруднику — у любой заявки, и у «Заказать звонок»: состав можно набрать прямо в ней (06.11.2026)
-          + (staff || it.length || l.sm ? `<p class="acts"><button class="cbtn" type="button" data-lopen="${l.id}">${staff ? "Открыть и поправить" : "Открыть"}</button></p>` : "") + "</td>"
-          + `<td>${staff ? `<div class="st-col"><select data-st="${l.id}" data-prev="${esc(l.status)}" data-tg="${l.tg ? 1 : ""}" aria-label="Состояние заявки №${l.id}">${Object.entries(ST).map(([k, t]) => `<option value="${k}"${k === l.status ? " selected" : ""}>${t}</option>`).join("")}</select><div class="st-conf" hidden></div><span class="st-note small" hidden></span>${pay ? payCell(l) : ""}</div>`
+          + (staff || it.length || l.sm ? `<p class="acts"><button class="cbtn" type="button" data-lopen="${l.id}">${staff ? "Открыть и поправить" : "Открыть"}</button>${pay ? shipBtn(l) : ""}</p>` : "") + "</td>"
+          + `<td>${staff ? `<div class="st-col"><select data-st="${l.id}" data-prev="${esc(l.status)}" data-tg="${l.tg ? 1 : ""}" aria-label="Состояние заявки №${l.id}">${Object.entries(ST).map(([k, t]) => `<option value="${k}"${k === l.status ? " selected" : ""}>${t}</option>`).join("")}</select><div class="st-conf" hidden></div><span class="st-note small" hidden></span></div>`
             : `<span class="st ${esc(l.status)}">${ST[l.status] || esc(l.status)}</span>`}</td></tr>`;
       }).join("") + "</tbody></table></div>";
     const leadNote = () => `<p class="muted small">«Открыть» заменяет текущий список для сметы.${staff ? " Открытую заявку правят на странице сметы и сохраняют кнопкой «Сохранить»: клиент увидит новый состав, а здесь останется, как он прислал." : ""}</p>`;
@@ -1968,7 +1966,7 @@
       note.hidden = true;
       if (s.value === s.dataset.prev) { conf.hidden = true; return; }
       const tg = !!s.dataset.tg, msg = s.value !== "new";
-      conf.innerHTML = (msg ? `<label class="${tg ? "" : "muted"}"><input type="checkbox" data-st-tg${tg ? " checked" : " disabled"}> Сообщить клиенту в Telegram</label>${tg ? "" : '<span class="muted small">у клиента нет Telegram — позвоните</span>'}` : "")
+      conf.innerHTML = (msg ? `<label class="small${tg ? "" : " muted"}"><input type="checkbox" data-st-tg${tg ? " checked" : " disabled"}> сообщить в Telegram</label>${tg ? "" : '<span class="muted small">у клиента нет Telegram — позвоните</span>'}` : "")
         + '<span class="st-btns"><button class="cbtn" type="button" data-st-ok>Подтвердить</button><button class="cbtn ghost" type="button" data-st-x>Отмена</button></span>';
       conf.hidden = false;
     };
