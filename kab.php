@@ -954,9 +954,18 @@ case 'lead_status':
     $need($staff);
     $st = (string) ($in['status'] ?? '');
     $need(in_array($st, KAB_LEAD_STATUS, true), 422);
-    $q = $db->prepare('UPDATE leads SET status = ?, status_at = ? WHERE id = ?');
-    $q->execute([$st, kab_now(), (int) ($in['id'] ?? 0)]);
-    reply(200, ['ok' => $q->rowCount() > 0]);
+    $q = $db->prepare('SELECT l.id, l.status, u.tg_id, u.status AS ust FROM leads l LEFT JOIN users u ON u.id = l.user_id WHERE l.id = ?');
+    $q->execute([(int) ($in['id'] ?? 0)]);
+    $l = $q->fetch();
+    $need((bool) $l, 404);
+    $db->prepare('UPDATE leads SET status = ?, status_at = ? WHERE id = ?')->execute([$st, kab_now(), (int) $l['id']]);
+    // клиенту с кабинетом — сообщение в Telegram при каждой смене, кроме «Новая» (владелец 07.11.2026: «Сразу»)
+    $texts = ['work' => 'AllVision взял в работу вашу заявку №%d на hdl.by. Менеджер свяжется с вами. Заявка: %s/kabinet/#leads',
+        'kp' => 'По вашей заявке №%d на hdl.by подготовлено коммерческое предложение. Посмотреть: %s/kabinet/#leads',
+        'closed' => 'Заявка №%d на hdl.by закрыта. Спасибо, что выбрали AllVision! Ваши заявки: %s/kabinet/#leads'];
+    $tg = $l['tg_id'] !== null && $l['ust'] !== 'blocked';
+    $sent = $tg && $st !== $l['status'] && isset($texts[$st]) ? kab_say($l['tg_id'], sprintf($texts[$st], (int) $l['id'], kab_site())) : false;
+    reply(200, ['ok' => true, 'sent' => $sent, 'tg' => $tg, 'same' => $st === $l['status']]);
 
 case 'users':  // сотрудник: все пользователи, сначала ждущие подтверждения
     $need($staff);

@@ -1961,6 +1961,11 @@
       const s = ev.target.closest("[data-st]"); if (!s) return;
       const r = await kabApi("lead_status", { id: +s.dataset.st, status: s.value }).catch(() => ({}));
       s.classList.toggle("bad", !r.ok);
+      // что ушло клиенту (владелец 07.11.2026: при смене состояния — сообщение в Telegram сразу)
+      let n = s.nextElementSibling;
+      if (!n || !n.classList.contains("st-note")) { s.insertAdjacentHTML("afterend", '<span class="st-note small"></span>'); n = s.nextElementSibling; }
+      n.className = "st-note small " + (r.sent ? "ok" : "muted");
+      n.textContent = !r.ok ? "" : r.sent ? "✓ Клиенту ушло сообщение в Telegram" : !r.tg ? "У клиента нет Telegram — позвоните" : s.value === "new" ? "" : r.same ? "" : "Сообщение в Telegram не ушло";
     };
     const pdKeys = ev => {  // Enter — сохранить, Esc — отмена
       if (!ev.target.closest("[data-pd-in]")) return;

@@ -1100,3 +1100,5 @@ form.lead.flash-on { animation: flashOn 1.6s ease-out; }
 .kab-flash.warn { background: #fff4d6; color: #6e5100; }
 @media (max-width: 640px) { .send-bar .btn.big { width: 100%; } }
 .sent-ok { padding: 12px 16px; border-radius: 12px; background: #eaf4ee; }
+
+.st-note { display: block; margin-top: 4px; } .st-note.ok { color: var(--ok); }
