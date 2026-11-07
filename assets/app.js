@@ -728,6 +728,8 @@
     const r = rows(), m = smGet() || {}, n = r.length + (m.extra || []).length, edNow = editing();
     $("[data-smeta-form]").hidden = !n || edNow;  // правку заявки сохраняют в неё же, новой заявкой не отправляют
     $("[data-smeta-tools]").hidden = !n;
+    const sb = $("[data-send-bar]");
+    if (sb) sb.hidden = !n || edNow || STAFF;
     // во время правки сохраняет только полоса сверху: нижние «Сохранить в кабинет» и «Сохранить для клиента» сохраняли не туда (06.11.2026)
     const kp = $("[data-smeta-save]"), fp = $("[data-smeta-for]"), fb = $("[data-for-box]");
     if (kp) kp.hidden = !ME || edNow;
@@ -1255,6 +1257,10 @@
     // вошедшему — «Сохранить в кабинет»: смета откроется с любого устройства (вкладка «Сметы» в кабинете). Смету или заявку от AllVision
     // клиент сохраняет к себе со скидками и своими строками: сервер берёт их из базы по sid / lid (06.11.2026)
     const keep = $("[data-smeta-save]");
+    if (keep && ME && !STAFF) {  // клиенту: сохранить — только себе, нам не придёт (владелец 07.11.2026)
+      keep.textContent = "Сохранить себе в кабинет";
+      keep.insertAdjacentHTML("afterend", ' <span class="muted small save-hint">— только для вас, нам не придёт</span> ');
+    }
     if (keep && ME) {
       keep.hidden = editing();
       keep.addEventListener("click", async () => {
@@ -1265,7 +1271,8 @@
         if (title === null) return;
         const j = await kabApi("smeta_save", { title, doc: docNow(), items: load(), ld: obj(sm.ld), extra: sm.extra || [], d: sm.d ?? null, sid: sm.id || 0, lid: sm.lid || 0 }).catch(() => ({}));
         if (j.ok) {  // список переносится в смету кабинета, корзина пустеет; дальше — кабинет, вкладка «Сметы», эта смета подсвечена (владелец 06.11.2026)
-          try { sessionStorage.setItem("hdl-flash", JSON.stringify({ text: `Смета «${j.title}» сохранена в кабинете.`, sid: j.id })); } catch {}
+          try { sessionStorage.setItem("hdl-flash", JSON.stringify(STAFF ? { text: `Смета «${j.title}» сохранена в кабинете.`, sid: j.id }
+            : { text: `Смета «${j.title}» сохранена у вас в кабинете. Нам она не пришла — чтобы мы посчитали, нажмите «Открыть» и затем «Отправить в AllVision на расчёт».`, sid: j.id, warn: true })); } catch {}
           save({}); docSet(""); smSet(null);
           location.href = "/kabinet/#smetas";
           return;
@@ -1462,6 +1469,16 @@
     });
   });
 
+  // ---- «Отправить в AllVision на расчёт» над формой сметы: опускает к форме и подсвечивает её (владелец 07.11.2026) ----
+  $("[data-send-go]")?.addEventListener("click", () => {
+    const w = $("[data-smeta-form]"), f = w && $("form", w);
+    if (!f) return;
+    f.scrollIntoView({ block: "center", behavior: "smooth" });
+    f.classList.remove("flash-on"); void f.offsetWidth; f.classList.add("flash-on");
+    const empty = ["name", "phone"].map(n => f.elements[n]).find(i => i && !i.value.trim());
+    setTimeout(() => (empty || f.elements.comment || f.elements.phone)?.focus({ preventScroll: true }), 400);
+  });
+
   // ---- заявки (формы с темой; анкета кабинета — отдельно) ----
   const prefill = f => { if (!ME) return; [["name", ME.name], ["phone", ME.phone]].forEach(([n, v]) => { if (f.elements[n] && !f.elements[n].value && v) f.elements[n].value = v; }); };
   $$("form.lead[data-topic]").forEach(prefill);
@@ -1488,10 +1505,17 @@
       const r = await fetch("/lead.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = await r.json();
       if (!j.ok) throw new Error(j.error || "fail");
-      msg.textContent = "Спасибо! Заявка принята, перезвоним в рабочее время."; msg.classList.add("ok");
+      msg.textContent = box ? `Заявка${j.id ? " №" + j.id : ""} отправлена в AllVision. Менеджер свяжется с вами${ME ? ", смета — во вкладке «Заявки» кабинета" : ""}.`
+        : "Спасибо! Заявка принята, перезвоним в рабочее время."; msg.classList.add("ok");
       f.reset();
       prefill(f);
-      if (box) { save({}); docSet(""); smSet(null); $("[data-doc-h]").textContent = DOC0; renderSmeta(); }
+      if (box) {
+        save({}); docSet(""); smSet(null); $("[data-doc-h]").textContent = DOC0; renderSmeta();
+        // смета пуста — форма прячется вместе с сообщением; итог показываем над списком (07.11.2026: клиент не видел, что заявка ушла)
+        $(".sent-ok")?.remove();
+        box.insertAdjacentHTML("beforebegin", `<p class="msg ok sent-ok" role="status">${esc(msg.textContent)}</p>`);
+        $(".sent-ok").scrollIntoView({ block: "center", behavior: "smooth" });
+      }
     } catch (e) {
       msg.innerHTML = 'Не удалось отправить. Позвоните: <a href="tel:+375293702020">+375 29 370-20-20</a> или напишите на <a href="mailto:info@allvision.by">info@allvision.by</a>.';
       msg.classList.add("bad");
@@ -1739,6 +1763,7 @@
       try { f = JSON.parse(sessionStorage.getItem("hdl-flash")); sessionStorage.removeItem("hdl-flash"); } catch {}
       if (!f) return;
       panelMsg(f.text);
+      if (f.warn) $(".kab-flash", panel)?.classList.add("warn");
       const b = f.lid ? $(`[data-lopen="${f.lid}"]`, panel) : f.sid ? $(`[data-open="${f.sid}"]`, panel) : null, tr = b && b.closest("tr");
       if (tr) { tr.classList.add("just-saved"); tr.scrollIntoView({ block: "center" }); }
     };
