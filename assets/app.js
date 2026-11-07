@@ -2076,12 +2076,13 @@
         disc, p.tg_username && "@" + esc(p.tg_username), blocked && "заблокирован"].filter(Boolean).join(" · ");
       panel.innerHTML = `<div class="kab-person"><div><h2>${esc(p.name || "—")}</h2><p class="muted">${info}</p></div>`
         + (blocked ? "" : `<div class="acts">${p.id ? '<button class="btn" type="button" data-new="s">Новая смета</button>' : ""}<button class="btn${p.id ? " ghost" : ""}" type="button" data-new="l">Новая заявка</button></div>`) + "</div>"
+        // сметы — над заявками, чтобы состояния заявок были снизу рядом с оплатами и отгрузками (владелец 07.11.2026)
+        + (p.id ? "<h3>Сметы</h3>" + (j.smetas.length ? smetaTable(j.smetas, false) + smetaNote() : '<p class="muted">Смет нет.</p>')
+          : '<p class="muted small">У человека нет кабинета на сайте: смету ему сохранить некуда. Оформите заявку и пошлите PDF.</p>')
         + "<h3>Заявки</h3>" + (admin && j.ckey ? payBar(j) : "") + '<div class="pay-box" data-ship-box hidden></div>'
         + (j.leads.length ? leadTable(j.leads, false, true) + '<p class="muted small pay-legend"><span class="pay-b paid">оплачен</span> <span class="pay-b part">частично</span> <span class="pay-b none">не оплачен</span></p>' : '<p class="muted">Заявок нет.</p>')
         + (admin && (j.pays || []).length ? "<h3>Движение денег</h3>" + payTable(j.pays) : "")
-        + ((j.ships || []).length ? "<h3>Отгрузки</h3>" + shipTable(j.ships) : "")
-        + (p.id ? "<h3>Сметы</h3>" + (j.smetas.length ? smetaTable(j.smetas, false) + smetaNote() : '<p class="muted">Смет нет.</p>')
-          : '<p class="muted small">У человека нет кабинета на сайте: смету ему сохранить некуда. Оформите заявку и пошлите PDF.</p>');
+        + ((j.ships || []).length ? "<h3>Отгрузки</h3>" + shipTable(j.ships) : "");
       panel.onclick = listClicks;
       panel.onchange = statusChange;
       panel.onkeydown = pdKeys;
