@@ -43,10 +43,12 @@ $need = function (bool $cond, int $code = 403) { if (!$cond) reply($code, ['ok' 
 // заявка: sm — состав для «Открыть» (у старых заявок пусто: собирается из строк items); edited_at — правил сотрудник, made — оформил сотрудник;
 // сотруднику ещё кто правил и оформил, как прислал клиент (items0, total0) и личная скидка клиента (udisc)
 // ver — номер версии для проверки «уже изменил другой»; note — заметка для своих (клиенту не отдаётся)
+// paid — сумма приходных ордеров по заявке (07.11.2026): сотруднику отдаётся только состояние оплаты (pay), суперадмину ещё сумма
 $leadSql = 'SELECT l.id, l.user_id, l.created_at, l.name, l.phone, l.topic, l.page, l.comment, l.items, l.total, l.status, l.status_at, l.sm, l.items0, l.total0, l.edited_at, l.made_by, l.ver, l.note,
+    (SELECT COALESCE(SUM(p.to_lead), 0) FROM pays p WHERE p.lead_id = l.id AND p.deleted_at IS NULL) AS paid,
     u.role, u.company, u.tg_username, u.discount AS udisc, e.name AS edited_name, e.tg_name AS edited_tg, mk.name AS made_name, mk.tg_name AS made_tg
     FROM leads l LEFT JOIN users u ON u.id = l.user_id LEFT JOIN users e ON e.id = l.edited_by LEFT JOIN users mk ON mk.id = l.made_by';
-$leadRow = function (array $r) use ($staff): array {
+$leadRow = function (array $r) use ($staff, $admin): array {
     $r['sm'] = json_decode((string) $r['sm']) ?: null;
     // состав, записанный до 06.11.2026 с пустыми items или ld как [] — отдаём объектами, иначе страница теряет скидки в строках
     if ($r['sm'] instanceof stdClass) {
@@ -57,6 +59,11 @@ $leadRow = function (array $r) use ($staff): array {
     $r['user_id'] = $r['user_id'] === null ? null : (int) $r['user_id'];
     $r['udisc'] = $r['udisc'] === null ? null : (float) $r['udisc'];
     $r['total'] = $r['total'] === null ? null : (float) $r['total'];  // с копейками, если они есть у своих строк
+    // оплата: paid — оплачен, part — частично, none — не оплачен, nosum — у заявки нет суммы и оплат нет
+    $paid = round((float) $r['paid'], 2);
+    unset($r['paid']);
+    if ($staff) $r['pay'] = $paid <= 0 ? ((float) $r['total'] > 0 ? 'none' : 'nosum') : ((float) $r['total'] > 0 && $paid + 0.005 < (float) $r['total'] ? 'part' : 'paid');
+    if ($admin) $r['paid'] = $paid;
     $r['ver'] = (int) $r['ver'];
     $r['note'] = (string) $r['note'];
     $r['edited_name'] = $r['edited_at'] ? ($r['edited_name'] ?: $r['edited_tg']) : null;
@@ -66,6 +73,58 @@ $leadRow = function (array $r) use ($staff): array {
     if (!$staff) unset($r['role'], $r['company'], $r['tg_username'], $r['udisc'], $r['items0'], $r['total0'], $r['edited_name'], $r['made_name'], $r['note']);
     return $r;
 };
+// деньги клиента (07.11.2026): ключи — пользователь кабинета и его телефон (заявки без входа с того же номера); первый ключ — основной
+$payKeys = function (string $ck) use ($db): array {
+    if (preg_match('/^u(\d+)$/', $ck, $m)) {
+        $q = $db->prepare('SELECT id, phone FROM users WHERE id = ?');
+        $q->execute([(int) $m[1]]);
+        $u = $q->fetch();
+        if (!$u) return [];
+        $pk = kab_phone_key($u['phone']);
+        return $pk !== '' ? ['u' . $u['id'], 't' . $pk] : ['u' . $u['id']];
+    }
+    if (preg_match('/^t(\d{7,9})$/', $ck, $m)) {
+        foreach ($db->query('SELECT id, phone FROM users') as $u) if (kab_phone_key($u['phone']) === $m[1]) return ['u' . $u['id'], $ck];
+        return [$ck];
+    }
+    return [];
+};
+$payBal = function (array $keys) use ($db): float {  // баланс: приходные сверх заказов минус зачёты и выдачи
+    if (!$keys) return 0.0;
+    $q = $db->prepare("SELECT COALESCE(SUM(CASE WHEN kind = 'in' THEN amount - to_lead ELSE -amount END), 0) FROM pays WHERE deleted_at IS NULL AND ckey IN ("
+        . implode(',', array_fill(0, count($keys), '?')) . ')');
+    $q->execute($keys);
+    return round((float) $q->fetchColumn(), 2);
+};
+$payLead = function (int $id) use ($db, $payKeys): ?array {  // заказ: сумма, оплачено, чьи деньги
+    $q = $db->prepare('SELECT l.id, l.user_id, l.phone, l.total, (SELECT COALESCE(SUM(p.to_lead), 0) FROM pays p WHERE p.lead_id = l.id AND p.deleted_at IS NULL) AS paid FROM leads l WHERE l.id = ?');
+    $q->execute([$id]);
+    $l = $q->fetch();
+    if (!$l) return null;
+    $keys = $payKeys($l['user_id'] !== null ? 'u' . (int) $l['user_id'] : 't' . kab_phone_key($l['phone']));
+    $tot = (float) $l['total'];
+    return ['id' => (int) $l['id'], 'total' => $tot, 'left' => $tot > 0 ? max(0.0, round($tot - (float) $l['paid'], 2)) : null, 'keys' => $keys];
+};
+$payIns = function (string $kind, string $on, int $lid, float $amt, float $to, string $ck, string $note) use ($db, $me): string {  // номер ПО/ЗА/ВК-ГГГГ-NNN
+    $y = (int) substr($on, 0, 4);
+    $db->beginTransaction();
+    $q = $db->prepare('SELECT COALESCE(MAX(seq), 0) + 1 FROM pays WHERE year = ? AND kind = ?');
+    $q->execute([$y, $kind]);
+    $seq = (int) $q->fetchColumn();
+    $num = sprintf('%s-%d-%03d', ['in' => 'ПО', 'alloc' => 'ЗА', 'out' => 'ВК'][$kind], $y, $seq);
+    $db->prepare('INSERT INTO pays (num, year, seq, kind, lead_id, amount, to_lead, ckey, paid_on, note, made_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        ->execute([$num, $y, $seq, $kind, $lid, $amt, $to, $ck, $on, kab_clean($note, 300), $me['id'], kab_now()]);
+    $db->commit();
+    return $num;
+};
+$payIn = function (array $in): array {  // сумма и дата из формы: «1 250,50», дата ГГГГ-ММ-ДД (иначе сегодня)
+    $amt = round((float) str_replace([' ', "\u{a0}", ','], ['', '', '.'], (string) ($in['amount'] ?? '0')), 2);
+    $on = (string) ($in['date'] ?? '');
+    if (!preg_match('/^(20\d\d)-(\d\d)-(\d\d)$/', $on, $m) || !checkdate((int) $m[2], (int) $m[3], (int) $m[1])) $on = date('Y-m-d');
+    if ($amt <= 0 || $amt > 100000000) reply(422, ['ok' => false, 'error' => 'amount']);
+    return [$amt, $on];
+};
+
 // смета: правил сотрудник — ему кто, клиенту — что AllVision. udisc — личная скидка владельца сметы: сотрудник, открыв чужую смету, видит его цены
 $smetaSql = 'SELECT s.id, s.user_id, s.title, s.doc, s.disc, s.made_by, s.items, s.ld, s.extra, s.updated_at, s.edited_at, s.ver, s.project, u.name, u.tg_name, u.company, u.role, u.discount AS udisc,
     m.name AS made_name, m.tg_name AS made_tg, e.name AS edited_name, e.tg_name AS edited_tg
@@ -711,7 +770,71 @@ case 'person':  // сотрудник: карточка — человек, ег
         $q->execute([$p['id']]);
         $smetas = array_map($smetaRow, $q->fetchAll());
     }
-    reply(200, ['ok' => true, 'person' => $p, 'leads' => $leads, 'smetas' => $smetas]);
+    $pays = [];  // деньги человека — только суперадмину: документы по порядку и баланс
+    $ckey = $p['id'] ? 'u' . $p['id'] : 't' . $p['key'];
+    $pk = $payKeys($ckey);
+    if ($admin && $pk) {
+        $q = $db->prepare('SELECT p.id, p.num, p.kind, p.lead_id, p.amount, p.to_lead, p.paid_on, p.note, p.created_at, u.name, u.tg_name FROM pays p LEFT JOIN users u ON u.id = p.made_by
+            WHERE p.deleted_at IS NULL AND p.ckey IN (' . implode(',', array_fill(0, count($pk), '?')) . ') ORDER BY p.paid_on, p.id');
+        $q->execute($pk);
+        $pays = array_map(function ($r) {
+            return ['id' => (int) $r['id'], 'num' => $r['num'], 'kind' => $r['kind'], 'lead_id' => (int) $r['lead_id'], 'amount' => (float) $r['amount'], 'to_lead' => (float) $r['to_lead'],
+                'paid_on' => $r['paid_on'], 'note' => (string) $r['note'], 'created_at' => $r['created_at'], 'who' => $r['name'] ?: $r['tg_name']];
+        }, $q->fetchAll());
+    }
+    $out = ['ok' => true, 'person' => $p, 'leads' => $leads, 'smetas' => $smetas];
+    if ($admin) $out += ['pays' => $pays, 'balance' => $payBal($pk), 'ckey' => $pk[0] ?? ''];
+    reply(200, $out);
+
+case 'pay_add':  // суперадмин: приходный ордер — сумма от покупателя по заказу; сверх остатка — на баланс клиента; без заказа — аванс (владелец 07.11.2026)
+    $need($post, 405);
+    $need($admin);
+    [$amt, $on] = $payIn($in);
+    if ($lid = (int) ($in['lead_id'] ?? 0)) {
+        $l = $payLead($lid);
+        $need((bool) $l, 404);
+        $to = $l['left'] === null || !$l['keys'] ? $amt : min($amt, $l['left']);  // у заказа без суммы (или без телефона) — всё в заказ
+        $ck = $l['keys'][0] ?? '';
+    } else {
+        $keys = $payKeys((string) ($in['client'] ?? ''));
+        $need((bool) $keys, 404);
+        [$to, $ck] = [0.0, $keys[0]];
+    }
+    $num = $payIns('in', $on, $lid, $amt, $to, $ck, (string) ($in['note'] ?? ''));
+    reply(200, ['ok' => true, 'num' => $num, 'amount' => $amt, 'to_lead' => $to, 'rest' => round($amt - $to, 2)]);
+
+case 'pay_alloc':  // суперадмин: зачёт аванса — с баланса клиента в его заказ
+    $need($post, 405);
+    $need($admin);
+    [$amt, $on] = $payIn($in);
+    $l = $payLead((int) ($in['lead_id'] ?? 0));
+    $need($l && $l['keys'], 404);
+    if ($amt > $payBal($l['keys']) + 0.005) reply(422, ['ok' => false, 'error' => 'balance']);
+    if ($l['left'] !== null && $amt > $l['left'] + 0.005) reply(422, ['ok' => false, 'error' => 'left']);
+    $num = $payIns('alloc', $on, $l['id'], $amt, $amt, $l['keys'][0], (string) ($in['note'] ?? ''));
+    reply(200, ['ok' => true, 'num' => $num, 'amount' => $amt]);
+
+case 'pay_out':  // суперадмин: выдать клиенту деньги с баланса
+    $need($post, 405);
+    $need($admin);
+    [$amt, $on] = $payIn($in);
+    $keys = $payKeys((string) ($in['client'] ?? ''));
+    $need((bool) $keys, 404);
+    if ($amt > $payBal($keys) + 0.005) reply(422, ['ok' => false, 'error' => 'balance']);
+    $num = $payIns('out', $on, 0, $amt, 0.0, $keys[0], (string) ($in['note'] ?? ''));
+    reply(200, ['ok' => true, 'num' => $num, 'amount' => $amt]);
+
+case 'pay_del':  // суперадмин: удалить документ, внесённый по ошибке; номер остаётся занятым. Приходный, чьи деньги с баланса уже ушли, — нельзя
+    $need($post, 405);
+    $need($admin);
+    $q = $db->prepare('SELECT * FROM pays WHERE id = ? AND deleted_at IS NULL');
+    $q->execute([(int) ($in['id'] ?? 0)]);
+    $r = $q->fetch();
+    $need((bool) $r, 404);
+    $rest = $r['kind'] === 'in' ? (float) $r['amount'] - (float) $r['to_lead'] : 0.0;
+    if ($rest > 0.005 && $payBal($payKeys((string) $r['ckey'])) - $rest < -0.005) reply(409, ['ok' => false, 'error' => 'used']);
+    $db->prepare('UPDATE pays SET deleted_at = ?, deleted_by = ? WHERE id = ?')->execute([kab_now(), $me['id'], (int) $r['id']]);
+    reply(200, ['ok' => true]);
 
 case 'lead_new':  // сотрудник оформляет заявку: человеку из кабинета (user_id) или по имени и телефону, например по звонку (владелец 06.11.2026)
     $need($post, 405);
@@ -752,7 +875,10 @@ case 'users':  // сотрудник: все пользователи, снач�
     $need($staff);
     $rows = $db->query("SELECT id, tg_id, tg_username, tg_name, name, phone, company, unp, role, wanted, discount, status, admin, created_at, seen_at
         FROM users ORDER BY (wanted <> '') DESC, (role = 'user' AND status = 'active') DESC, (status = 'blocked'), created_at DESC LIMIT 1000")->fetchAll();  // сначала — кому ещё не отмечены права
-    $rows = array_map(function ($r) {  // числа числами при любой версии PHP; суперадмин и владелец — флажками, номер Telegram наружу не отдаём
+    // active — заявок человека не в состоянии «Закрыта» (владелец 07.11.2026: «должны видеть количество активных заказов»)
+    $act = $db->query("SELECT user_id, COUNT(*) FROM leads WHERE user_id IS NOT NULL AND status <> 'closed' GROUP BY user_id")->fetchAll(PDO::FETCH_KEY_PAIR);
+    $rows = array_map(function ($r) use ($act) {  // числа числами при любой версии PHP; суперадмин и владелец — флажками, номер Telegram наружу не отдаём
+        $r['active'] = (int) ($act[(int) $r['id']] ?? 0);
         $r['admin'] = kab_is_admin($r);
         $r['owner'] = kab_is_owner($r);
         $r['id'] = (int) $r['id'];

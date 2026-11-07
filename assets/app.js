@@ -1645,10 +1645,16 @@
         + `<td class="acts"><button class="cbtn" type="button" data-open="${s.id}">Открыть</button>${+s.user_id === +user.id || (staff && +s.made_by === +user.id) ? ` <button class="cbtn ghost" type="button" data-del="${s.id}">Удалить</button>` : ""}</td></tr>`).join("")
       + "</tbody></table></div>";
     const smetaNote = () => `<p class="muted small">* По сегодняшним ценам: со скидкой, указанной в смете, иначе${staff ? " с личной скидкой владельца сметы" : DISC ? ` с вашей скидкой ${pct(DISC)}` : " по розничным"}; без позиций «по запросу». «Открыть» заменяет текущий список для сметы.${staff ? " Открытую смету правят на странице сметы и сохраняют кнопкой «Сохранить»." : ""}</p>`;
-    const leadTable = (list, who) => `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>№</th><th>Дата</th>${who ? "<th>Кто</th>" : ""}<th>Что</th><th>Состояние</th></tr></thead><tbody>`
+    // оплата заявки (владелец 07.11.2026): в карточке клиента строка зелёная — оплачен, жёлтая — частично, красная — не оплачен
+    const fm2 = v => (+v).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\s/g, " ");  // деньги оплат — с копейками
+    const PAYT = { paid: "оплачен", part: "оплачен частично", none: "не оплачен", nosum: "сумма не задана" };
+    const payLeft = l => Math.max(0, Math.round((+l.total - +(l.paid || 0)) * 100) / 100);
+    const payCell = l => !l.pay ? "" : `<br><span class="pay-b ${l.pay}">${PAYT[l.pay]}</span>`
+      + (admin && l.paid > 0 ? `<br><span class="muted small">оплачено ${fm2(l.paid)}${+l.total > 0 ? " из " + fm2(+l.total) : ""} BYN</span>` : "");
+    const leadTable = (list, who, pay) => `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>№</th><th>Дата</th>${who ? "<th>Кто</th>" : ""}<th>Что</th><th>Состояние</th></tr></thead><tbody>`
       + list.map(l => {
         const it = jl(l.items), was = staff ? jl(l.items0) : [];
-        return `<tr><td>${l.id}</td><td>${day(l.created_at)}</td>`
+        return `<tr${pay && l.pay && l.pay !== "nosum" ? ` class="pay-${l.pay}"` : ""}><td>${l.id}</td><td>${day(l.created_at)}</td>`
           + (who ? `<td>${pLink(l.user_id, l.phone, esc(l.name || "—"))}<br><a href="tel:${esc(l.phone)}">${esc(l.phone)}</a>${l.role ? `<br><span class="muted small">${esc(ROLE[l.role] || "")}${l.company ? ", " + esc(l.company) : ""}</span>` : ""}</td>` : "")
           + `<td>${esc(l.topic || "Заявка")}${it.length ? " · " + leadMoney(it, l.total, l.sm) : ""}${l.comment ? `<br><span class="muted small">${esc(l.comment)}</span>` : ""}`
           + (staff && l.note ? `<br><span class="own-note small">Заметка: ${esc(l.note)}</span>` : "")
@@ -1659,7 +1665,7 @@
           // сотруднику — у любой заявки, и у «Заказать звонок»: состав можно набрать прямо в ней (06.11.2026)
           + (staff || it.length || l.sm ? `<p class="acts"><button class="cbtn" type="button" data-lopen="${l.id}">${staff ? "Открыть и поправить" : "Открыть"}</button></p>` : "") + "</td>"
           + `<td>${staff ? `<select data-st="${l.id}" aria-label="Состояние заявки №${l.id}">${Object.entries(ST).map(([k, t]) => `<option value="${k}"${k === l.status ? " selected" : ""}>${t}</option>`).join("")}</select>`
-            : `<span class="st ${esc(l.status)}">${ST[l.status] || esc(l.status)}</span>`}</td></tr>`;
+            : `<span class="st ${esc(l.status)}">${ST[l.status] || esc(l.status)}</span>`}${pay ? payCell(l) : ""}</td></tr>`;
       }).join("") + "</tbody></table></div>";
     const leadNote = () => `<p class="muted small">«Открыть» заменяет текущий список для сметы.${staff ? " Открытую заявку правят на странице сметы и сохраняют кнопкой «Сохранить»: клиент увидит новый состав, а здесь останется, как он прислал." : ""}</p>`;
     // заявка без состава для правки (до 06.11.2026) — состав из её строк: артикул из каталога — строкой каталога, остальное (своя строка,
@@ -1752,8 +1758,96 @@
       }
       return true;
     };
+    // деньги клиента (суперадмин, 07.11.2026): приходный ордер (сверх остатка — на баланс), зачёт аванса с баланса в заказ, выдача клиенту
+    const PAYK = { in: ["Приходный ордер", 1], alloc: ["Зачёт аванса", -1], out: ["Выдача клиенту", -1] };
+    const sgn = v => (v > 0.004 ? "+" : v < -0.004 ? "−" : "") + fm2(Math.abs(v));
+    const parseAmt = v => Math.round(+String(v).replace(/[\s\u00a0]/g, "").replace(",", ".") * 100) / 100;
+    const payBar = j => {
+      const b = +j.balance || 0;
+      return `<div class="pay-bar"><span class="pay-bal${b > 0.004 ? " pos" : b < -0.004 ? " neg" : ""}">Баланс клиента: <b>${sgn(b)} BYN</b></span>`
+        + '<button class="btn ghost" type="button" data-pay-new="in">+ Приходный ордер</button>'
+        + (b > 0.004 ? '<button class="btn ghost" type="button" data-pay-new="alloc">Отнести к заказу</button><button class="btn ghost" type="button" data-pay-new="out">Выдать клиенту</button>' : "")
+        + '</div><div class="pay-box" data-pay-box hidden></div>';
+    };
+    const payTable = list => {
+      let bal = 0;
+      return `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Документ</th><th>Дата</th><th>Заказ</th><th class="num">Сумма, BYN</th><th class="num">Баланс, BYN</th><th></th></tr></thead><tbody>`
+        + list.map(p => {
+          bal += p.kind === "in" ? p.amount - p.to_lead : -p.amount;
+          const ord = p.lead_id ? `№${p.lead_id}` + (p.kind === "in" && p.to_lead < p.amount - 0.004 ? `: ${fm2(p.to_lead)}` : "") : "—";
+          return `<tr><td>${PAYK[p.kind][0]} ${esc(p.num)}${p.note ? `<br><span class="small">${esc(p.note)}</span>` : ""}<br><span class="muted small">провёл(а): ${esc(p.who || "—")}</span></td>`
+            + `<td>${day(p.paid_on)}</td><td>${ord}</td><td class="num">${sgn(PAYK[p.kind][1] * p.amount)}</td><td class="num">${sgn(bal)}</td>`
+            + `<td><button class="cbtn ghost" type="button" data-pay-del="${p.id}" data-pay-num="${esc(p.num)}">Удалить</button></td></tr>`;
+        }).join("") + "</tbody></table></div>";
+    };
+    const payOpts = list => list.map(l => `<option value="${l.id}">Заявка №${l.id} от ${day(l.created_at)} — ${+l.total > 0 ? (l.pay === "paid" ? "оплачен" : "осталось " + fm2(payLeft(l)) + " BYN") : "сумма не задана"}</option>`).join("");
+    const paySel = box => { const s = $("[data-pay-lead]", box), lid = s ? +s.value : 0; return [lid, SHOWN.leads.find(x => +x.id === lid)]; };
+    const payDef = box => {  // сумма по умолчанию: выдача — весь баланс, зачёт — сколько хватает на остаток заказа
+      const bal = SHOWN.balance, [, l] = paySel(box);
+      return box.dataset.k === "alloc" && l && +l.total > 0 ? Math.min(bal, payLeft(l)) : bal;
+    };
+    const payHint = box => {  // приходный ордер: сколько в заказ, сколько на баланс
+      const h = $("[data-pay-hint]", box);
+      if (!h) return;
+      const amt = parseAmt($("[data-pay-amt]", box).value), [lid, l] = paySel(box);
+      const to = !lid ? 0 : l && +l.total > 0 ? Math.min(amt, payLeft(l)) : amt, rest = Math.round((amt - to) * 100) / 100;
+      h.hidden = !(amt > 0) || (lid && !(rest > 0.004));
+      h.textContent = !lid ? `${fm2(amt)} BYN ляжет на баланс клиента (аванс).` : `${fm2(to)} BYN уйдёт в оплату заявки №${lid}, ${fm2(rest)} BYN ляжет на баланс клиента.`;
+    };
+    const payClick = async ev => {
+      const box = $("[data-pay-box]", panel), nb = ev.target.closest("[data-pay-new]");
+      if (nb && box) {
+        const k = nb.dataset.payNew, open = (SHOWN.leads || []).filter(l => l.pay !== "paid"), bal = SHOWN.balance;
+        const title = { in: "Приходный ордер", alloc: "Отнести к заказу с баланса", out: "Выдать клиенту с баланса" }[k];
+        const sel = k === "out" ? "" : `<label class="wide">Заказ<select data-pay-lead>${payOpts(open)}${k === "in" ? '<option value="0">Без заказа — на баланс клиента</option>' : ""}</select></label>`;
+        box.dataset.k = k;
+        box.innerHTML = `<h4>${title}</h4>` + (k !== "in" ? `<p class="muted small">На балансе ${fm2(bal)} BYN.</p>` : "")
+          + (k === "alloc" && !open.length ? '<p>Неоплаченных заказов нет.</p><p class="acts"><button class="btn ghost" type="button" data-pay-x>Закрыть</button></p>'
+            : `<div class="pay-f"><label>Дата<input type="date" data-pay-date value="${new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)}"></label>`
+              + `<label>Сумма, BYN<input type="text" inputmode="decimal" data-pay-amt placeholder="1 250,00"></label>${sel}`
+              + `<label class="wide">Комментарий<input type="text" maxlength="300" data-pay-note placeholder="${k === "out" ? "наличными / на карту, п/п №" : "наличные, кассовый чек / безнал, п/п №"}"></label></div>`
+              + '<p class="pay-hint" data-pay-hint hidden></p>'
+              + `<p class="acts"><button class="btn" type="button" data-pay-go>${k === "out" ? "Выдать" : "Провести"}</button> <button class="btn ghost" type="button" data-pay-x>Отмена</button> <span class="msg small" data-pay-msg role="status"></span></p>`);
+        box.oninput = () => payHint(box);
+        box.onchange = e => { if (e.target.closest("[data-pay-lead]") && k === "alloc") $("[data-pay-amt]", box).value = fm2(payDef(box)); payHint(box); };
+        box.hidden = false;
+        const a = $("[data-pay-amt]", box);
+        if (a) { if (k !== "in") a.value = fm2(payDef(box)); a.focus(); }
+        return true;
+      }
+      if (ev.target.closest("[data-pay-x]") && box) { box.hidden = true; box.innerHTML = ""; return true; }
+      const go = ev.target.closest("[data-pay-go]");
+      if (go && box) {
+        const k = box.dataset.k, msg = $("[data-pay-msg]", box), [lid, l] = paySel(box), bal = SHOWN.balance, amt = parseAmt($("[data-pay-amt]", box).value);
+        const bad = t => { msg.textContent = t; msg.className = "msg small bad"; return true; };
+        if (!(amt > 0)) return bad("Впишите сумму.");
+        if (k !== "in" && amt > bal + 0.005) return bad(`На балансе только ${fm2(bal)} BYN.`);
+        if (k === "alloc" && l && +l.total > 0 && amt > payLeft(l) + 0.005) return bad(`По заявке №${lid} осталось ${fm2(payLeft(l))} BYN.`);
+        go.disabled = true; msg.textContent = "Проводим…"; msg.className = "msg small";
+        const r = await kabApi(k === "in" ? "pay_add" : k === "alloc" ? "pay_alloc" : "pay_out",
+          { lead_id: lid, client: SHOWN.ckey, amount: amt, date: $("[data-pay-date]", box).value, note: $("[data-pay-note]", box).value }).catch(() => ({}));
+        go.disabled = false;
+        if (!r.ok) return bad(r.error === "balance" ? "На балансе не хватает — обновите страницу." : r.error === "left" ? "Сумма больше остатка по заказу." : "Не удалось провести — обновите страницу и попробуйте ещё раз.");
+        const text = k === "in" ? `Приходный ордер ${r.num} проведён: ${fm2(r.amount)} BYN${lid ? ` по заявке №${lid}` : " на баланс клиента"}${lid && r.rest > 0.004 ? `, ${fm2(r.rest)} BYN — на баланс клиента` : ""}.`
+          : k === "alloc" ? `Зачёт аванса ${r.num}: ${fm2(r.amount)} BYN с баланса отнесено к заявке №${lid}.` : `Выдача клиенту ${r.num}: ${fm2(r.amount)} BYN с баланса.`;
+        try { sessionStorage.setItem("hdl-flash", JSON.stringify(lid ? { text, lid } : { text })); } catch {}
+        route();
+        return true;
+      }
+      const del = ev.target.closest("[data-pay-del]");
+      if (del) {
+        if (!confirm(`Удалить ${del.dataset.payNum}? Оплата и баланс клиента пересчитаются.`)) return true;
+        const r = await kabApi("pay_del", { id: +del.dataset.payDel }).catch(() => ({}));
+        if (!r.ok && r.error === "used") { alert(`Деньги из ${del.dataset.payNum} уже отнесены к заказу или выданы клиенту. Сначала удалите тот зачёт или выдачу.`); return true; }
+        if (r.ok) try { sessionStorage.setItem("hdl-flash", JSON.stringify({ text: `${del.dataset.payNum} удалён.` })); } catch {}
+        route();
+        return true;
+      }
+      return false;
+    };
     const listClicks = async ev => {
       if (await pdClick(ev)) return;
+      if (await payClick(ev)) return;
       const o = ev.target.closest("[data-open]"), lo = ev.target.closest("[data-lopen]"), d = ev.target.closest("[data-del]"), nw = ev.target.closest("[data-new]");
       if (o || lo) {
         const b = o || lo;
@@ -1854,13 +1948,15 @@
       const j = await kabApi("person&" + (key[0] === "u" ? "uid=" : "phone=") + encodeURIComponent(key.slice(1))).catch(() => ({}));
       if (!j.ok) { panel.innerHTML = j.status === 404 ? "<p>Такого человека не нашли. Поищите по имени или телефону.</p>" : ""; if (j.status !== 404) failed(); else flash(); return; }
       const p = PERSON = j.person, blocked = p.status === "blocked";
-      SHOWN = { leads: j.leads, smetas: j.smetas };
+      SHOWN = { leads: j.leads, smetas: j.smetas, pays: j.pays || [], balance: +j.balance || 0, ckey: j.ckey || "" };
       const disc = p.id ? `<span data-pd>${p.discount > 0 ? "скидка " + pct(p.discount) : "без скидки"}${blocked ? "" : ' <button class="cbtn ghost" type="button" data-pd-edit>Изменить</button>'}</span>` : "";
       const info = [p.phone && `<a href="tel:${esc(p.phone)}">${esc(p.phone)}</a>`, p.company && esc(p.company), p.id ? esc(ROLE[p.role] || "") : "без кабинета на сайте",
         disc, p.tg_username && "@" + esc(p.tg_username), blocked && "заблокирован"].filter(Boolean).join(" · ");
       panel.innerHTML = `<div class="kab-person"><div><h2>${esc(p.name || "—")}</h2><p class="muted">${info}</p></div>`
         + (blocked ? "" : `<div class="acts">${p.id ? '<button class="btn" type="button" data-new="s">Новая смета</button>' : ""}<button class="btn${p.id ? " ghost" : ""}" type="button" data-new="l">Новая заявка</button></div>`) + "</div>"
-        + "<h3>Заявки</h3>" + (j.leads.length ? leadTable(j.leads, false) : '<p class="muted">Заявок нет.</p>')
+        + "<h3>Заявки</h3>" + (admin && j.ckey ? payBar(j) : "")
+        + (j.leads.length ? leadTable(j.leads, false, true) + '<p class="muted small pay-legend"><span class="pay-b paid">оплачен</span> <span class="pay-b part">частично</span> <span class="pay-b none">не оплачен</span></p>' : '<p class="muted">Заявок нет.</p>')
+        + (admin && (j.pays || []).length ? "<h3>Движение денег</h3>" + payTable(j.pays) : "")
         + (p.id ? "<h3>Сметы</h3>" + (j.smetas.length ? smetaTable(j.smetas, false) + smetaNote() : '<p class="muted">Смет нет.</p>')
           : '<p class="muted small">У человека нет кабинета на сайте: смету ему сохранить некуда. Оформите заявку и пошлите PDF.</p>');
       panel.onclick = listClicks;
@@ -1947,7 +2043,7 @@
       const shown = j.users.filter(UCAT.find(c => c[0] === uf)[2]);
       panel.innerHTML = `<div class="kab-cats" role="group" aria-label="Категория"><span class="muted small">Категория:</span>`
         + UCAT.filter(([k]) => k === "all" || ucnt[k] || k === "new").map(([k, t]) => `<button type="button" class="kab-cat${k === uf ? " on" : ""}" data-ucat="${k}" aria-pressed="${k === uf}">${t} <b>${ucnt[k]}</b></button>`).join("") + "</div>"
-        + `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Кто</th><th>Категория</th><th>Скидка, %</th><th></th></tr></thead><tbody>`
+        + `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Кто</th><th>Категория</th><th class="num">Активных заказов</th><th>Скидка, %</th><th></th></tr></thead><tbody>`
         + shown.map(u => {
           const self = +u.id === +j.me, blocked = u.status === "blocked", edit = admin && !self && !u.owner;
           const info = [u.phone, u.company, u.unp && "УНП " + u.unp, u.status === "form" && "анкета не заполнена"].filter(Boolean).map(esc).join(" · ");
@@ -1959,7 +2055,7 @@
               : '<span class="muted small">Подтверждает суперадмин</span>')
             : '<button class="cbtn ghost" type="button" data-do="set">Сохранить</button>' + (edit ? ` <button class="cbtn ghost" type="button" data-do="${blocked ? "unblock" : "block"}">${blocked ? "Разблокировать" : "Заблокировать"}</button>` : "");
           return `<tr data-id="${u.id}"${blocked ? ' class="blocked"' : ""}><td><a href="#p=u${u.id}"><b>${esc(u.name || u.tg_name || "—")}</b></a>${u.tg_username ? ` · @${esc(u.tg_username)}` : ""}${blocked ? " · заблокирован" : ""}${u.role === "user" && !u.wanted && !blocked ? ' <span class="st new">без прав</span>' : ""}<br><span class="muted small">${info}</span></td>`
-            + `<td>${role}</td><td><input class="pct" type="number" min="0" max="50" step="0.5" value="${+u.discount || 0}" data-disc aria-label="Скидка, %"></td><td class="acts">${acts}<p class="msg small"></p></td></tr>`;
+            + `<td>${role}</td><td class="num">${u.active ? `<a href="#p=u${u.id}"><b>${u.active}</b></a>` : '<span class="muted">—</span>'}</td><td><input class="pct" type="number" min="0" max="50" step="0.5" value="${+u.discount || 0}" data-disc aria-label="Скидка, %"></td><td class="acts">${acts}<p class="msg small"></p></td></tr>`;
         }).join("") + '</tbody></table></div><p class="muted small">'
         + (admin ? "Все регистрируются пользователями — им доступны сметы и заявки. Категорию и скидку отмечаете вы, затем «Сохранить»; человеку придёт сообщение в Telegram. Клиент — ещё документы по объекту, дилер — цены дилера. Суперадмин — сотрудник, который тоже может блокировать и назначать категории."
           : "Вы можете менять скидку: впишите процент и нажмите «Сохранить», человеку придёт сообщение в Telegram. Категорию, блокировку и подтверждение запросов меняет суперадмин.")

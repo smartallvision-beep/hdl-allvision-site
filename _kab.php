@@ -97,6 +97,17 @@ function kab_db(): PDO {
     if (!in_array('pub_at', $trCols, true)) $alter('ALTER TABLE trips ADD COLUMN pub_at TEXT');
     // xdoc — форма КП «подробно» на момент сохранения: из неё компьютер AllVision делает Excel в папку объекта (шаг 3)
     if (!in_array('xdoc', $trCols, true)) $alter("ALTER TABLE trips ADD COLUMN xdoc TEXT DEFAULT ''");
+    // приходные ордера (владелец 07.11.2026): оплата покупателя по заявке, можно частями; вносит и видит только суперадмин.
+    // Номер ПО-ГГГГ-NNN по году даты оплаты; удалённый ордер остаётся с deleted_at — номер не переиспользуется
+    $db->exec("CREATE TABLE IF NOT EXISTS pays (id INTEGER PRIMARY KEY, num TEXT UNIQUE NOT NULL, year INTEGER, seq INTEGER, lead_id INTEGER NOT NULL,
+        amount REAL NOT NULL, paid_on TEXT, note TEXT DEFAULT '', made_by INTEGER, created_at TEXT, deleted_at TEXT, deleted_by INTEGER)");
+    // баланс клиента (07.11.2026): kind — in приходный ордер, alloc зачёт аванса с баланса в заказ, out выдача клиенту с баланса;
+    // to_lead — сколько из суммы ушло в оплату заказа (остаток приходного — на баланс); ckey — чьи деньги: u<пользователь> или t<телефон>; lead_id 0 — без заказа
+    $pyCols = array_column($db->query('PRAGMA table_info(pays)')->fetchAll(), 'name');
+    if (!in_array('kind', $pyCols, true)) $alter("ALTER TABLE pays ADD COLUMN kind TEXT NOT NULL DEFAULT 'in'");
+    if (!in_array('to_lead', $pyCols, true)) $alter('ALTER TABLE pays ADD COLUMN to_lead REAL');
+    if (!in_array('ckey', $pyCols, true)) $alter("ALTER TABLE pays ADD COLUMN ckey TEXT DEFAULT ''");
+    if (!in_array('to_lead', $pyCols, true)) $db->exec("UPDATE pays SET to_lead = amount, ckey = COALESCE((SELECT 'u' || user_id FROM leads WHERE leads.id = pays.lead_id AND user_id IS NOT NULL), '')");
     $ldCols = array_column($db->query('PRAGMA table_info(leads)')->fetchAll(), 'name');
     // made_by — заявку оформил сотрудник (поиск клиента, владелец 06.11.2026); ver — как у смет; note — заметка для своих, клиент её не видит
     foreach (['sm' => "TEXT DEFAULT ''", 'items0' => 'TEXT', 'total0' => 'INTEGER', 'edited_by' => 'INTEGER', 'edited_at' => 'TEXT', 'made_by' => 'INTEGER',
