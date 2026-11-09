@@ -255,6 +255,33 @@
     $$(".thumbs button").forEach(x => x.removeAttribute("aria-current"));
     b.setAttribute("aria-current", "true");
   }));
+  // свайп по большому фото (владелец 09.11.2026): влево — следующий снимок, вправо — предыдущий, по кругу; как нажатие на миниатюру
+  const galBox = $(".gallery .main"), th = $$(".thumbs button");
+  if (galBox && main && th.length > 1) {
+    let x0 = null, y0 = 0, dx = 0, horiz = null;
+    const cur = () => {
+      const i = th.findIndex(b => b.hasAttribute("aria-current"));
+      if (i >= 0) return i;
+      const j = th.findIndex(b => main.src.endsWith(b.dataset.src));
+      return j >= 0 ? j : 0;
+    };
+    const reset = () => { main.style.transition = "transform .2s"; main.style.transform = ""; x0 = null; };
+    galBox.addEventListener("touchstart", ev => { if (ev.touches.length !== 1) return; x0 = ev.touches[0].clientX; y0 = ev.touches[0].clientY; dx = 0; horiz = null; main.style.transition = ""; }, { passive: true });
+    galBox.addEventListener("touchmove", ev => {
+      if (x0 === null) return;
+      dx = ev.touches[0].clientX - x0; const dy = ev.touches[0].clientY - y0;
+      if (horiz === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) horiz = Math.abs(dx) > Math.abs(dy);
+      if (horiz) { ev.preventDefault(); main.style.transform = "translateX(" + (dx * 0.6) + "px)"; }
+    }, { passive: false });
+    const end = () => {
+      if (x0 === null) return;
+      const go = horiz && Math.abs(dx) > 40 ? (dx < 0 ? 1 : -1) : 0;
+      reset();
+      if (go) { const b = th[(cur() + go + th.length) % th.length]; b.click(); }
+    };
+    galBox.addEventListener("touchend", end);
+    galBox.addEventListener("touchcancel", reset);
+  }
   const add = $("[data-add]");
   $$(".variants button").forEach(b => b.addEventListener("click", () => {
     $$(".variants button").forEach(x => x.setAttribute("aria-checked", "false"));
