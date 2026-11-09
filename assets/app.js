@@ -1460,9 +1460,14 @@
   // ---- телефон: в пустом поле «+375 », дальше код оператора и номер по образцу +375 29 123-45-67; стёрли «+375» — любой номер как есть ----
   const BY = "+375 ";
   $$('input[name="phone"]').forEach(i => {
-    i.addEventListener("focus", () => { if (!i.value) { i.value = BY; requestAnimationFrame(() => i.setSelectionRange(BY.length, BY.length)); } });
+    // на телефоне касание ставит курсор в начало поля: переносим его в конец, а цифры, набранные перед «+375», ставим после (09.11.2026)
+    const toEnd = () => { const n = i.value.length; try { i.setSelectionRange(n, n); } catch (_) {} };
+    i.addEventListener("focus", () => { if (!i.value) i.value = BY; toEnd(); requestAnimationFrame(toEnd); setTimeout(toEnd, 60); });
+    ["click", "pointerup"].forEach(ev => i.addEventListener(ev, () => { if (i.value.startsWith("+375") && i.selectionStart < 5 && i.selectionStart === i.selectionEnd) toEnd(); }));
     i.addEventListener("blur", () => { if (i.value.trim() === "+375") i.value = ""; });
     i.addEventListener("input", ev => {
+      const lead = i.value.match(/^([\d\s()\-]+)\+375\s?(.*)$/);
+      if (lead) { i.value = BY + lead[1].replace(/\D/g, "") + lead[2].replace(/\D/g, ""); }
       if (!i.value.startsWith("+375") || (ev.inputType || "").startsWith("delete")) return;  // свой номер или стирание — не мешаем
       const d = i.value.slice(4).replace(/\D/g, "").slice(0, 9);
       i.value = BY + d.slice(0, 2) + (d.length > 2 ? " " + d.slice(2, 5) : "") + (d.length > 5 ? "-" + d.slice(5, 7) : "") + (d.length > 7 ? "-" + d.slice(7, 9) : "");
