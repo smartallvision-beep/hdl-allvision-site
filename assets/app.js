@@ -1035,13 +1035,18 @@
         const now = Math.round(leadRows(m).reduce((t, r) => t + (r.b != null ? r.b * r.q : 0), 0) * 100) / 100;
         if (Math.abs(now - +m.total) >= 0.005) diff = ` · у клиента ${fmt(+m.total)} BYN, по сегодняшним ценам ${fmt(now)} BYN`;
       }
+      // в заявке не осталось позиций: сохранить пустую нельзя — её закрывают (владелец 09.11.2026)
+      const emptyL = kind === "l" && m.had && d && !Object.keys(load()).length && !(m.extra || []).length;
       const cls = "ed-state " + (nw ? "new" : d ? "dirty" : "clean");
-      const text = nw ? (kind === "nl" ? "● Заявка ещё не создана" : "● Смета ещё не создана") : d ? "● Есть несохранённые изменения" : "✓ Всё сохранено" + (m.savedAt ? " в " + m.savedAt : "") + diff;
-      // кнопки видны всегда (владелец 07.11.2026): нечего сохранять — «Сохранить» серая; «Передать…» (смета) и «PDF» — рядом
+      const text = nw ? (kind === "nl" ? "● Заявка ещё не создана" : "● Смета ещё не создана") : emptyL ? "● В заявке не осталось позиций"
+        : d ? "● Есть несохранённые изменения" : "✓ Всё сохранено" + (m.savedAt ? " в " + m.savedAt : "") + diff;
+      // одна кнопка «Сохранить»: сохраняет, закрывает правку и возвращает к клиенту (владелец 09.11.2026: после «Сохранить» заявка
+      // «преследовала» по каталогу — правка оставалась открытой). «Передать…» (смета) и «PDF» — рядом
       const opt = (kind === "s" ? '<button class="btn ghost ed-opt" type="button" data-ed-move-go>Передать…</button>' : "") + '<button class="btn ghost ed-opt" type="button" data-ed-print>PDF</button>';
-      const btns = nw ? `<button class="btn" type="button" data-ed-save data-ret>Создать и вернуться</button><button class="btn ghost" type="button" data-ed-save>Создать</button>${opt}`
-        : d ? `<button class="btn" type="button" data-ed-save data-ret>Сохранить и вернуться</button><button class="btn ghost" type="button" data-ed-save>Сохранить</button>${opt}`
-          : (diff ? '<button class="btn ghost" type="button" data-ed-save>Сохранить по сегодняшним ценам</button>' : '<button class="btn ghost off" type="button" disabled title="Всё сохранено — менять нечего">Сохранить</button>')
+      const btns = nw ? `<button class="btn" type="button" data-ed-save data-ret>Создать</button>${opt}`
+        : emptyL ? `<button class="btn" type="button" data-ed-close>Закрыть заявку и вернуться</button>${opt}`
+        : d ? `<button class="btn" type="button" data-ed-save data-ret>Сохранить</button>${opt}`
+          : (diff ? '<button class="btn ghost" type="button" data-ed-save data-ret>Сохранить по сегодняшним ценам</button>' : "")
             + `${opt}<button class="btn" type="button" data-ed-back>Вернуться к клиенту</button>`;
       if (st.className !== cls || st.textContent !== text) { st.className = cls; st.textContent = text; }
       if (bt.dataset.k !== btns) { bt.dataset.k = btns; bt.innerHTML = btns; }
@@ -1101,7 +1106,7 @@
       const m = smGet() || {}, kind = m.edit, msg = $("[data-ed-msg]", edStrip);
       const say = (t, cls) => { msg.className = "msg " + (cls || ""); msg.textContent = t; };
       const L0 = load(), empty = !Object.keys(L0).length && !(m.extra || []).length;
-      if (empty && !(kind === "l" && !m.had)) return say(kind === "l" ? "Список пуст — сохранять нечего. Заявку можно закрыть: состояние «Закрыта»." : "Список пуст — добавьте позиции.", "bad");
+      if (empty && !(kind === "l" && !m.had)) return say(kind === "l" ? "Список пуст — сохранять нечего. Заявку можно закрыть кнопкой «Закрыть заявку и вернуться»." : "Список пуст — добавьте позиции.", "bad");
       const ni = ownNoName(m);
       if (ni >= 0) { NONAME = ni; renderSmeta(); const f = $(`.x-n[data-x="${ni}"]`, box); f?.scrollIntoView({ block: "center" }); f?.focus({ preventScroll: true }); return say("У своей строки нет названия — впишите его или уберите строку (×).", "bad"); }
       if (kind === "nl" && !m.uid && (String(m.ph || "").match(/\d/g) || []).length < 7) { $("[data-ed-phone]", edBox)?.focus(); return say("Укажите телефон.", "bad"); }
@@ -1187,7 +1192,15 @@
           if (a === "save") saveDoc(true); else if (a === "drop") leave(m);
           return;
         }
-        if (ev.target.closest("[data-ed-force]")) return saveDoc(false, true);
+        if (ev.target.closest("[data-ed-force]")) return saveDoc(true, true);
+        if (ev.target.closest("[data-ed-close]")) {  // пустая заявка: состояние «Закрыта», состав на сервере не трогаем, правку закрываем
+          if (guard()) return;
+          const m = smGet() || {}, msg = $("[data-ed-msg]", edStrip);
+          msg.className = "msg"; msg.textContent = "Закрываем…";
+          const r = await kabApi("lead_status", { id: m.lid, status: "closed" }).catch(() => ({}));
+          if (!r.ok) { msg.className = "msg bad"; msg.textContent = "Не удалось закрыть заявку. Проверьте связь и нажмите ещё раз."; return; }
+          return leave(m, { text: `Заявка №${m.lid} закрыта.`, lid: m.lid });
+        }
         const sv = ev.target.closest("[data-ed-save]");
         if (sv) saveDoc(sv.hasAttribute("data-ret"));
       };
