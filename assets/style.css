@@ -29,6 +29,8 @@ h3 { font-size: 18px; margin: 20px 0 8px; }
 
 /* шапка */
 .top { position: sticky; top: 0; z-index: 20; background: var(--dark); color: #fff; }
+header.top{transition:transform .35s cubic-bezier(.2,.8,.2,1)}header.top.away{transform:translateY(-100%)}@media (prefers-reduced-motion:reduce){header.top{transition:none}}
+.ed-strip, .cat-back, .kab-flash, .cfg-out { transition: top .35s; }
 .top-in { display: flex; align-items: center; gap: 16px; min-height: 76px; }
 .logo { display: flex; align-items: center; }
 .logo img { height: 30px; width: auto; filter: brightness(0) invert(1); }

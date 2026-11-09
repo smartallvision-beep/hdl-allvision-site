@@ -77,7 +77,7 @@
   }).catch(() => {});
 
   // ---- высота шапки для перехода к форме по ссылке (style.css, section[id]): на компьютере шапка в две строки, на телефоне в одну ----
-  const topH = () => { const t = $(".top"); if (t && !t.matches(".open, .cat-open, .search-open")) document.documentElement.style.setProperty("--top-h", t.offsetHeight + "px"); };
+  const topH = () => { const t = $(".top"); if (t && !t.matches(".open, .cat-open, .search-open, .away")) document.documentElement.style.setProperty("--top-h", t.offsetHeight + "px"); };
   topH();
   addEventListener("resize", topH);
   // с открытым меню шапка в разы выше: закрыли меню, каталог или поиск — меряем заново (иначе строка правки уезжала за экран, 06.11.2026)
@@ -2673,3 +2673,6 @@
   }
 
 })();
+
+// шапка «плавает», как на allvision.by (владелец 09.11.2026): прокрутка вниз — прячется, вверх — возвращается; не прячется, пока открыто меню, поиск или курсор над ней
+(()=>{const t=document.querySelector("header.top");if(!t)return;const r=document.documentElement,hov=matchMedia("(hover:hover)");let y=scrollY;const busy=()=>t.matches(".nav-open,.open,.cat-open,.search-open")||!!t.querySelector('[aria-expanded="true"]')||(t.contains(document.activeElement)&&/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName))||(hov.matches&&t.matches(":hover"))||r.classList.contains("nav-lock")||document.body.classList.contains("nav-lock");addEventListener("scroll",()=>{const c=scrollY,d=c-y;if(Math.abs(d)<6&&c>80)return;const a=d>0&&c>Math.max(80,t.offsetHeight)&&!busy();if(a!==t.classList.contains("away")){t.classList.toggle("away",a);r.classList.toggle("top-away",a);r.style.setProperty("--top-h",(a?0:t.offsetHeight)+"px");}y=c},{passive:true})})();
