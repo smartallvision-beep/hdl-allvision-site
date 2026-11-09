@@ -860,6 +860,8 @@ body[data-page=catalog] .hsearch { display: none; }
 .circ-band b { display: block; color: var(--brand); }
 .circ-band span { font-size: 14px; }
 .circ-band-pic { flex: 0 0 64px; height: 40px; border-radius: 8px; }
+.aokol-band-pic { flex: 0 0 96px; height: 50px; object-fit: contain; background: #fff; border-radius: 8px; }
+.g-gets + .aokol-band { margin-top: 20px; }
 .circ .k-scale { margin: 18px 0 8px; }
 .k-bar { height: 22px; border-radius: 11px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .06); }
 .k-labels { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; font-size: 14px; color: var(--muted); }
