@@ -286,8 +286,14 @@ header.top{transition:transform .35s cubic-bezier(.2,.8,.2,1)}header.top.away{tr
 @media (max-width: 860px) { .product { grid-template-columns: 1fr; gap: 16px; } }
 .gallery .main { border: 1px solid var(--line); border-radius: 14px; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; background: #fff; padding: 12px; }
 .gallery .main img { max-height: 100%; object-fit: contain; }
-.gallery .main { touch-action: pan-y; overflow: hidden; }  /* свайп по фото; вертикальная прокрутка страницы остаётся */
+.gallery .main { overflow: hidden; }
 .gallery .main img { user-select: none; -webkit-user-drag: none; }
+/* лента фото карточки: листается пальцем со снапом (app.js «лента фото») */
+.gallery .main.has-track { padding: 0; display: block; }
+.g-track { display: flex; height: 100%; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.g-track::-webkit-scrollbar { display: none; }
+.g-slide { flex: 0 0 100%; box-sizing: border-box; padding: 12px; scroll-snap-align: center; scroll-snap-stop: always; display: flex; align-items: center; justify-content: center; }
+.g-slide img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .thumbs { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .thumbs button { width: 72px; height: 72px; border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 4px; cursor: pointer; }
 .thumbs button:hover, .thumbs button[aria-current] { border-color: var(--brand); }

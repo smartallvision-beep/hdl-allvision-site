@@ -255,32 +255,46 @@
     $$(".thumbs button").forEach(x => x.removeAttribute("aria-current"));
     b.setAttribute("aria-current", "true");
   }));
-  // свайп по большому фото (владелец 09.11.2026): влево — следующий снимок, вправо — предыдущий, по кругу; как нажатие на миниатюру
+  // лента фото (владелец 09.11.2026: «пролистывание, а не смена картинок, плавно»): снимки миниатюр в ряд, листаются пальцем
+  // со снапом (родная прокрутка — плавно и с инерцией на iPhone). Большое фото [data-main] скрыто, но остаётся источником:
+  // код вариантов и миниатюр меняет main.src, а лента показывает его в своём слайде и доезжает до нужного
   const galBox = $(".gallery .main"), th = $$(".thumbs button");
   if (galBox && main && th.length > 1) {
-    let x0 = null, y0 = 0, dx = 0, horiz = null;
-    const cur = () => {
-      const i = th.findIndex(b => b.hasAttribute("aria-current"));
-      if (i >= 0) return i;
-      const j = th.findIndex(b => main.src.endsWith(b.dataset.src));
-      return j >= 0 ? j : 0;
+    const track = document.createElement("div"); track.className = "g-track";
+    const slides = th.map((b, n) => {
+      const s = document.createElement("div"); s.className = "g-slide";
+      const im = document.createElement("img"); im.src = b.dataset.src; im.alt = n ? "" : main.alt; im.draggable = false;
+      if (n) im.loading = "lazy";
+      s.append(im); track.append(s); return im;
+    });
+    galBox.classList.add("has-track"); galBox.append(track); main.hidden = true;
+    let idx = 0, st;
+    const idxOf = src => th.findIndex(b => src.endsWith(b.dataset.src));
+    const mark = n => th.forEach((x, k) => k === n ? x.setAttribute("aria-current", "true") : x.removeAttribute("aria-current"));
+    const go = n => { idx = n; track.scrollTo({ left: n * track.clientWidth, behavior: "smooth" }); };
+    const sync = () => {  // main.src сменился (миниатюра, цвет): слайд показывает его, лента едет к своему снимку
+      let n = idxOf(main.src);
+      if (n < 0) {  // выбран цвет: едем к снимку этого цвета, если он есть среди миниатюр, иначе меняем текущий
+        const c = $('.variants button[aria-checked="true"]');
+        const k = c ? th.findIndex(b => b.dataset.opt && b.dataset.opt === c.dataset.col) : -1;
+        n = k >= 0 ? k : idx;
+      }
+      if (slides[n].src !== main.src) slides[n].src = main.src;
+      if (n !== idx) go(n);
     };
-    const reset = () => { main.style.transition = "transform .2s"; main.style.transform = ""; x0 = null; };
-    galBox.addEventListener("touchstart", ev => { if (ev.touches.length !== 1) return; x0 = ev.touches[0].clientX; y0 = ev.touches[0].clientY; dx = 0; horiz = null; main.style.transition = ""; }, { passive: true });
-    galBox.addEventListener("touchmove", ev => {
-      if (x0 === null) return;
-      dx = ev.touches[0].clientX - x0; const dy = ev.touches[0].clientY - y0;
-      if (horiz === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) horiz = Math.abs(dx) > Math.abs(dy);
-      if (horiz) { ev.preventDefault(); main.style.transform = "translateX(" + (dx * 0.6) + "px)"; }
-    }, { passive: false });
-    const end = () => {
-      if (x0 === null) return;
-      const go = horiz && Math.abs(dx) > 40 ? (dx < 0 ? 1 : -1) : 0;
-      reset();
-      if (go) { const b = th[(cur() + go + th.length) % th.length]; b.click(); }
-    };
-    galBox.addEventListener("touchend", end);
-    galBox.addEventListener("touchcancel", reset);
+    sync();
+    new MutationObserver(sync).observe(main, { attributes: true, attributeFilter: ["src"] });
+    track.addEventListener("scroll", () => {
+      clearTimeout(st);
+      st = setTimeout(() => {  // остановилась: выбираем снимок, как нажатием на миниатюру (другой цвет — этот цвет)
+        const n = Math.round(track.scrollLeft / track.clientWidth);
+        if (n === idx || !th[n]) return;
+        idx = n; const b = th[n];
+        if (b.dataset.opt) $$(".variants button").find(x => x.dataset.col === b.dataset.opt)?.click();
+        main.src = b.dataset.src; mark(n);
+      }, 120);
+    }, { passive: true });
+    addEventListener("resize", () => { track.scrollLeft = idx * track.clientWidth; });
   }
   const add = $("[data-add]");
   $$(".variants button").forEach(b => b.addEventListener("click", () => {
