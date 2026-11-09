@@ -249,8 +249,11 @@
 
   // ---- карточка товара ----
   const main = $("[data-main]");
+  // снимок другого цвета — выбираем этот цвет: data-opt — цвет одной позиции, data-va — артикул варианта (фото подобрано сборкой по похожести)
+  const pickColor = b => (b.dataset.opt ? $$(".variants button").find(x => x.dataset.col === b.dataset.opt)
+                          : b.dataset.va ? $$(".variants button").find(x => x.dataset.a === b.dataset.va) : null)?.click();
   $$(".thumbs button").forEach(b => b.addEventListener("click", () => {
-    if (b.dataset.opt) $$(".variants button").find(x => x.dataset.col === b.dataset.opt)?.click();  // снимок другого цвета — выбираем этот цвет
+    pickColor(b);
     main.src = b.dataset.src;
     $$(".thumbs button").forEach(x => x.removeAttribute("aria-current"));
     b.setAttribute("aria-current", "true");
@@ -271,16 +274,19 @@
     let idx = 0, st;
     const idxOf = src => th.findIndex(b => src.endsWith(b.dataset.src));
     const mark = n => th.forEach((x, k) => k === n ? x.setAttribute("aria-current", "true") : x.removeAttribute("aria-current"));
-    const go = n => { idx = n; track.scrollTo({ left: n * track.clientWidth, behavior: "smooth" }); };
+    const go = (n, now) => { idx = n; track.scrollTo({ left: n * track.clientWidth, behavior: now ? "auto" : "smooth" }); };
+    let first = true;
     const sync = () => {  // main.src сменился (миниатюра, цвет): слайд показывает его, лента едет к своему снимку
       let n = idxOf(main.src);
       if (n < 0) {  // выбран цвет: едем к снимку этого цвета, если он есть среди миниатюр, иначе меняем текущий
         const c = $('.variants button[aria-checked="true"]');
-        const k = c ? th.findIndex(b => b.dataset.opt && b.dataset.opt === c.dataset.col) : -1;
-        n = k >= 0 ? k : idx;
+        const k = c ? th.findIndex(b => (b.dataset.opt && b.dataset.opt === c.dataset.col) || (b.dataset.va && b.dataset.va === c.dataset.a)) : -1;
+        if (k >= 0) { main.src = th[k].dataset.src; mark(k); return; }  // чёткое фото этого цвета вместо картинки из прайса; observer вызовет sync снова
+        n = idx;
       }
       if (slides[n].src !== main.src) slides[n].src = main.src;
-      if (n !== idx) go(n);
+      if (n !== idx) go(n, first);
+      first = false;
     };
     sync();
     new MutationObserver(sync).observe(main, { attributes: true, attributeFilter: ["src"] });
@@ -290,7 +296,7 @@
         const n = Math.round(track.scrollLeft / track.clientWidth);
         if (n === idx || !th[n]) return;
         idx = n; const b = th[n];
-        if (b.dataset.opt) $$(".variants button").find(x => x.dataset.col === b.dataset.opt)?.click();
+        pickColor(b);
         main.src = b.dataset.src; mark(n);
       }, 120);
     }, { passive: true });
