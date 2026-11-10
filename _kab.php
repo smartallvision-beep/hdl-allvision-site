@@ -52,7 +52,12 @@ function kab_db(): PDO {
         role TEXT DEFAULT 'client', wanted TEXT DEFAULT '', discount REAL DEFAULT 0, status TEXT DEFAULT 'form',
         consent_at TEXT DEFAULT '', created_at TEXT, seen_at TEXT, approved_by INTEGER, approved_at TEXT)");
     // суперадмин (владелец 05.11.2026): столбец добавляется и в уже созданную базу
-    if (!in_array('admin', array_column($db->query('PRAGMA table_info(users)')->fetchAll(), 'name'), true)) $alter('ALTER TABLE users ADD COLUMN admin INTEGER DEFAULT 0');
+    $uCols = array_column($db->query('PRAGMA table_info(users)')->fetchAll(), 'name');
+    if (!in_array('admin', $uCols, true)) $alter('ALTER TABLE users ADD COLUMN admin INTEGER DEFAULT 0');
+    // архив и папки (владелец 10.11.2026): hidden — человек в архиве, в списке «Пользователи» не виден (вход, заявки, скидка — как были);
+    // folder — своя папка сотрудников («Тест», «Партнёры»…), пустая — без папки
+    if (!in_array('hidden', $uCols, true)) $alter('ALTER TABLE users ADD COLUMN hidden INTEGER DEFAULT 0');
+    if (!in_array('folder', $uCols, true)) $alter("ALTER TABLE users ADD COLUMN folder TEXT DEFAULT ''");
     $db->exec("CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires INTEGER NOT NULL)");
     $db->exec("CREATE TABLE IF NOT EXISTS smetas (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         title TEXT, items TEXT, created_at TEXT, updated_at TEXT)");

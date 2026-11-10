@@ -2224,18 +2224,33 @@
       const UCAT = [["all", "Все", () => true], ["new", "Без прав", u => u.status !== "blocked" && u.role === "user" && !u.wanted], ["wait", "Запросы", u => !!u.wanted],
         ["client", "Клиенты", u => u.status !== "blocked" && u.role === "client"], ["dealer", "Дилеры", u => u.status !== "blocked" && u.role === "dealer"],
         ["staff", "Сотрудники", u => u.status !== "blocked" && u.role === "staff"], ["blocked", "Заблокированные", u => u.status === "blocked"]];
+      // архив и свои папки (владелец 10.11.2026): архивные видны только под кнопкой «Архив», папки — второй ряд кнопок; выбор — там же, в hdl-kf
+      const live = j.users.filter(u => !u.hidden), arch = j.users.filter(u => u.hidden);
+      const folders = [...new Set(live.map(u => u.folder).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ru"));
+      const fcnt = f => live.filter(u => u.folder === f).length;
       let uf = "all"; try { uf = localStorage.getItem("hdl-kf") || "all"; } catch {}
-      const ucnt = Object.fromEntries(UCAT.map(([k, , f]) => [k, j.users.filter(f).length]));
-      if (!UCAT.some(c => c[0] === uf) || (uf !== "all" && !ucnt[uf])) uf = "all";  // в выбранной категории никого не осталось — все
+      const ucnt = Object.fromEntries(UCAT.map(([k, , f]) => [k, live.filter(f).length]));
+      const ufOk = uf === "arch" ? arch.length > 0 : uf.startsWith("f:") ? folders.includes(uf.slice(2)) : UCAT.some(c => c[0] === uf) && (uf === "all" || ucnt[uf] > 0);
+      if (!ufOk) uf = "all";  // в выбранной категории или папке никого не осталось — все
+      const pick = uf === "arch" ? arch : uf.startsWith("f:") ? live.filter(u => u.folder === uf.slice(2)) : live.filter(UCAT.find(c => c[0] === uf)[2]);
+      const catBtn = (k, t, n) => `<button type="button" class="kab-cat${k === uf ? " on" : ""}" data-ucat="${esc(k)}" aria-pressed="${k === uf}">${esc(t)} <b>${n}</b></button>`;
       // сверху — у кого неоплаченные заказы, потом частично оплаченные, потом по числу активных; остальные — как отдал сервер (07.11.2026)
-      const shown = j.users.filter(UCAT.find(c => c[0] === uf)[2]).map((u, i) => [u, i])
+      const shown = pick.map((u, i) => [u, i])
         .sort(([a, i], [b, k]) => (b.unpaid - a.unpaid) || (b.part - a.part) || (b.active - a.active) || i - k).map(([u]) => u);
       panel.innerHTML = `<div class="kab-cats" role="group" aria-label="Категория"><span class="muted small">Категория:</span>`
-        + UCAT.filter(([k]) => k === "all" || ucnt[k] || k === "new").map(([k, t]) => `<button type="button" class="kab-cat${k === uf ? " on" : ""}" data-ucat="${k}" aria-pressed="${k === uf}">${t} <b>${ucnt[k]}</b></button>`).join("") + "</div>"
+        + UCAT.filter(([k]) => k === "all" || ucnt[k] || k === "new").map(([k, t]) => catBtn(k, t, ucnt[k])).join("")
+        + (arch.length ? catBtn("arch", "Архив", arch.length) : "") + "</div>"
+        + (folders.length ? `<div class="kab-cats" role="group" aria-label="Папка"><span class="muted small">Папки:</span>${folders.map(f => catBtn("f:" + f, f, fcnt(f))).join("")}</div>` : "")
+        + `<datalist id="u-folders">${[...new Set(j.users.map(u => u.folder).filter(Boolean))].map(f => `<option value="${esc(f)}">`).join("")}</datalist>`
         + `<div class="tbl-wrap"><table class="kab-tbl"><thead><tr><th>Кто</th><th>Категория</th><th class="num">Активных заказов</th><th>Скидка, %</th><th></th></tr></thead><tbody>`
         + shown.map(u => {
           const self = +u.id === +j.me, blocked = u.status === "blocked", edit = admin && !self && !u.owner;
-          const info = [u.phone, u.company, u.unp && "УНП " + u.unp, u.status === "form" && "анкета не заполнена"].filter(Boolean).map(esc).join(" · ");
+          const info = [u.phone, u.company, u.unp && "УНП " + u.unp, u.status === "form" && "анкета не заполнена", u.folder && "папка «" + u.folder + "»"].filter(Boolean).map(esc).join(" · ");
+          // «Ещё»: папка и архив — любой сотрудник, удалить — суперадмин; себя и владельца не трогаем
+          const more = self || u.owner ? "" : `<details class="u-more"><summary>Ещё</summary><div class="u-more-box">`
+            + `<label class="small">Папка <input data-folder list="u-folders" maxlength="40" value="${esc(u.folder || "")}" placeholder="без папки"></label><button class="cbtn ghost" type="button" data-do="folder">В папку</button>`
+            + `<button class="cbtn ghost" type="button" data-do="${u.hidden ? "unhide" : "hide"}">${u.hidden ? "Вернуть из архива" : "В архив"}</button>`
+            + (admin ? '<button class="cbtn ghost danger" type="button" data-do="del">Удалить</button>' : "") + "</div></details>";
           const role = u.wanted ? `<span class="st wait">хочет: ${ROLE[u.wanted]}</span><br><span class="muted small">сейчас: ${ROLE[u.role]}</span>`
             : edit ? `<select data-role aria-label="Категория">${Object.entries(ROLE).map(([k, t]) => `<option value="${k}"${k === u.role ? " selected" : ""}>${t}</option>`).join("")}</select>`
               + (u.role === "staff" && !blocked ? `<label class="kab-adm"><input type="checkbox" data-adm${u.admin ? " checked" : ""}> суперадмин</label>` : "")
@@ -2243,28 +2258,38 @@
           const acts = u.wanted ? (admin ? '<button class="cbtn" type="button" data-do="approve">Подтвердить</button> <button class="cbtn ghost" type="button" data-do="reject">Отклонить</button>'
               : '<span class="muted small">Подтверждает суперадмин</span>')
             : '<button class="cbtn ghost" type="button" data-do="set">Сохранить</button>' + (edit ? ` <button class="cbtn ghost" type="button" data-do="${blocked ? "unblock" : "block"}">${blocked ? "Разблокировать" : "Заблокировать"}</button>` : "");
-          return `<tr data-id="${u.id}"${blocked ? ' class="blocked"' : ""}><td><a href="#p=u${u.id}"><b>${esc(u.name || u.tg_name || "—")}</b></a>${u.tg_username ? ` · @${esc(u.tg_username)}` : ""}${blocked ? " · заблокирован" : ""}${u.role === "user" && !u.wanted && !blocked ? ' <span class="st new">без прав</span>' : ""}<br><span class="muted small">${info}</span></td>`
-            + `<td>${role}</td><td class="num">${u.active ? `<a href="#p=u${u.id}"><b>${u.active}</b></a>` + (u.unpaid ? `<br><span class="pay-b none">${u.unpaid} не оплачено</span>` : "") + (u.part ? `<br><span class="pay-b part">${u.part} частично</span>` : "") : '<span class="muted">—</span>'}</td><td><input class="pct" type="number" min="0" max="50" step="0.5" value="${+u.discount || 0}" data-disc aria-label="Скидка, %"></td><td class="acts">${acts}<p class="msg small"></p></td></tr>`;
+          const acts2 = acts + more;
+          return `<tr data-id="${u.id}"${blocked ? ' class="blocked"' : ""}><td><a href="#p=u${u.id}"><b>${esc(u.name || u.tg_name || "—")}</b></a>${u.tg_username ? ` · @${esc(u.tg_username)}` : ""}${blocked ? " · заблокирован" : ""}${u.role === "user" && !u.wanted && !blocked ? ' <span class="st new">без прав</span>' : ""}${u.hidden ? ' <span class="st arch">в архиве</span>' : ""}<br><span class="muted small">${info}</span></td>`
+            + `<td>${role}</td><td class="num">${u.active ? `<a href="#p=u${u.id}"><b>${u.active}</b></a>` + (u.unpaid ? `<br><span class="pay-b none">${u.unpaid} не оплачено</span>` : "") + (u.part ? `<br><span class="pay-b part">${u.part} частично</span>` : "") : '<span class="muted">—</span>'}</td><td><input class="pct" type="number" min="0" max="50" step="0.5" value="${+u.discount || 0}" data-disc aria-label="Скидка, %"></td><td class="acts">${acts2}<p class="msg small"></p></td></tr>`;
         }).join("") + '</tbody></table></div><p class="muted small">'
         + (admin ? "Все регистрируются пользователями — им доступны сметы и заявки. Категорию и скидку отмечаете вы, затем «Сохранить»; человеку придёт сообщение в Telegram. Клиент — ещё документы по объекту, дилер — цены дилера. Суперадмин — сотрудник, который тоже может блокировать и назначать категории."
           : "Вы можете менять скидку: впишите процент и нажмите «Сохранить», человеку придёт сообщение в Telegram. Категорию, блокировку и подтверждение запросов меняет суперадмин.")
-        + " Скидка — процент от розничной цены, до 50 %, действует на всём сайте и в смете. Вверху — кому права ещё не отмечены.</p>";
+        + " Скидка — процент от розничной цены, до 50 %, действует на всём сайте и в смете. Вверху — кому права ещё не отмечены."
+        + " «Ещё» — папка (впишите название или выберите, пусто — без папки) и архив: человек пропадает из списка, но входит и заказывает как раньше."
+        + (admin ? " Удалить можно человека без незакрытых заявок: его сметы и документы удалятся, закрытые заявки останутся в «Заявках»." : "") + "</p>";
       const send = async (tr, d, b) => {
         const msg = $(".msg", tr);
         if (b) b.disabled = true;
-        const r = await kabApi("user_set", { id: +tr.dataset.id, do: d, discount: +$("[data-disc]", tr).value || 0, role: $("[data-role]", tr)?.value }).catch(() => ({}));
+        const r = await (d === "del" ? kabApi("user_del", { id: +tr.dataset.id })
+          : kabApi("user_set", { id: +tr.dataset.id, do: d, discount: +$("[data-disc]", tr).value || 0, role: $("[data-role]", tr)?.value, folder: $("[data-folder]", tr)?.value.trim() })).catch(() => ({}));
         if (b) b.disabled = false;
-        if (!r.ok) { msg.className = "msg small bad"; msg.textContent = r.status === 409 ? "Так нельзя" : r.status === 403 ? "Нужны права суперадмина" : "Не удалось"; return; }
+        if (!r.ok) {
+          msg.className = "msg small bad";
+          msg.textContent = r.error === "active" ? `Незакрытых заявок: ${r.n}. Закройте их или уберите человека в архив.` : r.error === "balance" ? "На балансе есть деньги: сначала выдайте или зачтите их."
+            : r.status === 409 ? "Так нельзя" : r.status === 403 ? "Нужны права суперадмина" : "Не удалось";
+          return;
+        }
         const id = tr.dataset.id;
         await tabUsers();  // метка «без прав» и порядок — по новой категории
         const m = $(`tr[data-id="${id}"] .msg`, panel);
-        if (m && d !== "block" && d !== "unblock") { m.className = "msg small ok"; m.textContent = "Сохранено"; }
+        if (m && !["block", "unblock", "hide", "unhide", "del"].includes(d)) { m.className = "msg small ok"; m.textContent = "Сохранено"; }
       };
       panel.onclick = ev => {
         const c = ev.target.closest("[data-ucat]");
         if (c) { try { localStorage.setItem("hdl-kf", c.dataset.ucat); } catch {} return tabUsers(); }
         const b = ev.target.closest("[data-do]"); if (!b) return;
         if (b.dataset.do === "block" && !confirm("Заблокировать? Человек не сможет войти, пока его не разблокируют.")) return;
+        if (b.dataset.do === "del" && !confirm(`Удалить «${$("td b", b.closest("tr"))?.textContent || ""}»? Его сметы и документы удалятся, закрытые заявки останутся в «Заявках» без связи с кабинетом. Вернуть нельзя. Если человек снова войдёт через Telegram, у него будет новый пустой кабинет.`)) return;
         send(b.closest("tr"), b.dataset.do, b);
       };
       panel.onchange = ev => {  // отметка «суперадмин» сохраняется сразу

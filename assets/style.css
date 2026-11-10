@@ -726,17 +726,18 @@ body[data-page=catalog] .hsearch { display: none; }
 .ctl .muted.small { margin: 4px 0 0; }
 .ctl-sum { margin: 6px 0 0; font-size: 14px; }
 /* «Сначала выберите исполнение»: красным, с рамкой вокруг исполнений и встряхиванием (владелец 03.11.2026: «чтобы было явно видно») */
-.ctl-need { margin: 0 0 8px; border-radius: 10px; background: #fdecef; border: 2px solid var(--bad); font-size: 15px; overflow: hidden; }
+.ctl-need { margin: 0 0 8px; border-radius: 10px; background: #fffaeb; border: 1px solid #ecd28a; font-size: 15px; overflow: hidden; }
 .ctl-need.shake { animation: need-shake .45s; }
 @keyframes need-shake { 0%, 100% { transform: none; } 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
 .ctl-need p { margin: 0; }
-/* главная строка — белым по красному со стрелкой вверх, к исполнениям (владелец 04.11.2026: «на одном фоне легко пропустить») */
-.ctl-need .need-top { display: flex; gap: 10px; align-items: center; padding: 10px 12px; background: var(--bad); color: #fff; font-weight: 700; }
+/* главная строка — своим фоном со стрелкой вверх, к исполнениям (владелец 04.11.2026: «на одном фоне легко пропустить»).
+   Цвет — спокойный песочный, не красный (владелец 10.11.2026: «выглядит как страшный error») */
+.ctl-need .need-top { display: flex; gap: 10px; align-items: center; padding: 10px 12px; background: #fbedc4; color: #5f4500; font-weight: 700; }
 .ctl-need .need-top::before { content: "↑"; flex: none; font-size: 24px; line-height: 1; animation: need-up 1s ease-in-out infinite; }
 @keyframes need-up { 50% { transform: translateY(-4px); } }
-/* исполнения пульсируют красной рамкой, пока видна подсказка */
-.variants.need-pick { outline: 3px solid var(--bad); outline-offset: 6px; border-radius: 10px; animation: need-glow 1.2s ease-in-out infinite; }
-@keyframes need-glow { 50% { outline-color: rgba(161, 43, 43, .3); outline-offset: 10px; } }
+/* исполнения пульсируют песочной рамкой, пока видна подсказка */
+.variants.need-pick { outline: 3px solid #e0b443; outline-offset: 6px; border-radius: 10px; animation: need-glow 1.2s ease-in-out infinite; }
+@keyframes need-glow { 50% { outline-color: rgba(224, 180, 67, .3); outline-offset: 10px; } }
 /* выбрали исполнение после подсказки — на 3 с подсвечено, где подобран драйвер («Управление»); с анимацией — ещё и мигает.
    Без анимации (настройка системы) подсветка остаётся, просто не мигает */
 .drv-hl { border-radius: 10px; background: var(--brand-soft); box-shadow: 0 0 0 6px var(--brand-soft), 0 0 0 8px var(--brand); animation: drv-hl 1s ease-in-out 3; }
@@ -745,7 +746,7 @@ body[data-page=catalog] .hsearch { display: none; }
 /* заказ без драйвера в подсказке: предупреждение, выбор исполнения, согласие, одна кнопка */
 .need-nd { padding: 10px 12px; color: var(--ink); font-size: 14px; font-weight: 400; }
 .need-nd:empty { display: none; }
-.ctl-need .need-w { color: var(--bad); font-weight: 600; }
+.ctl-need .need-w { color: #6b4e00; font-weight: 600; }
 .need-v { border: 0; margin: 8px 0 0; padding: 0; min-width: 0; }
 .need-v legend { padding: 0; margin: 0 0 2px; font-weight: 600; }
 .need-v label, .need-ok { display: flex; gap: 8px; align-items: flex-start; padding: 4px 6px; margin: 0 -6px; border-radius: 8px; cursor: pointer; }
@@ -754,7 +755,7 @@ body[data-page=catalog] .hsearch { display: none; }
 .need-v span { white-space: nowrap; color: var(--muted); }
 .need-ok { margin-top: 6px; font-weight: 600; }
 /* выбор светильника и кнопка — после галочки, отделены линией */
-.need-more { margin-top: 8px; padding-top: 4px; border-top: 1px dashed rgba(161, 43, 43, .3); }
+.need-more { margin-top: 8px; padding-top: 4px; border-top: 1px dashed rgba(180, 140, 40, .4); }
 .need-v.bad, .need-ok.bad { outline: 2px solid var(--bad); outline-offset: 2px; border-radius: 8px; }
 .need-go { margin-top: 10px; background: var(--brand); color: #fff; border: 0; border-radius: 8px; padding: 9px 14px; font: 600 14px var(--font); cursor: pointer; }
 .need-go:hover { background: var(--brand-d); }
@@ -1045,6 +1046,18 @@ body[data-page=catalog] .hsearch { display: none; }
 .kab-cat b { font-weight: 600; color: var(--muted); margin-left: 2px; }
 .kab-cat:hover { border-color: var(--brand); }
 .kab-cat.on { background: var(--brand); border-color: var(--brand); color: #fff; } .kab-cat.on b { color: #fff; }
+/* «Ещё» у пользователя: папка, архив, удалить (10.11.2026) */
+.u-more { display: block; margin-top: 6px; }
+.u-more summary { list-style: none; cursor: pointer; display: inline-block; font: 14px var(--font); color: var(--muted); padding: 2px 0; }
+.u-more summary:hover { color: var(--brand); }
+.u-more summary::-webkit-details-marker { display: none; }
+.u-more summary::after { content: " ▾"; }
+.u-more[open] summary::after { content: " ▴"; }
+.u-more-box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; max-width: 300px; }
+.u-more-box label { display: flex; align-items: center; gap: 6px; }
+.u-more-box input { width: 130px; }
+.cbtn.danger { color: #b3261e; border-color: #e6b3ae; }
+.st.arch { background: #ececec; color: #555; }
 
 .kab-proj { margin: 0 0 22px; } .kab-proj h3 { margin: 0 0 8px; font-size: 19px; }
 .kab-proj-empty { margin: 4px 0 14px; }

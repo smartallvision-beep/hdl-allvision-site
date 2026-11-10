@@ -971,7 +971,7 @@ case 'lead_status':
 
 case 'users':  // сотрудник: все пользователи, сначала ждущие подтверждения
     $need($staff);
-    $rows = $db->query("SELECT id, tg_id, tg_username, tg_name, name, phone, company, unp, role, wanted, discount, status, admin, created_at, seen_at
+    $rows = $db->query("SELECT id, tg_id, tg_username, tg_name, name, phone, company, unp, role, wanted, discount, status, admin, hidden, folder, created_at, seen_at
         FROM users ORDER BY (wanted <> '') DESC, (role = 'user' AND status = 'active') DESC, (status = 'blocked'), created_at DESC LIMIT 1000")->fetchAll();  // сначала — кому ещё не отмечены права
     // active — заявок человека не в состоянии «Закрыта» (владелец 07.11.2026: «должны видеть количество активных заказов»)
     // unpaid — активных заявок с суммой и без оплат, part — оплаченных частично: по ним список сортируется (владелец 07.11.2026)
@@ -989,6 +989,8 @@ case 'users':  // сотрудник: все пользователи, снач�
         $r['owner'] = kab_is_owner($r);
         $r['id'] = (int) $r['id'];
         $r['discount'] = (float) $r['discount'];
+        $r['hidden'] = (int) $r['hidden'];
+        $r['folder'] = (string) $r['folder'];
         unset($r['tg_id']);
         return $r;
     }, $rows);
@@ -1006,7 +1008,7 @@ case 'user_set':  // сотрудник: скидка; суперадмин ещ
     $do = (string) ($in['do'] ?? '');
     $disc = max(0.0, min(50.0, round((float) ($in['discount'] ?? $u['discount']), 1)));
     $note = '';
-    if ($do !== 'set') $need($admin);  // подтверждать, назначать суперадмина и блокировать — только суперадмин
+    if (!in_array($do, ['set', 'hide', 'unhide', 'folder'], true)) $need($admin);  // подтверждать, назначать суперадмина и блокировать — только суперадмин; архив и папки — любой сотрудник
     if ($do === 'approve' && $u['wanted'] !== '') {
         $db->prepare("UPDATE users SET role = wanted, wanted = '', discount = ?, approved_by = ?, approved_at = ? WHERE id = ?")->execute([$disc, $me['id'], kab_now(), $u['id']]);
         $note = 'Доступ на hdl.by открыт: вы — ' . KAB_ROLE_NAME[$u['wanted']] . ($disc > 0 ? ', ваша скидка ' . rtrim(rtrim(number_format($disc, 1, ',', ''), '0'), ',') . ' %' : '') . '. ' . kab_site() . '/kabinet/';
@@ -1026,6 +1028,11 @@ case 'user_set':  // сотрудник: скидка; суперадмин ещ
         $db->prepare('UPDATE users SET admin = ? WHERE id = ?')->execute([$do === 'admin' ? 1 : 0, $u['id']]);
         $note = $do === 'admin' ? 'Вы — суперадмин на hdl.by: можете блокировать пользователей и назначать категории. ' . kab_site() . '/kabinet/'
             : 'Права суперадмина на hdl.by сняты, вы — сотрудник AllVision.';
+    } elseif ($do === 'hide' || $do === 'unhide') {  // архив (владелец 10.11.2026): только убирает из списка, человеку ничего не пишем
+        $need(!$self && !$owner, 409);
+        $db->prepare('UPDATE users SET hidden = ? WHERE id = ?')->execute([$do === 'hide' ? 1 : 0, $u['id']]);
+    } elseif ($do === 'folder') {
+        $db->prepare('UPDATE users SET folder = ? WHERE id = ?')->execute([kab_clean($in['folder'] ?? '', 40), $u['id']]);
     } elseif ($do === 'block' || $do === 'unblock') {
         $need(!$self && !$owner, 409);
         $db->prepare('UPDATE users SET status = ? WHERE id = ?')->execute([$do === 'block' ? 'blocked' : 'active', $u['id']]);
@@ -1034,6 +1041,27 @@ case 'user_set':  // сотрудник: скидка; суперадмин ещ
         reply(422, ['ok' => false, 'error' => 'do']);
     }
     if ($note !== '') kab_say($u['tg_id'], $note);
+    reply(200, ['ok' => true]);
+
+case 'user_del':  // суперадмин удаляет человека (владелец 10.11.2026): как «удалить свои данные» — пользователь, сметы, документы, вход;
+    // закрытые заявки остаются в «Заявках» без привязки к кабинету. Нельзя: себя, владельца, при незакрытых заявках и деньгах на балансе
+    $need($post, 405);
+    $need($admin);
+    $q = $db->prepare('SELECT * FROM users WHERE id = ?');
+    $q->execute([(int) ($in['id'] ?? 0)]);
+    $u = $q->fetch();
+    $need((bool) $u, 404);
+    if ((int) $u['id'] === (int) $me['id'] || kab_is_owner($u)) reply(409, ['ok' => false, 'error' => 'self']);
+    $q = $db->prepare("SELECT COUNT(*) FROM leads WHERE user_id = ? AND status <> 'closed'");
+    $q->execute([$u['id']]);
+    $n = (int) $q->fetchColumn();
+    if ($n > 0) reply(409, ['ok' => false, 'error' => 'active', 'n' => $n]);
+    if (abs($payBal(['u' . $u['id']])) > 0.004) reply(409, ['ok' => false, 'error' => 'balance']);
+    $q = $db->prepare("SELECT path FROM files WHERE user_id = ?");  // документы по объекту — с диска тоже
+    $q->execute([$u['id']]);
+    foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $path) if ($path) @unlink(kab_dir() . '/' . $path);
+    $db->prepare('DELETE FROM users WHERE id = ?')->execute([$u['id']]);  // сметы, документы, вход — каскадом; заявки и командировки — без привязки
+    kab_log('user_del ' . $u['id'] . ' ' . ($u['name'] ?: $u['tg_name']) . ' by ' . $me['id']);
     reply(200, ['ok' => true]);
 
 case 'files':  // документы: свои; сотрудник — все. Материалы — только сотрудникам
