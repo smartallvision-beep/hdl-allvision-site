@@ -598,6 +598,9 @@
       const m = $("[data-bar-more]", bar);
       if (m) { m.textContent = on ? "Свернуть фильтры" : "Все фильтры"; m.setAttribute("aria-expanded", String(on)); }
     };
+    // фильтры строки над списком (управление, мощность…) группы в левом меню не прячут: иначе кажется, что других товаров нет;
+    // выбрали другую группу — эти фильтры сбрасываются (владелец 12.11.2026)
+    const BAR_NAMES = [...new Set($$("[data-bar] input").map(x => x.name))];
     const apply = (push = true) => {
       showBars();
       const sel = Object.fromEntries(NAMES.map(n => [n, checked(n)]));
@@ -606,7 +609,7 @@
       const combo = (c, mats = [], cols = []) => !c.dataset.cm || !mats.length || !cols.length || mats.some(m => cols.some(k => c.dataset.cm.split("|").includes(m + ":" + k)));
       const pass = (c, skip) => hit(c.dataset.q, q) &&
         (skip === "col" || skip === "mat" || combo(c, sel.mat, sel.col)) &&
-        NAMES.every(n => n === skip || !sel[n].length || vals(c, n).some(v => sel[n].includes(v)));
+        NAMES.every(n => n === skip || (skip === "g" && BAR_NAMES.includes(n)) || !sel[n].length || vals(c, n).some(v => sel[n].includes(v)));
       let n = 0;
       cards.forEach(c => { const ok = pass(c); c.hidden = !ok; if (ok) n++; });
       // вариант, который при остальных фильтрах ничего не найдёт, прячем
@@ -694,7 +697,10 @@
         window.scrollBy({ top: el.getBoundingClientRect().top - y, behavior: "instant" });
       }
     };
-    $$("[data-fl] input").forEach(x => x.addEventListener("change", () => keep(x, apply)));
+    $$("[data-fl] input").forEach(x => x.addEventListener("change", () => keep(x, () => {
+      if (x.name === "g") $$("[data-bar] input").forEach(i => { i.checked = false; });
+      apply();
+    })));
     $$("[data-clear]").forEach(b => b.addEventListener("click", () => keep(b, () => { boxes(b.dataset.clear).forEach(x => x.checked = false); apply(); })));
     search.addEventListener("input", () => apply());
     $("[data-reset]").addEventListener("click", ev => keep(ev.currentTarget, () => { $$("[data-fl] input").forEach(x => x.checked = false); search.value = ""; apply(); }));
