@@ -631,7 +631,11 @@
       // в открытом разделе ряд, который там не нужен: «Монтаж» у магнитного трека — там всё на магнитный трек (владелец 12.11.2026)
       const ROW_SKIP = { magnitnye: ["mt"] };
       const gOpen = sel.g && sel.g.length ? sel.g : [...new Set(cards.flatMap(groupsOf))];
-      if (gOpen.length === 1) (ROW_SKIP[gOpen[0]] || []).forEach(nm => $$(`[data-bar] input[name=${nm}]`).forEach(x => {
+      // ряд только для своего раздела: «Что показать» (светильники / трек и углы) — только у магнитного трека (владелец 13.11.2026)
+      const ROW_ONLY = { mw: "magnitnye" };
+      const skip = [...(gOpen.length === 1 ? ROW_SKIP[gOpen[0]] || [] : []),
+        ...Object.keys(ROW_ONLY).filter(nm => !(gOpen.length === 1 && gOpen[0] === ROW_ONLY[nm]))];
+      skip.forEach(nm => $$(`[data-bar] input[name=${nm}]`).forEach(x => {
         const r = x.closest(".bar-row"); if (r) { r.hidden = true; x.checked = false; }
       }));
       bars.forEach(b => {
