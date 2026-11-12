@@ -626,6 +626,14 @@
         if (x) b.disabled = x.parentElement.classList.contains("zero");  // кнопка остаётся на месте серой: ряд не перестраивается, «Группа» не сдвигается
       });
       $$(".bar-row, .cat-side fieldset, .cat-side .ff").forEach(r => { r.hidden = !$$(".chip:not(.all):not(.zero), .fbox:not(.zero)", r).length; });
+      // ряд над списком с одним вариантом, который не выбран, ничего не отбирает — прячем (владелец 12.11.2026)
+      $$("[data-bar] .bar-row").forEach(r => { if (!r.hidden && $$(".chip:not(.all):not(.zero)", r).length < 2 && !$$("input:checked", r).length) r.hidden = true; });
+      // в открытом разделе ряд, который там не нужен: «Монтаж» у магнитного трека — там всё на магнитный трек (владелец 12.11.2026)
+      const ROW_SKIP = { magnitnye: ["mt"] };
+      const gOpen = sel.g && sel.g.length ? sel.g : [...new Set(cards.flatMap(groupsOf))];
+      if (gOpen.length === 1) (ROW_SKIP[gOpen[0]] || []).forEach(nm => $$(`[data-bar] input[name=${nm}]`).forEach(x => {
+        const r = x.closest(".bar-row"); if (r) { r.hidden = true; x.checked = false; }
+      }));
       bars.forEach(b => {
         if (!b.hidden) b.hidden = !$$(".bar-row:not([hidden])", b).length;
         const m = $("[data-bar-more]", b);
