@@ -39,6 +39,7 @@
     $$(".ctl [data-b]").forEach(x => { x.dataset.b = disc(+x.dataset.b); });
     $$("[data-b0]").forEach(x => { x.dataset.b0 = disc(+x.dataset.b0); });
     $$(".card[data-price]").forEach(x => { if (+x.dataset.price < 1e9) x.dataset.price = disc(+x.dataset.price); });
+    $$("[data-lv]").forEach(x => { const m = JSON.parse(x.dataset.lv); m.forEach(v => { v.b = disc(v.b); v.d.forEach(d => { d[1] = disc(d[1]); }); }); x.dataset.lv = JSON.stringify(m); });
     $$("[data-vmap]").forEach(x => { const m = JSON.parse(x.dataset.vmap); Object.values(m).forEach(v => { if (v.b != null) v.b = disc(v.b); }); x.dataset.vmap = JSON.stringify(m); });
     // цены, написанные на странице: карточки, цена товара, драйверы светильников, «панели от …» у коллекций
     $$(".price, b[data-price], .ctl button span, .keyf dd, .ccard em").forEach(el => el.childNodes.forEach(n => {
@@ -655,6 +656,24 @@
         if (hit) { if (img && m[hit].i) img.src = m[hit].i; if (m[hit].b != null) pr.textContent = fmt(m[hit].b) + " BYN"; }
         else if (c.dataset.img0) { img.src = c.dataset.img0; pr.textContent = c.dataset.pr0; }
       });
+      // светильники: выбраны «Управление» или «Цвет света» — цена самого дешёвого подходящего исполнения (с драйвером этого управления),
+      // ссылка открывает товар уже с этим исполнением и драйвером (владелец 12.11.2026)
+      const dr = sel.dr || [], cc = sel.cc || [];
+      cards.forEach(c => {
+        if (!c.dataset.lv) return;
+        const a = $(".card-link", c), pr = $(".card-buy .price", c), act = $(".card-buy a.cbtn", c), base = a.getAttribute("href").split("?")[0];
+        if (!c.dataset.lpr0) c.dataset.lpr0 = pr.innerHTML;
+        let best = null, many = false;
+        if (dr.length || cc.length) JSON.parse(c.dataset.lv).forEach(v => {
+          if (cc.length && !cc.includes(v.c)) return;
+          const ds = !dr.length ? [["", 0]] : [...v.d.filter(d => dr.includes(d[0])), ...(v.o && dr.includes("Вкл/выкл") ? [["", 0]] : [])];
+          ds.forEach(d => { const b = v.b + d[1]; if (best && b !== best.b) many = true; if (!best || b < best.b) best = { b, a: v.a, k: d[0] }; });
+        });
+        const href = best ? base + "?v=" + encodeURIComponent(best.a) + (best.k ? "&dr=" + encodeURIComponent(best.k) : "") : base;
+        a.setAttribute("href", href); if (act) act.setAttribute("href", href);
+        if (best) pr.innerHTML = (many ? "от " : "") + fmt(best.b) + " BYN" + (best.k ? "<small>с драйвером " + best.k + "</small>" : "");
+        else pr.innerHTML = c.dataset.lpr0;
+      });
       if (push) {
         const u = new URLSearchParams();
         if (search.value.trim()) u.set("q", search.value.trim());
@@ -718,6 +737,15 @@
   if (wantCol) {
     const b = $$(".variants button").find(x => (x.dataset.col || "").split("|").includes(wantCol));
     if (b) b.click();
+  }
+
+  // ---- карточка светильника: ?v=<артикул исполнения>&dr=DALI — из каталога с фильтром «Управление»: сразу это исполнение и его драйвер ----
+  const wantV = new URLSearchParams(location.search).get("v");
+  if (wantV) {
+    const b = $$(".variants button").find(x => x.dataset.a === wantV), k = new URLSearchParams(location.search).get("dr");
+    if (b) b.click();
+    const o = k && $$(".ctl[data-ctl] .ctl-opts button").find(x => x.dataset.v === wantV && x.dataset.k === k);
+    if (o) o.click();
   }
 
   // ---- страница сметы ----
