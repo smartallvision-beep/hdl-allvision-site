@@ -361,6 +361,7 @@
   addEventListener("pageshow", ev => { if (ev.persisted) syncBuy(); });
   let beamOpt = () => "", beamSync = () => {};  // угол и цвет света для строки сметы — задаёт блок «Угол луча» ниже
   let ctlNoDrv = () => {};  // карточка на исполнении без драйвера — задаёт блок «Управление» ниже
+  let beamNow = () => null;  // выбранные угол и температура — для ссылки «с выбранными параметрами»
   if (add) add.addEventListener("click", () => {
     const a = add.dataset.add;
     if (!a) {  // светильник: исполнение ещё не выбрано
@@ -503,6 +504,9 @@
     const KTXT = { 2700: "тёплый, уютный вечерний свет", 3000: "тёплый белый, для жилых комнат", 3500: "нейтрально-тёплый", 4000: "нейтральный белый, для кухни и работы", 5000: "холодный белый, дневной" };
     const ATXT = a => a <= 16 ? "узкий луч: акцент на картину, нишу, предмет" : a <= 36 ? "средний луч: свет над столом и общий свет" : a <= 60 ? "широкий луч: общий свет комнаты" : "рассеянный свет: ровное общее освещение";
     let ang = 0, k = 3000, cur = null, kOn = false;
+    const qs0 = new URLSearchParams(location.search), want = { a: +qs0.get("ang") || 0, k: +qs0.get("k") || 0 };
+    const ks0 = () => cur ? cur.k : [...new Set(data.flatMap(d => d.k))];
+    beamNow = () => ({ a: ang, k: kOn && !(cur && cur.cct) ? k : 0 });
     const variantNow = () => {
       const v = $$(".variants button").find(x => x.getAttribute("aria-checked") === "true");
       return v ? data.find(d => d.v === v.dataset.a) : data.length === 1 ? data[0] : null;
@@ -532,6 +536,9 @@
       const ks = cur ? cur.k : [...new Set(data.flatMap(d => d.k))].sort((a, b) => a - b);  // до выбора исполнения — все температуры на выбор
       kOn = ks.length > 0;
       if (ks.length && !ks.includes(k)) k = ks.includes(3000) ? 3000 : ks[0];
+      // из ссылки «с выбранными параметрами»: действует, пока страница открывается (исполнение из ссылки выбирается позже, см. wantV)
+      if (want.a && angs.includes(want.a)) ang = want.a;
+      if (want.k && ks0().includes(want.k)) k = want.k;
       chip(aBox, angs, ang, "°", v => { ang = v; });
       chip(kBox, ks, k, " K", v => { k = v; });
       kBox.hidden = kHead.hidden = !ks.length;
@@ -544,6 +551,7 @@
       const a = d.ang.includes(ang) ? ang : d.ang[d.ang.length - 1], kk = d.k.includes(k) ? k : d.k.includes(3000) ? 3000 : d.k[0];
       return (a ? ` · ${a}°` : "") + (d.k.length ? ` · ${kk} K` : "");
     };
+    setTimeout(() => { want.a = want.k = 0; }, 800);
     beamSync = () => render(false);  // исполнение выбрано без щелчка (после «без драйвера»): угол и цвет — те же, если они есть у исполнения
     // смена исполнения и сброс «Без драйвера» — после обработчиков карточки. Выбор драйвера исполнение не меняет: угол и цвет остаются
     document.addEventListener("click", ev => { if (ev.target.closest('.variants button, .ctl-opts button[data-v="*"]')) setTimeout(() => render(true), 0); });
@@ -765,6 +773,22 @@
     const o = k && $$(".ctl[data-ctl] .ctl-opts button").find(x => x.dataset.v === wantV && x.dataset.k === k);
     if (o) o.click();
   }
+
+  // ---- карточка: «Скопировать ссылку с выбранными параметрами» — исполнение или цвет (?v=), драйвер (&dr=), угол (&ang=), температура (&k=);
+  // заказчик открывает карточку с тем же выбором (владелец 17.11.2026) ----
+  const shareB = $("[data-share]");
+  if (shareB) shareB.addEventListener("click", async () => {
+    const u = new URLSearchParams(), v = $$(".variants button").find(x => x.getAttribute("aria-checked") === "true");
+    if (v) u.set("v", v.dataset.a);
+    const d = $$(".ctl[data-ctl] .ctl-opts button").find(x => x.getAttribute("aria-checked") === "true" && x.dataset.k);
+    if (v && d) u.set("dr", d.dataset.k);
+    const b = beamNow();
+    if (b && b.a) u.set("ang", b.a);
+    if (b && b.k) u.set("k", b.k);
+    const url = location.origin + location.pathname + (u.toString() ? "?" + u : ""), msg = $("[data-share-msg]");
+    try { await navigator.clipboard.writeText(url); msg.textContent = "Ссылка скопирована"; } catch { window.prompt("Скопируйте ссылку:", url); }
+    setTimeout(() => { msg.textContent = ""; }, 3000);
+  });
 
   // ---- страница сметы ----
   const box = $("[data-smeta]");

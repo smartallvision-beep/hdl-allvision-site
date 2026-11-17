@@ -864,6 +864,9 @@ body[data-page=catalog] .hsearch { display: none; }
 .kab-files .cbtn { margin-left: auto; }
 
 /* циркадное освещение (владелец 04.11.2026): страница-объяснение, ссылка «зачем» в карточках, полоса в разделе «Освещение» */
+.share { margin: 4px 0 12px; }
+.share-b { background: none; border: 0; padding: 4px 0; font: inherit; font-size: 14px; font-weight: 600; color: var(--brand); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.share-b::before { content: "🔗"; margin-right: 6px; text-decoration: none; display: inline-block; }
 .cct-why { margin: 12px 0 12px; font-size: 14px; }
 .cct-why a { font-weight: 600; }
 .cct-why a::before { content: "☀"; display: inline-block; margin-right: 5px; text-decoration: none; }
