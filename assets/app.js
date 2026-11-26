@@ -2652,6 +2652,20 @@
     db.addEventListener("input", p3); dk.addEventListener("input", p3); p3();
   }
 
+  // ---- блок «Дом в 3D» (владелец 26.11.2026): «Скопировать» и, на телефоне, «Поделиться» (меню самого телефона) ----
+  const d3 = $("[data-dom3d]");
+  if (d3) {
+    const url = d3.dataset.dom3d, msg = $("[data-d3-msg]", d3), sh = $("[data-d3-share]", d3);
+    $("[data-d3-copy]", d3).addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(url); msg.textContent = "Ссылка скопирована"; } catch { window.prompt("Скопируйте ссылку:", url); }
+      setTimeout(() => { msg.textContent = ""; }, 3000);
+    });
+    if (navigator.share && matchMedia("(pointer: coarse)").matches) {
+      sh.hidden = false;
+      sh.addEventListener("click", () => { navigator.share({ title: "Дом в 3D: живой умный дом на HDL Buspro", url }).catch(() => {}); });
+    }
+  }
+
   // конфигуратор: по комнатам и желаниям — что человек получит и ориентир по оборудованию HDL Buspro по ценам каталога
   // (D.items, со скидкой дилера). Объёмы на комнату — ориентиры квартир из мозга [оценка], подбор модулей — как в КП: каналы с запасом ~10 %
   const cfgBox = $("[data-cfg]");

@@ -1152,3 +1152,23 @@ form.lead.flash-on { animation: flashOn 1.6s ease-out; }
 
 /* правка: блок клиента под таблицей, кнопки сохранения сразу под ним (07.11.2026) */
 .smeta-edit { margin: 16px 0 6px; }
+
+/* блок «Дом в 3D» на странице «Умный дом» (владелец 26.11.2026) */
+.g-3d { display: grid; grid-template-columns: 230px 1fr; gap: 30px; align-items: center; border: 1px solid var(--line); border-radius: 16px; padding: 22px 26px 22px 22px; background: var(--bg2); margin: 8px 0 6px; }
+.g-3d-pic { display: block; border-radius: 22px; overflow: hidden; background: #0f1114; box-shadow: 0 10px 28px rgba(31,26,30,.2); line-height: 0; }
+.g-3d-pic img { width: 100%; height: auto; display: block; }
+.g-3d h2 { margin: 2px 0 10px; }
+.g-3d-txt p { margin: 0 0 8px; max-width: 620px; }
+.g-3d-row { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; margin-top: 16px; }
+.g-3d-qr { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--muted); max-width: 300px; }
+.g-3d-qr svg { flex: 0 0 96px; width: 96px; height: 96px; background: #fff; border: 1px solid var(--line); border-radius: 8px; }
+.g-3d-txt .g-3d-share { margin: 16px 0 0; font-size: 14px; color: var(--muted); }
+.g-3d-share a, .g-3d-share button { font: inherit; color: var(--brand); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.g-3d-share button + button { margin-left: 10px; }
+.g-3d-share [data-d3-msg] { color: var(--ok); margin-left: 6px; }
+@media (max-width: 720px) {
+  .g-3d { grid-template-columns: 1fr; gap: 16px; padding: 16px; }
+  .g-3d-txt { order: 1; } .g-3d-pic { order: 2; max-width: 190px; margin: 4px auto 0; }
+  .g-3d-qr { display: none; }
+  .g-3d-row .btn { width: 100%; text-align: center; }
+}
