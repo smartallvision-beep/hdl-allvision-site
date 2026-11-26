@@ -273,9 +273,21 @@ input[type=range]::-moz-range-thumb { width: 26px; height: 26px; border-radius: 
 .sheet input:disabled, .sheet button:disabled { opacity: .55; cursor: default; }
 .fail { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { .sw::after { transition: none; } }
+/* версия 346: экран загрузки - дом под ним не виден и не нажимается, пока не готов */
+.boot { position:fixed; inset:0; z-index:9999; display:grid; place-items:center; background:var(--bg); color:var(--ink); transition:opacity .4s ease; }
+.boot[hidden] { display:none; }
+.boot.out { opacity:0; pointer-events:none; }
+.boot-in { width:min(280px, 72vw); text-align:center; }
+.boot-in b { display:block; font-size:24px; font-weight:700; letter-spacing:.01em; margin-bottom:18px; }
+.boot-bar { height:4px; border-radius:4px; background:var(--panel-2); overflow:hidden; }
+.boot-bar i { display:block; height:100%; width:4%; border-radius:4px; background:var(--accent); animation:bootcreep 5s cubic-bezier(.2,.7,.2,1) forwards; }
+@keyframes bootcreep { to { width:34%; } }
+.boot-in span { display:block; margin-top:12px; font-size:14px; color:var(--muted); min-height:20px; }
+@media (prefers-reduced-motion: reduce) { .boot { transition:none; } .boot-bar i { animation:none; width:34%; } }
 </style>
 
 <div id="app">
+  <div id="boot" class="boot" role="status" aria-live="polite"><div class="boot-in"><b>Дом в 3D</b><div class="boot-bar"><i></i></div><span>Загружаем дом</span></div></div>
   <canvas id="scene" tabindex="0" aria-label="Трёхмерный вид дома"></canvas>
   <div id="spots"></div>
   <button type="button" id="plan2" class="plan2" hidden aria-label="План дома"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v16H3z M3 11h8 M11 4v16 M15 11h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span>План</span></button>   <!-- версия 206: справа посередине - назад на план (снимок владельца) -->
@@ -286,7 +298,7 @@ input[type=range]::-moz-range-thumb { width: 26px; height: 26px; border-radius: 
     <button class="back" id="plan" type="button" hidden>План</button>   <!-- версия 202: из комнаты - назад на план -->
     <button class="back" id="back" type="button" hidden>Весь дом</button>
     <span class="gpill" id="gpill" hidden></span>   <!-- версия 300 -->
-    <span class="demo" id="live">Образец · версия 345</span>
+    <span class="demo" id="live">Образец · версия 346</span>
   </div>
 
   <div class="gover" id="gover" hidden><b id="goverT"></b><span id="goverS"></span></div>   <!-- версия 300: гостевой доступ истёк / ещё не начался -->
@@ -542,7 +554,7 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   // ---------------------------------------------------------------- сцена
   var renderer;
   try { renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true }); }
-  catch (e) { app.insertAdjacentHTML("beforeend", '<div class="fail">Это устройство не показывает трёхмерную графику в браузере.</div>'); return; }
+  catch (e) { app.insertAdjacentHTML("beforeend", '<div class="fail">Это устройство не показывает трёхмерную графику в браузере.</div>'); var bt0 = document.getElementById("boot"); if (bt0) bt0.hidden = true; return; }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.9;   // версия 54: яркий свет без засветки в белое
@@ -2838,8 +2850,8 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   // ---------------------------------------------------------------- живое состояние с шины (только просмотр)
   function badge() {
     var b = $("live");
-    if (!LIVE.on) { b.textContent = "Образец · версия 345"; b.className = "demo"; return; }
-    b.innerHTML = (LIVE.ok ? "<span class=\"lt\">Дом на связи · </span>" : "<span class=\"lt\">Нет связи с домом · </span>") + "в. 345"; b.title = LIVE.ok ? "Дом на связи" : "Нет связи с домом";
+    if (!LIVE.on) { b.textContent = "Образец · версия 346"; b.className = "demo"; return; }
+    b.innerHTML = (LIVE.ok ? "<span class=\"lt\">Дом на связи · </span>" : "<span class=\"lt\">Нет связи с домом · </span>") + "в. 346"; b.title = LIVE.ok ? "Дом на связи" : "Нет связи с домом";
     b.className = "demo " + (LIVE.ok ? "ok" : "bad");
   }
   // версия 51: где сейчас телевизор и штора - по времени последней команды (служба помнит её время): ещё едут - с середины хода, доехали - в конце
@@ -2898,6 +2910,7 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
       if (open) { if (!LIVE.busy && document.activeElement !== $("pin")) openSheet(open.id); } else ui();
       setTimeout(pull, 2000);
     }).catch(function () {
+      LIVE.tried = true;                     /* версия 346: экран загрузки не ждёт дом дольше первого ответа */
       if (!LIVE.on) return;                  // открыто не со службы (файл, сайт) - обычный образец
       LIVE.ok = false; badge(); setTimeout(pull, Math.min(15000, 2000 * ++LIVE.fails));
     });
@@ -2905,6 +2918,37 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   if ((location.protocol === "http:" || location.protocol === "https:") && !/[?&]demo/.test(location.search)) pull();   // ?demo - образец без дома (для проверки вида)
   document.addEventListener("visibilitychange", function () { if (!document.hidden) LIVE.snap = true; });   // вернулись на страницу - снова текущее положение
   badge();
+  /* версия 346 (владелец: «открывается сразу же картинка и управление… нажимаешь - переход не работает… нужен прогресс-бар, после загрузки
+     давать доступ»): экран загрузки. Шаги: «Загружаем дом» (пока грузится и строится страница) - «Готовим комнаты» (один кадр, в котором
+     нарисовано всё: потолки, крыша, дальние деревья, - чтобы телефон заранее подготовил отрисовку и первый переход не замирал) -
+     «Получаем данные из дома» (первый ответ дома, не дольше 5 с). Потом экран гаснет. Страховка: через 12 с открываемся в любом случае. */
+  (function () {
+    var el = $("boot"); if (!el) return;
+    var bar = el.querySelector("i"), lab = el.querySelector("span"), done = false, first = true;
+    function set(p, text, sec) {
+      if (first) { first = false; var w = bar.getBoundingClientRect().width; bar.style.animation = "none"; bar.style.width = w + "px"; void bar.offsetWidth; }
+      bar.style.transition = "width " + (sec || 0.35) + "s ease"; bar.style.width = p + "%"; if (text) lab.textContent = text;
+    }
+    function finish() { if (done) return; done = true; clearTimeout(safe); set(100, null, 0.2); setTimeout(function () { el.classList.add("out"); setTimeout(function () { el.hidden = true; }, 450); }, 180); }
+    var safe = setTimeout(finish, 12000);
+    function warm() {
+      var keep = [], vis = [], cul = [];
+      scene.traverse(function (o) { if (o.isLight) for (var q = o.parent; q; q = q.parent) if (!q.visible && keep.indexOf(q) < 0) keep.push(q); });   /* спрятанные группы со светом не трогаем - число ламп в кадре должно остаться обычным */
+      scene.traverse(function (o) { if (o.isLight || keep.indexOf(o) >= 0) return; if (!o.visible) { vis.push(o); o.visible = true; } if (o.frustumCulled) { cul.push(o); o.frustumCulled = false; } });
+      try { renderer.render(scene, camera); } finally { vis.forEach(function (o) { o.visible = false; }); cul.forEach(function (o) { o.frustumCulled = true; }); }
+    }
+    var raf2 = function (f) { requestAnimationFrame(function () { requestAnimationFrame(f); }); };
+    raf2(function () {                                   // первые кадры дома уже нарисованы под экраном загрузки
+      set(45, "Готовим комнаты");
+      raf2(function () {
+        try { warm(); } catch (e) { /* не получилось - открываемся как раньше */ }
+        var live = (location.protocol === "http:" || location.protocol === "https:") && !/[?&]demo/.test(location.search), t1 = Date.now();
+        if (!live) { set(90); raf2(finish); return; }
+        set(92, "Получаем данные из дома", 5);
+        (function wait() { if (LIVE.on || LIVE.tried || Date.now() - t1 > 5000) raf2(finish); else setTimeout(wait, 100); })();
+      });
+    });
+  })();
 })();
 </script>
 
