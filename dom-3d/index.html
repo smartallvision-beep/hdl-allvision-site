@@ -2221,7 +2221,7 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   }
   function isNight(dt) { dt = dt || new Date(); var st = sunTimes(dt), hh = dt.getHours() + dt.getMinutes() / 60; return hh < st.rise || hh > st.set; }
   function allOffPlan() {
-    var night = isNight(), P = { night: night, off: [], dim1: [], skip: [] };
+    var night = false, P = { night: night, off: [], dim1: [], skip: [] };
     DEV.forEach(function (d) { if (!(d.type === "cct" || d.type === "dim")) return;
       if (night && NIGHT_ALWAYS1[d.id]) { if (d.on && d.bri <= 1) P.skip.push(d); else P.dim1.push(d); return; }   // версия 342
       if (!d.on) return;
@@ -2262,6 +2262,14 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
     if (h !== NOW.html) { NOW.html = h; el.innerHTML = h; } el.hidden = false;
   }
   function allOff() {
+    var AP = allOffPlan(), todo = AP.off.map(function (d) { return { d: d, lv: 0 }; }).concat(AP.dim1.map(function (d) { return { d: d, lv: 1 }; })), n = todo.length;
+    if (!n) { tip("Гасить нечего — свет нигде не горит", false, 1800); return; }
+    todo.forEach(function (q, k) { setTimeout(function () { var d = q.d;
+      if (d.rgbW) { d.colorRun = false; d.on = false; d.crT = Date.now(); send(d, { white: false }, "level", 0); }
+      else { if (q.lv) { d.on = true; d.bri = 1; } else d.on = false; send(d, { level: q.lv }, "level", q.lv); }
+      NOW.html = ""; ui(); tip(k + 1 < n ? "Гашу… " + (k + 1) + " из " + n + " · " + d.name : "Свет выключен: " + n, false, k + 1 < n ? 900 : 2600); }, 250 + k * 220); });
+  }
+  function allOffOld() {
     var AP = allOffPlan(), todo = AP.off.map(function (d) { return { d: d, lv: 0 }; }).concat(AP.dim1.map(function (d) { return { d: d, lv: 1 }; }));
     if (LIVE.on) todo = todo.filter(function (q) { return canCtl(q.d); });
     todo.forEach(function (q, k) { var d = q.d;
