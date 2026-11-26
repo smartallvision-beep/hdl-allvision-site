@@ -306,7 +306,7 @@ input[type=range]::-moz-range-thumb { width: 26px; height: 26px; border-radius: 
     <button class="back" id="plan" type="button" hidden>План</button>   <!-- версия 202: из комнаты - назад на план -->
     <button class="back" id="back" type="button" hidden>Весь дом</button>
     <span class="gpill" id="gpill" hidden></span>   <!-- версия 300 -->
-    <span class="demo" id="live">Образец · версия 348</span>
+    <span class="demo" id="live">Образец · версия 350</span>
   </div>
 
   <div class="gover" id="gover" hidden><b id="goverT"></b><span id="goverS"></span></div>   <!-- версия 300: гостевой доступ истёк / ещё не начался -->
@@ -479,7 +479,8 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
     { axis: "x", a: 10.5, b: 12.0, at: 6.9,   y0: 0.8, y1: 2.2, in: -1, room: "living" },
     { axis: "z", a: 0.75, b: 2.25, at: 3.05,  y0: 0.4, y1: 2.2, in: 1, room: "sauna", noMull: true },   /* версия 109: панорамное, без перегородки (слово владельца) */
     { axis: "z", a: 4.1,  b: 5.6,  at: 12.75, y0: 0.8, y1: 2.2, in: -1, room: "living" },
-    { axis: "x", a: 7.0,  b: 8.8,  at: 6.9,   y0: 0.02, y1: 2.1, in: -1, room: "living", door: true }
+    { axis: "x", a: 7.0,  b: 8.8,  at: 6.9,   y0: 0.02, y1: 2.1, in: -1, room: "living", door: true },
+    { axis: "z", a: 3.4,  b: 4.3,  at: 3.05,  y0: 0.02, y1: 2.1, in: 1, room: "corridor", door: true, noMull: true }   /* версия 349: выход из коридора на террасу - дверь со стеклом, как у всех окон; касание сквозь стекло - переход на террасу (слово владельца) */
   ];
   // устройства: названия и каналы — из дома; места светильников на плане условные
   var DEV = [
@@ -1977,6 +1978,7 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
       else { rid = rf; p = hit.point.clone().addScaledVector(dir, -1.1); var toWall = true; }   /* версия 166: к мебели - на удобное расстояние, не вплотную */
     }
     var R = ROOMS[rid]; if (!R || R.upper && rid !== current) return;
+    if (current === "corridor" && rid === "terrace" && p.x < 3.1) { var ce = [2.2, 3.85]; enter("terrace", { eye: ce, yaw: Math.atan2(-12.3 - ce[0], 3.2 - ce[1]), pitch: 0.1 }); return; }   /* версия 350: из коридора через стеклянную дверь - выходим на открытую террасу у двери и смотрим на курятник, а не на главную террасу (слово владельца) */
     if (rid !== current && !OPEN[current + "|" + rid]) { enter(rid); return; }   /* версия 166: в другую комнату - сразу на её хороший ракурс (как при входе), а не в точку касания */
     var m = 0.6, rects = [[R.x0, R.z0, R.x1, R.z1]].concat((R.extra || []).map(function (e) { return e.r; }));
     var best = null; rects.forEach(function (q) { var cx = Math.max(q[0] + m, Math.min(q[2] - m, p.x)), cz = Math.max(q[1] + m, Math.min(q[3] - m, p.z)), dd = Math.hypot(cx - p.x, cz - p.z); if (!best || dd < best.d) best = { x: cx, z: cz, d: dd }; });
@@ -2885,8 +2887,8 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   // ---------------------------------------------------------------- живое состояние с шины (только просмотр)
   function badge() {
     var b = $("live");
-    if (!LIVE.on) { b.textContent = "Образец · версия 348"; b.className = "demo"; return; }
-    b.innerHTML = (LIVE.ok ? "<span class=\"lt\">Дом на связи · </span>" : "<span class=\"lt\">Нет связи с домом · </span>") + "в. 348"; b.title = LIVE.ok ? "Дом на связи" : "Нет связи с домом";
+    if (!LIVE.on) { b.textContent = "Образец · версия 350"; b.className = "demo"; return; }
+    b.innerHTML = (LIVE.ok ? "<span class=\"lt\">Дом на связи · </span>" : "<span class=\"lt\">Нет связи с домом · </span>") + "в. 350"; b.title = LIVE.ok ? "Дом на связи" : "Нет связи с домом";
     b.className = "demo " + (LIVE.ok ? "ok" : "bad");
   }
   // версия 51: где сейчас телевизор и штора - по времени последней команды (служба помнит её время): ещё едут - с середины хода, доехали - в конце
