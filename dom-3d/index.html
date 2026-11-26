@@ -138,7 +138,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .hnow-off { margin-top: 12px; width: 100%; border: 0; border-radius: 14px; padding: 13px; font-size: 15px; font-weight: 650; background: #e5484d; color: #fff; } .hnow-off:disabled { opacity: .45; }
 .hnow-ask { margin-top: 10px; background: rgba(229,72,77,.12); border: 1px solid rgba(229,72,77,.45); border-radius: 14px; padding: 12px; font-size: 14px; line-height: 1.4; } .hnow-ask div { display: flex; gap: 8px; margin-top: 10px; } .hnow-ask button { flex: 1; border-radius: 12px; padding: 10px; font-size: 14.5px; font-weight: 650; border: 1px solid var(--line); background: transparent; color: var(--ink); } .hnow-ask .yes { background: #e5484d; border-color: #e5484d; color: #fff; }
 .grp { display: none; }
-@media (min-width: 900px) {
+@media (min-width: 900px), (orientation: landscape) and (min-width: 600px) {   /* версия 348 (владелец: «да, на любом»): колонка слева и на любом телефоне, повёрнутом боком */
   .dock { left: 16px; right: auto; top: 72px; bottom: 16px; width: 290px; padding: 14px; background: rgba(15,17,20,.74); border: 1px solid var(--line); border-radius: 18px; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); gap: 10px; }
   .chips { flex-direction: column; overflow-x: hidden; overflow-y: auto; gap: 7px; flex: 1; min-height: 0; padding-right: 2px; }
   .chip { font-size: 15.5px; padding: 12px 14px; transition: opacity .25s; }
@@ -153,6 +153,14 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   .chip.sl:not(.on) .fillbar { display: none; }
   .chip.sl.fan .fillbar { background: linear-gradient(90deg, rgba(159,216,255,.06), rgba(159,216,255,.26)); border-right-color: rgba(159,216,255,.8); }   /* версия 323: слайдер скорости вытяжки */
   .chip.sl > svg, .chip.sl > span:not(.fillbar) { position: relative; pointer-events: none; }
+}
+/* версия 348: телефон боком - колонка компактнее и не под вырезом экрана */
+@media (orientation: landscape) and (min-width: 600px) and (max-height: 600px) {
+  .dock { left: max(10px, env(safe-area-inset-left, 0px)); top: 58px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); width: 232px; padding: 10px; gap: 6px; }
+  .chips { gap: 5px; }
+  .chip { font-size: 14px; padding: 9px 11px; }
+  .chip.qm { width: 34px; padding: 7px 0; }
+  .grp { margin-top: 4px; }
 }
 
 /* лист управления */
@@ -298,7 +306,7 @@ input[type=range]::-moz-range-thumb { width: 26px; height: 26px; border-radius: 
     <button class="back" id="plan" type="button" hidden>План</button>   <!-- версия 202: из комнаты - назад на план -->
     <button class="back" id="back" type="button" hidden>Весь дом</button>
     <span class="gpill" id="gpill" hidden></span>   <!-- версия 300 -->
-    <span class="demo" id="live">Образец · версия 347</span>
+    <span class="demo" id="live">Образец · версия 348</span>
   </div>
 
   <div class="gover" id="gover" hidden><b id="goverT"></b><span id="goverS"></span></div>   <!-- версия 300: гостевой доступ истёк / ещё не начался -->
@@ -411,7 +419,8 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
 </script>
 <style>
 .nowbtn.want { right:auto; left:var(--gut-l); text-decoration:none; background:rgba(232,82,111,.92); border-color:rgba(255,255,255,.2); color:#fff; }
-@media (min-width: 900px) { .nowbtn.want { left:auto; right:var(--gut-r); top:108px; } }
+@media (min-width: 900px), (orientation: landscape) and (min-width: 600px) { .nowbtn.want { left:auto; right:var(--gut-r); top:108px; } }
+@media (orientation: landscape) and (min-width: 600px) and (max-height: 600px) { .dock { bottom: calc(38px + env(safe-area-inset-bottom, 0px)) !important; } }   /* версия 348: колонка телефона боком не под плашкой «Живые данные» */
 .viewonly { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(env(safe-area-inset-bottom) + 4px); z-index:40; font:12px/1.2 system-ui, sans-serif; color:#ece8e6; background:rgba(20,18,18,.72); border-radius:10px; padding:3px 10px; pointer-events:none; white-space:nowrap; }
 </style>
 <script src="three.min.js"></script>
@@ -1769,6 +1778,8 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   // three.js считает угол по вертикали; на телефоне стоя пересчитываем, чтобы ширина кадра не сужалась
   function vfov(f) { if (W >= Hh) return f; return Math.min(132, 2 * Math.atan(Math.tan(f * Math.PI / 360) * Hh / W) * 180 / Math.PI); }
   var pos = new THREE.Vector3(), tgt = new THREE.Vector3(), anim = null, W = 1, Hh = 1;
+  var WIDE_MQ = window.matchMedia ? matchMedia("(min-width: 900px), (orientation: landscape) and (min-width: 600px)") : null;   /* версия 348: тот же признак, что у колонки в стилях */
+  function WIDE() { return WIDE_MQ ? WIDE_MQ.matches : W >= 900; }
 
   function orbitPose() {
     var d = orbit.dist * (W < Hh ? Math.min(2.2, Hh / W * 1.0) : 1);
@@ -2344,9 +2355,9 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
     if (!current && SCN.ask) hintTx = SCN.sure[SCN.ask[0]];   /* версия 335: что сделает сцена - пока ждём подтверждения */
     if (hintEl.textContent !== hintTx) hintEl.textContent = hintTx; hintEl.hidden = !hintTx;
     var chipsEl = $("chips"), chipsSL = chipsEl.scrollLeft, chips = document.createElement("div");   /* версия 270: кнопки собираются отдельно и подменяются, только когда палец не на полоске - иначе полоску нельзя было прокрутить (каждые 2 с она собиралась заново) */
-    var wide = W >= 900, focus = wide && current ? focusRoom() : null, curG = null;   // версия 320
+    var wide = WIDE(), focus = wide && current ? focusRoom() : null, curG = null;   // версия 320
     function chip(text, cls, fn, key) { var b = document.createElement("button"); b.type = "button"; b.className = "chip " + cls + (focus && curG && curG !== focus ? " dimg" : ""); b.innerHTML = text; b.dataset.k = key || text; b.addEventListener("click", fn); chips.appendChild(b); }
-    chip("?", "qm" + (HINT.show ? " on" : ""), function () { HINT.show = !HINT.show; ui(); }, "qm");
+    chip("?", "qm", function () { if (window.openHelp) window.openHelp(); }, "qm");
     var side = viewSide(), glist = [];
     if (current) (wide ? [current].concat(NEIGH[current] || []) : (side ? [side] : []).concat([current])).forEach(function (g) { if (wide && NEIGH[current]) glist.push({ grp: g }); DEV.forEach(function (d) { if (d.room === g) glist.push(d); }); });
     if (current) glist.forEach(function (d) {
@@ -2760,7 +2771,7 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
       for (var ti = 0; ti < SITE_TREES.length; ti++) { var T0 = SITE_TREES[ti], hide = false; if (!current) { var px = T0.p.x - tc.x, py = T0.p.y - tc.y, pz = T0.p.z - tc.z, tt = (px * tdx + py * tdy + pz * tdz) / tl2; if (tt < 1) { if (tt < 0) tt = 0;   /* версия 344 (снимки владельца с iPhone: полосы и плашки во весь экран): дерево рядом с камерой или чуть позади неё тоже прячем - на телефоне камера при вращении проходит вплотную к ёлкам и клёнам */ var qx = px - tdx * tt, qy = py - tdy * tt, qz = pz - tdz * tt; hide = Math.sqrt(qx * qx + qy * qy + qz * qz) < T0.r + 6.5; } } if (T0.m.visible === hide) T0.m.visible = !hide; } }
     if (!current && !anim) { var rz = orbit.pitch < 0.7 ? "side" : orbit.pitch > 0.95 ? "top" : roofZone; if (rz !== roofZone) { if (roofZone) { roofOn = rz === "side"; roofG.visible = roofOn; ui(); } roofZone = rz; } }   // версия 271 (слово владельца): опустили взгляд вбок - крыша надевается, сверху - снимается; кнопка «Снять/Надеть крышу» работает до следующего перехода
     if (current === "terrace") { var vs = viewSide(); if (vs !== sideNow) { sideNow = vs; $("chips").scrollLeft = 0; chipsTouchT = 0; ui(); } } else sideNow = null;   // версия 270: кнопки следуют за взглядом
-    if (W >= 900 && current && NEIGH[current] && current !== "terrace") { var fr = focusRoom(); if (fr !== focNow) { focNow = fr; ui(); var fe = document.querySelector("#chips .grp.foc"); if (fe && Date.now() - chipsTouchT > 900 && fe.scrollIntoView) fe.scrollIntoView({ block: "nearest", behavior: "smooth" }); } }   // версия 320: подсветка группы, на которую смотрят
+    if (WIDE() && current && NEIGH[current] && current !== "terrace") { var fr = focusRoom(); if (fr !== focNow) { focNow = fr; ui(); var fe = document.querySelector("#chips .grp.foc"); if (fe && Date.now() - chipsTouchT > 900 && fe.scrollIntoView) fe.scrollIntoView({ block: "nearest", behavior: "smooth" }); } }   // версия 320: подсветка группы, на которую смотрят
     if (window.SITE_GATE) { var gdt = GATE.t ? Math.min(0.1, (now - GATE.t) / 1000) : 0, gtg = GATE_X[GATE.pos] || 15.2; GATE.t = now; GATE.x += Math.max(-0.22 * gdt, Math.min(0.22 * gdt, gtg - GATE.x)); SITE_GATE.position.x = GATE.x; if (window.SITE_FLOOD && byId.k8) { var fa = Math.sqrt((byId.k8.curBri || 0) / 100); SITE_FLOOD.color.setRGB(0.23 + 0.77 * fa, 0.22 + 0.76 * fa, 0.21 + 0.7 * fa); } if (window.SITE_SCONCE && byId.k1) { var sa = (byId.k1.curBri || 0) / 100; SITE_SCONCE.color.setRGB(0.23 + 0.77 * Math.sqrt(sa), 0.22 + 0.62 * Math.sqrt(sa), 0.21 + 0.35 * Math.sqrt(sa)); } if (window.SITE_COOPWIN && byId.k3) { var cw = Math.max(byId.k3.curBri || 0, byId.k4.curBri || 0) / 100; SITE_COOPWIN.opacity = Math.min(0.92, 0.15 + Math.sqrt(cw)) * (cw > 0.01 ? 1 : 0); } if (window.SITE_LAMP) { var gOn = Math.abs(gtg - GATE.x) > 0.005 && Math.floor(now / 500) % 2 === 0; SITE_LAMP.m.emissiveIntensity = gOn ? 2.2 : 0.15; SITE_LAMP.l.intensity = gOn ? 1.6 : 0; } }   // версия 259: ворота едут ~0,22 м/с; версия 260: лампа мигает, пока едут
     atvScreen(now);   // версия 247
     var dt = Math.min(0.1, (now - last) / 1000); last = now; climTick(now);   // версия 186
@@ -2874,8 +2885,8 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   // ---------------------------------------------------------------- живое состояние с шины (только просмотр)
   function badge() {
     var b = $("live");
-    if (!LIVE.on) { b.textContent = "Образец · версия 347"; b.className = "demo"; return; }
-    b.innerHTML = (LIVE.ok ? "<span class=\"lt\">Дом на связи · </span>" : "<span class=\"lt\">Нет связи с домом · </span>") + "в. 347"; b.title = LIVE.ok ? "Дом на связи" : "Нет связи с домом";
+    if (!LIVE.on) { b.textContent = "Образец · версия 348"; b.className = "demo"; return; }
+    b.innerHTML = (LIVE.ok ? "<span class=\"lt\">Дом на связи · </span>" : "<span class=\"lt\">Нет связи с домом · </span>") + "в. 348"; b.title = LIVE.ok ? "Дом на связи" : "Нет связи с домом";
     b.className = "demo " + (LIVE.ok ? "ok" : "bad");
   }
   // версия 51: где сейчас телевизор и штора - по времени последней команды (служба помнит её время): ещё едут - с середины хода, доехали - в конце
@@ -2980,3 +2991,39 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
 <a class="nowbtn want" id="wantbtn" href="https://hdl.by/umnyj-dom/#zayavka" target="_blank" rel="noopener" hidden>Хочу так же ›</a>
 <script>(function () { var n = document.getElementById("nowbtn"), w = document.getElementById("wantbtn"); if (!n || !w) return; n.parentNode.insertBefore(w, n);
   var s = function () { w.hidden = n.hidden; }; new MutationObserver(s).observe(n, { attributes: true, attributeFilter: ["hidden"] }); s(); })();</script>
+<style>
+.help { position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(8,9,11,.62); }
+.help[hidden] { display:none; }
+.help-in { width:100%; max-width:420px; max-height:calc(100dvh - 32px); overflow-y:auto; background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:18px; padding:18px 18px 16px; box-shadow:0 14px 40px rgba(0,0,0,.5); font:15px/1.4 system-ui, -apple-system, sans-serif; }
+.help-in h2 { margin:0 0 12px; font-size:20px; font-weight:700; }
+.help-in p { margin:0 0 10px; }
+.help-in p.wall { background:var(--panel-2); border-radius:12px; padding:10px 12px; }
+.help-in b { color:#fff; }
+.help-in small { display:block; margin:4px 0 14px; color:var(--muted); font-size:13px; }
+.help-in button { width:100%; border:0; border-radius:999px; padding:12px; font-size:16px; font-weight:600; background:var(--accent); color:#fff; }
+</style>
+<div class="help" id="help" hidden role="dialog" aria-modal="true" aria-labelledby="helpT"><div class="help-in">
+  <h2 id="helpT">Как пользоваться</h2>
+  <p class="wall"><b>Ходим сквозь стены.</b> Коснитесь стены, и вы окажетесь в комнате за ней. Так задумано: хозяин знает, что у него за стеной, и ему не нужно искать дверь. Так меньше лишних касаний.</p>
+  <p><b>Войти в комнату:</b> коснитесь её на плане или стены дома.</p>
+  <p><b>Осмотреться:</b> ведите пальцем по экрану. <b>Подойти ближе:</b> коснитесь пола.</p>
+  <p><b>Свет:</b> коснитесь светильника или потолка, свет включится или выключится. Держите палец, и меняется яркость.</p>
+  <p><b>Остальное</b> (тёплый пол, вытяжки, телевизор, ворота): коснитесь самого устройства или его кнопки внизу.</p>
+  <p><b>«План»</b> справа возвращает к плану, <b>«Дом»</b> показывает, что сейчас включено во всём доме.</p>
+  <p><b>Телефон и планшет.</b> Поверните телефон или планшет боком, и слева появится список устройств по комнатам. Управлять можно прямо из списка: проведите пальцем по строке светильника, и меняется яркость.</p>
+  <small>На сайте нажатия меняют только картинку у вас, в доме ничего не включается. Это окно открывается кнопкой «?» внизу.</small>
+  <button type="button" id="helpOk">Понятно</button>
+</div></div>
+<script>(function () {
+  var h = document.getElementById("help"), ok = document.getElementById("helpOk"); if (!h || !ok) return;
+  function close() { h.hidden = true; }
+  window.openHelp = function () { h.hidden = false; try { ok.focus({ preventScroll: true }); } catch (e) {} };
+  ok.addEventListener("click", close);
+  h.addEventListener("click", function (e) { if (e.target === h) close(); });   /* касание мимо окна */
+  document.addEventListener("keydown", function (e) { if (!h.hidden && e.key === "Escape") { e.stopPropagation(); e.preventDefault(); close(); } }, true);
+  /* первое открытие: показать один раз, когда экран загрузки ушёл */
+  var seen = false; try { seen = !!localStorage.getItem("help:seen"); } catch (e) {}
+  if (seen) return;
+  var b = document.getElementById("boot"), t0 = Date.now();
+  (function wait() { if (b && !b.hidden && Date.now() - t0 < 15000) return setTimeout(wait, 200); window.openHelp(); try { localStorage.setItem("help:seen", "1"); } catch (e) {} })();
+})();</script>
