@@ -284,7 +284,7 @@ input[type=range]::-moz-range-thumb { width: 26px; height: 26px; border-radius: 
     <button class="back" id="plan" type="button" hidden>План</button>   <!-- версия 202: из комнаты - назад на план -->
     <button class="back" id="back" type="button" hidden>Весь дом</button>
     <span class="gpill" id="gpill" hidden></span>   <!-- версия 300 -->
-    <span class="demo" id="live">Образец · версия 343</span>
+    <span class="demo" id="live">Образец · версия 345</span>
   </div>
 
   <div class="gover" id="gover" hidden><b id="goverT"></b><span id="goverS"></span></div>   <!-- версия 300: гостевой доступ истёк / ещё не начался -->
@@ -1863,10 +1863,22 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
     else orbit.dist = Math.max(9, Math.min(60, orbit.dist * f));   /* версия 251: участок - можно отдалить до 60 м */
   }
   var ray = new THREE.Raycaster();
+  /* версия 345 (снимок владельца: в гостиной касание стены у двери в коридор открывало тепловой насос): насос открываем,
+     только если он под пальцем виден - между камерой и насосом нет стены, мебели, кровли. Раньше луч шёл сквозь дом. */
+  function pumpUnder(maxD) {
+    var h = ray.intersectObjects(HP.meshes)[0]; if (!h || (maxD && h.distance > maxD)) return false;
+    var hs = ray.intersectObjects(scene.children, true);
+    for (var i = 0; i < hs.length; i++) { var o = hs[i].object, m = o.material; if (hs[i].distance >= h.distance - 0.03) break;
+      if (HP.meshes.indexOf(o) >= 0 || !o.isMesh || o.userData.room || !m || m.visible === false || (m.transparent && m.opacity < 0.5)) continue;
+      if (o.userData.glass) return false;   /* сквозь окно насос тоже не открываем */
+      var vis = true; for (var q = o; q; q = q.parent) if (!q.visible) { vis = false; break; } if (!vis) continue;
+      return false; }
+    return true;
+  }
   function tapOverview(x, y) {
     var r = canvas.getBoundingClientRect();
     ray.setFromCamera(new THREE.Vector2((x - r.left) / r.width * 2 - 1, -((y - r.top) / r.height) * 2 + 1), camera);
-    if (ray.intersectObjects(HP.meshes)[0]) { openPump(); return; }   // версия 301: касание насоса - его страница
+    if (pumpUnder()) { openPump(); return; }   // версия 301: касание насоса - его страница; версия 345: только если насос виден под пальцем
     var hit = ray.intersectObjects(floors).filter(function (h) { return roofG.visible || !ROOMS[h.object.userData.room].upper; })[0]; if (hit) { var rr = hit.object.userData.room; if (rr === "terrace" && hit.point.x < 3.05) { var ex = 1.5, ez = 1.4, pp = new THREE.Vector3(); HP.group.getWorldPosition(pp); enter(rr, { eye: [ex, ez], yaw: Math.atan2(pp.x - ex, pp.z - ez), pitch: -0.12 }); return; }   /* версия 314: касание открытой террасы сверху - встаём на неё лицом к тепловому насосу (слово владельца) */ if (rr === "living" && hit.point.x > 10.2) enter(rr, { eye: [10.2, 4.87], yaw: -Math.PI / 2, pitch: 0.2 }); else enter(rr); }   /* версия 204: с плана касание дивана - вид от дивана на стену с решётками кондиционера (слово владельца) */
   }
   // версия 11: касание потолка включает и выключает свет комнаты (пока только гостиная: «Над диваном», слово владельца)
@@ -1887,7 +1899,7 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   function tapRoom(x, y) {
     var atvOpen = !$("sheet").hidden && open && open.id === "atv";   /* версия 245: при открытом пульте Apple TV касание светильника и потолка работает, переходов нет */
     if (!$("sheet").hidden && !atvOpen) return;
-    if (!atvOpen) { var r9 = canvas.getBoundingClientRect(); ray.setFromCamera(new THREE.Vector2((x - r9.left) / r9.width * 2 - 1, -((y - r9.top) / r9.height) * 2 + 1), camera); var hh9 = ray.intersectObjects(HP.meshes)[0]; if (hh9 && hh9.distance < 12) { openPump(); return; } }   // версия 311: касание насоса с террасы - его страница
+    if (!atvOpen) { var r9 = canvas.getBoundingClientRect(); ray.setFromCamera(new THREE.Vector2((x - r9.left) / r9.width * 2 - 1, -((y - r9.top) / r9.height) * 2 + 1), camera); if (pumpUnder(12)) { openPump(); return; } }   // версия 311: касание насоса с террасы - его страница
     kitchenLow = false; var id = pickAt(x, y); if (atvOpen) { if (id && byId[id] && (byId[id].type === "cct" || byId[id].type === "dim" || byId[id].type === "group")) quick(byId[id]); else closeSheet(); return; }   /* версия 288: касание мимо пульта (не по светильнику) - пульт сворачивается (слово владельца) */ if (id) { if (pickSheet) openSheet(id); else quick(byId[id]); return; }
     if (kitchenLow) { here = null; enter("kitchen"); return; }   // версия 209: ниже столешницы - вид кухни с вытяжкой (владелец: «жму под раковиной - попадаю на ракурс с вытяжкой»)   /* версия 200: у вытяжки над плитой касание - окно */
     if (current === "terrace" && !anim) {   // версия 268 (слово владельца): касание края террасы - у крыльца вид на ворота, у озера - на курятник
@@ -2099,8 +2111,8 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   }
   // версия 319 (владелец принял по снимкам): кнопки внизу - значок типа, подпись по смыслу и значение; подсказка своя у каждого вида
   var HINT = { key: null, show: true }, HINTS = {
-    room: "Касание светильника или потолка включает и выключает. Удержание меняет яркость.",
-    plan: "Дом вращается пальцем. Коснитесь комнаты, чтобы войти.", house: "Дом вращается пальцем. Коснитесь комнаты, чтобы войти.",
+    room: "Светильник или потолок — свет, удержание — яркость.",
+    plan: "Коснитесь комнаты, чтобы войти. Внутри ходим сквозь стены: коснитесь стены — окажетесь в комнате за ней.", house: "Коснитесь комнаты, чтобы войти. Внутри ходим сквозь стены: коснитесь стены — окажетесь в комнате за ней.",
     yard: "Касание ворот открывает их, закроются сами. Удержание — калитка.",
     coop: "Касание домика, навеса или фонаря включает их свет.",
     terrace: "Касание потолка — подсветки. Значок ♪ над дверью — музыка.",
@@ -2108,6 +2120,7 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
     bedroom: "Касание потолка — свет, шторы — штора. Удержание телевизора опускает и поднимает его.",
     kitchen: "Касание потолка у стен и посередине — свои точки. Значок вытяжки — её скорость."
   };
+  ["room", "sauna", "bedroom", "kitchen"].forEach(function (k) { HINTS[k] = "Коснитесь стены — окажетесь в комнате за ней. " + HINTS[k]; });
   function hintSeen(k, v) { try { if (v != null) localStorage.setItem("hint:" + k, String(v)); return +localStorage.getItem("hint:" + k) || 0; } catch (e) { return 0; } }
   var CHIP_SVG = (function () { var o = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">', c = "</svg>"; return {
     lamp: o + '<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.3 1 2.1h5c0-.8.4-1.6 1-2.1A6 6 0 0 0 12 3z"/>' + c,
@@ -2706,7 +2719,7 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   frame.hgC = new THREE.Color(); frame.hgOff = new THREE.Color(0x4a4640);
   function frame(now) {
     if (window.SITE_TREES) { var tc = camera.position, tdx = CENTER.x - tc.x, tdy = CENTER.y - tc.y, tdz = CENTER.z - tc.z, tl2 = tdx * tdx + tdy * tdy + tdz * tdz;   // версия 279: деревья не закрывают баню
-      for (var ti = 0; ti < SITE_TREES.length; ti++) { var T0 = SITE_TREES[ti], hide = false; if (!current) { var px = T0.p.x - tc.x, py = T0.p.y - tc.y, pz = T0.p.z - tc.z, tt = (px * tdx + py * tdy + pz * tdz) / tl2; if (tt > 0 && tt < 1) { var qx = px - tdx * tt, qy = py - tdy * tt, qz = pz - tdz * tt; hide = Math.sqrt(qx * qx + qy * qy + qz * qz) < T0.r + 6.5; } } if (T0.m.visible === hide) T0.m.visible = !hide; } }
+      for (var ti = 0; ti < SITE_TREES.length; ti++) { var T0 = SITE_TREES[ti], hide = false; if (!current) { var px = T0.p.x - tc.x, py = T0.p.y - tc.y, pz = T0.p.z - tc.z, tt = (px * tdx + py * tdy + pz * tdz) / tl2; if (tt < 1) { if (tt < 0) tt = 0;   /* версия 344 (снимки владельца с iPhone: полосы и плашки во весь экран): дерево рядом с камерой или чуть позади неё тоже прячем - на телефоне камера при вращении проходит вплотную к ёлкам и клёнам */ var qx = px - tdx * tt, qy = py - tdy * tt, qz = pz - tdz * tt; hide = Math.sqrt(qx * qx + qy * qy + qz * qz) < T0.r + 6.5; } } if (T0.m.visible === hide) T0.m.visible = !hide; } }
     if (!current && !anim) { var rz = orbit.pitch < 0.7 ? "side" : orbit.pitch > 0.95 ? "top" : roofZone; if (rz !== roofZone) { if (roofZone) { roofOn = rz === "side"; roofG.visible = roofOn; ui(); } roofZone = rz; } }   // версия 271 (слово владельца): опустили взгляд вбок - крыша надевается, сверху - снимается; кнопка «Снять/Надеть крышу» работает до следующего перехода
     if (current === "terrace") { var vs = viewSide(); if (vs !== sideNow) { sideNow = vs; $("chips").scrollLeft = 0; chipsTouchT = 0; ui(); } } else sideNow = null;   // версия 270: кнопки следуют за взглядом
     if (W >= 900 && current && NEIGH[current] && current !== "terrace") { var fr = focusRoom(); if (fr !== focNow) { focNow = fr; ui(); var fe = document.querySelector("#chips .grp.foc"); if (fe && Date.now() - chipsTouchT > 900 && fe.scrollIntoView) fe.scrollIntoView({ block: "nearest", behavior: "smooth" }); } }   // версия 320: подсветка группы, на которую смотрят
@@ -2823,8 +2836,8 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   // ---------------------------------------------------------------- живое состояние с шины (только просмотр)
   function badge() {
     var b = $("live");
-    if (!LIVE.on) { b.textContent = "Образец · версия 343"; b.className = "demo"; return; }
-    b.innerHTML = (LIVE.ok ? "<span class=\"lt\">Дом на связи · </span>" : "<span class=\"lt\">Нет связи с домом · </span>") + "в. 343"; b.title = LIVE.ok ? "Дом на связи" : "Нет связи с домом";
+    if (!LIVE.on) { b.textContent = "Образец · версия 345"; b.className = "demo"; return; }
+    b.innerHTML = (LIVE.ok ? "<span class=\"lt\">Дом на связи · </span>" : "<span class=\"lt\">Нет связи с домом · </span>") + "в. 345"; b.title = LIVE.ok ? "Дом на связи" : "Нет связи с домом";
     b.className = "demo " + (LIVE.ok ? "ok" : "bad");
   }
   // версия 51: где сейчас телевизор и штора - по времени последней команды (служба помнит её время): ещё едут - с середины хода, доехали - в конце

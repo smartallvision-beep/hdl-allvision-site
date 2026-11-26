@@ -1160,8 +1160,12 @@ form.lead.flash-on { animation: flashOn 1.6s ease-out; }
 .g-3d h2 { margin: 2px 0 10px; }
 .g-3d-txt p { margin: 0 0 8px; max-width: 620px; }
 .g-3d-row { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; margin-top: 16px; }
-.g-3d-qr { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--muted); max-width: 300px; }
-.g-3d-qr svg { flex: 0 0 96px; width: 96px; height: 96px; background: #fff; border: 1px solid var(--line); border-radius: 8px; }
+.g-3d-qr { display: flex; align-items: center; gap: 16px; font-size: 14px; color: var(--muted); max-width: 400px; }
+.g-3d-qr svg { flex: 0 0 132px; width: 132px; height: 132px; background: #fff; border: 1px solid var(--line); border-radius: 8px; }
+.g-3d-qr b { display: block; color: var(--ink, inherit); margin-bottom: 4px; }
+.g-3d-txt .g-3d-how { margin-top: 12px; padding: 10px 14px; border-left: 3px solid var(--brand); background: rgba(127,127,127,.07); border-radius: 0 8px 8px 0; }
+/* владелец 26.11.2026: на компьютере модель не открываем — только QR-код; кнопка «Открыть дом в 3D» остаётся телефону и планшету */
+@media (hover: hover) and (pointer: fine) { .g-3d .g-3d-open { display: none; } }
 .g-3d-txt .g-3d-share { margin: 16px 0 0; font-size: 14px; color: var(--muted); }
 .g-3d-share a, .g-3d-share button { font: inherit; color: var(--brand); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .g-3d-share button + button { margin-left: 10px; }
@@ -1169,6 +1173,8 @@ form.lead.flash-on { animation: flashOn 1.6s ease-out; }
 @media (max-width: 720px) {
   .g-3d { grid-template-columns: 1fr; gap: 16px; padding: 16px; }
   .g-3d-txt { order: 1; } .g-3d-pic { order: 2; max-width: 190px; margin: 4px auto 0; }
-  .g-3d-qr { display: none; }
+  .g-3d-qr svg { flex-basis: 110px; width: 110px; height: 110px; }
   .g-3d-row .btn { width: 100%; text-align: center; }
 }
+/* на телефоне QR-код не нужен: дом открывается кнопкой */
+@media (max-width: 720px) and (pointer: coarse) { .g-3d-qr { display: none; } }
