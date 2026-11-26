@@ -19,6 +19,14 @@ document.addEventListener("touchmove", function (e) { if (e.touches.length > 1 &
 <script>/* 26.11.2026, владелец: модель для телефона и планшета, на компьютере не показываем - там страница с QR-кодом (pc.html). Для проверки с компьютера: ?pc=1 */
 (function () { try { if (/[?&]pc=1(&|$)/.test(location.search)) return; if (window.matchMedia && matchMedia("(hover: hover) and (pointer: fine)").matches) { document.documentElement.style.visibility = "hidden"; location.replace("pc.html"); } } catch (e) {} })();</script>
 <meta name="robots" content="noindex">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Дом в 3D">
+<meta name="application-name" content="Дом в 3D">
+<meta name="theme-color" content="#0f1114">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Один экран: сцена на весь экран, поверх неё узкая шапка, метки в объёме и нижняя панель управления. */
@@ -3014,6 +3022,7 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   <p><b>«План»</b> справа возвращает к плану, <b>«Дом»</b> показывает, что сейчас включено во всём доме.</p>
   <p><b>Телефон и планшет.</b> Поверните телефон или планшет боком, и слева появится список устройств по комнатам. Управлять можно прямо из списка: проведите пальцем по строке светильника, и меняется яркость.</p>
   <small>На сайте нажатия меняют только картинку у вас, в доме ничего не включается. Это окно открывается кнопкой «?» внизу.</small>
+  <button type="button" class="help-inst" id="helpInst" hidden>Сохранить на экран «Домой»</button>
   <button type="button" id="helpOk">Понятно</button>
 </div></div>
 <script>(function () {
@@ -3028,4 +3037,93 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   if (seen) return;
   var b = document.getElementById("boot"), t0 = Date.now();
   (function wait() { if (b && !b.hidden && Date.now() - t0 < 15000) return setTimeout(wait, 200); window.openHelp(); try { localStorage.setItem("help:seen", "1"); } catch (e) {} })();
+})();</script>
+<style>
+.help-in button.help-inst { background:var(--panel-2); color:var(--ink); margin-bottom:8px; }
+.inst { position:fixed; inset:0; z-index:70; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; padding:16px 12px calc(10px + env(safe-area-inset-bottom, 0px)); background:rgba(8,9,11,.55); }
+.inst[hidden] { display:none; }
+.inst.top { justify-content:flex-start; padding-top:calc(64px + env(safe-area-inset-top, 0px)); }
+.inst-in { width:100%; max-width:420px; background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:20px; padding:16px 16px 14px; box-shadow:0 14px 40px rgba(0,0,0,.55); font:15px/1.4 system-ui, -apple-system, sans-serif; }
+.inst-hd { display:flex; gap:12px; align-items:center; margin-bottom:12px; }
+.inst-hd img { width:52px; height:52px; border-radius:12px; flex:none; }
+.inst-hd b { display:block; font-size:17px; color:#fff; }
+.inst-hd span { color:var(--muted); font-size:13px; }
+.inst ol { margin:0 0 12px; padding:0; list-style:none; counter-reset:s; }
+.inst li { counter-increment:s; position:relative; padding:8px 0 8px 34px; border-top:1px solid var(--line); }
+.inst li::before { content:counter(s); position:absolute; left:0; top:8px; width:24px; height:24px; border-radius:50%; background:var(--accent); color:#fff; font-weight:700; font-size:13px; display:grid; place-items:center; }
+.inst li b { color:#fff; }
+.inst li small { display:block; color:var(--muted); font-size:13px; margin-top:2px; }
+.inst .ic { display:inline-block; width:22px; height:22px; vertical-align:-5px; margin:0 2px; padding:2px; border-radius:6px; background:var(--panel-2); color:#4da3ff; }
+.inst-btns { display:flex; flex-direction:column; gap:8px; }
+.inst-btns a, .inst-btns button { display:block; width:100%; border:0; border-radius:999px; padding:12px; font-size:16px; font-weight:600; text-align:center; text-decoration:none; background:var(--accent); color:#fff; }
+.inst-btns .sec { background:var(--panel-2); color:var(--ink); }
+.inst-arrow { width:34px; height:34px; color:#fff; margin-top:6px; animation:instB 1.1s ease-in-out infinite; filter:drop-shadow(0 2px 4px rgba(0,0,0,.6)); }
+.inst.top .inst-arrow { order:-1; align-self:flex-end; margin:0 4px 6px 0; transform:rotate(180deg); animation-name:instT; }
+@keyframes instB { 50% { transform:translateY(7px); } }
+@keyframes instT { 0%, 100% { transform:rotate(180deg); } 50% { transform:rotate(180deg) translateY(7px); } }
+</style>
+<div class="inst" id="inst" hidden role="dialog" aria-modal="true" aria-labelledby="instT"><div class="inst-in" id="instIn"></div><svg class="inst-arrow" id="instArrow" hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v15M5 12l7 7 7-7"/></svg></div>
+<script>(function () {
+  /* 26.11.2026: как сохранить модель иконкой на экран «Домой» (без адресной строки). Показывается после экрана загрузки и окна «Как пользоваться»;
+     «Не сейчас» - не напоминать 3 дня; в окне «Как пользоваться» кнопка открывает подсказку в любой момент */
+  var ua = navigator.userAgent || "", el = document.getElementById("inst"), box = document.getElementById("instIn"), arrow = document.getElementById("instArrow");
+  if (!el || !box) return;
+  var mm = function (q) { try { return matchMedia(q).matches; } catch (e) { return false; } };
+  if (navigator.standalone === true || mm("(display-mode: standalone)") || mm("(display-mode: fullscreen)")) return;   /* уже открыто как приложение */
+  var iPad = /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1), iOS = /iPhone|iPod/.test(ua) || iPad, android = /Android/.test(ua);
+  var APP = (ua.match(/Telegram|Viber|Instagram|FBAN|FBAV|FB_IAB|WhatsApp|Line\/|VKClient|OKApp|Snapchat|TikTok|musical_ly|BytedanceWebview/) || [])[0];
+  var NAMES = { FBAN: "Facebook", FBAV: "Facebook", FB_IAB: "Facebook", "Line/": "LINE", VKClient: "VK", OKApp: "Одноклассники", musical_ly: "TikTok", BytedanceWebview: "TikTok" };
+  var appName = APP ? (NAMES[APP] || APP) : "";
+  var other = /CriOS|FxiOS|EdgiOS|OPiOS|YaBrowser|GSA\//.test(ua);   /* другой браузер на iPhone: значок «Поделиться» у него свой, но путь тот же */
+  var inApp = iOS ? (!!APP || (!/Safari\//.test(ua) && !other)) : android ? (!!APP || /; wv\)/.test(ua)) : false;
+  if (!iOS && !android) return;   /* компьютер - не предлагаем */
+  var url = location.href.split("#")[0], deferred = null;
+  window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); deferred = e; });
+  var SH = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5v10h14V11h-1"/></svg>';
+  var ADD = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8v8M8 12h8"/></svg>';
+  var DOTS = '<svg class="ic" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
+  var head = '<div class="inst-hd"><img src="apple-touch-icon.png" alt=""><div><b id="instT">Дом в 3D как приложение</b><span>Иконка на экране «Домой», открывается на весь экран, без адресной строки</span></div></div>';
+  function render() {
+    var h = head, btn = "";
+    if (inApp && iOS) {
+      h = h.replace("Дом в 3D как приложение", "Откройте в Safari");
+      h += '<ol><li>Вы смотрите внутри ' + (appName || "приложения") + '. Иконку на экран «Домой» ставит только браузер: нажмите <b>«Открыть в Safari»</b> ниже.<small>Не открылось? Нажмите ' + DOTS + ' или значок компаса вверху или внизу и выберите «Открыть в Safari». Или скопируйте ссылку и вставьте её в Safari.</small></li>'
+        + '<li>В Safari появится подсказка, как поставить иконку.</li></ol>';
+      btn = '<a href="x-safari-' + url + '" id="instGo">Открыть в Safari</a><button type="button" class="sec" id="instCopy">Скопировать ссылку</button>';
+    } else if (inApp && android) {
+      h = h.replace("Дом в 3D как приложение", "Откройте в Chrome");
+      h += '<ol><li>Вы смотрите внутри ' + (appName || "приложения") + '. Иконку на главный экран ставит только браузер: нажмите <b>«Открыть в Chrome»</b>.<small>Не открылось? Нажмите ⋮ вверху справа и выберите «Открыть в браузере».</small></li></ol>';
+      btn = '<a href="intent://' + url.replace(/^https?:\/\//, "") + '#Intent;scheme=https;package=com.android.chrome;end" id="instGo">Открыть в Chrome</a><button type="button" class="sec" id="instCopy">Скопировать ссылку</button>';
+    } else if (iOS) {
+      h += '<ol><li>Нажмите ' + SH + ' <b>«Поделиться»</b>' + (iPad ? ' вверху справа.' : ' внизу экрана.') + '<small>Не видно кнопки? Коснитесь адресной строки или нажмите ' + DOTS + ', там будет «Поделиться».</small></li>'
+        + '<li>Выберите ' + ADD + ' <b>«На экран „Домой“»</b>.<small>Если нет в списке, пролистайте его вниз или нажмите «Ещё».</small></li>'
+        + '<li>Нажмите <b>«Добавить»</b>. Иконка «Дом в 3D» появится на экране, открывайте дом с неё.</li></ol>';
+    } else {
+      h += deferred ? '<ol><li>Нажмите <b>«Установить»</b>, и иконка «Дом в 3D» появится на главном экране.</li></ol>'
+        : '<ol><li>Нажмите ⋮ вверху справа.</li><li>Выберите <b>«Добавить на главный экран»</b> или «Установить приложение».</li></ol>';
+      if (deferred) btn = '<button type="button" id="instApp">Установить</button>';
+    }
+    box.innerHTML = h + '<div class="inst-btns">' + btn + '<button type="button" class="sec" id="instNo">' + (btn ? "Не сейчас" : "Понятно") + '</button></div>';
+    var topArrow = iOS && iPad && !inApp;
+    el.classList.toggle("top", topArrow); if (arrow) { if (iOS && !inApp) arrow.removeAttribute("hidden"); else arrow.setAttribute("hidden", ""); }   /* у svg нет свойства hidden */
+    var no = document.getElementById("instNo"), cp = document.getElementById("instCopy"), ap = document.getElementById("instApp");
+    no.onclick = function () { close(); try { localStorage.setItem("inst:later", String(Date.now())); } catch (e) {} };
+    if (cp) cp.onclick = function () { var done = function () { cp.textContent = "Ссылка скопирована, вставьте её в " + (iOS ? "Safari" : "браузер"); };
+      try { navigator.clipboard.writeText(url).then(done, function () { prompt("Скопируйте ссылку", url); }); } catch (e) { prompt("Скопируйте ссылку", url); } };
+    if (ap) ap.onclick = function () { deferred.prompt(); deferred.userChoice.then(function () { deferred = null; close(); }); };
+  }
+  function close() { el.hidden = true; }
+  window.openInstall = function () { var hp = document.getElementById("help"); if (hp) hp.hidden = true; render(); el.hidden = false; };
+  el.addEventListener("click", function (e) { if (e.target === el) close(); });
+  var hb = document.getElementById("helpInst"); if (hb) { hb.hidden = false; hb.onclick = window.openInstall; }
+  /* сама показывается один раз: после экрана загрузки и окна «Как пользоваться»; «Не сейчас» - 3 дня тишины */
+  var later = 0; try { later = +localStorage.getItem("inst:later") || 0; } catch (e) {}
+  if (Date.now() - later < 3 * 86400000) return;
+  var b = document.getElementById("boot"), hp = document.getElementById("help"), t0 = Date.now(), calm = 0;
+  (function wait() {
+    var busy = (b && !b.hidden && Date.now() - t0 < 15000) || (hp && !hp.hidden);
+    if (busy) calm = 0; else if (!calm) calm = Date.now();
+    if (!calm || Date.now() - calm < (inApp ? 500 : 1500)) return setTimeout(wait, 150);   /* после загрузки и окна «Как пользоваться» - через 1,5 с; во встроенном браузере - через 0,5 с */
+    window.openInstall();
+  })();
 })();</script>
