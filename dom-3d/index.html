@@ -314,7 +314,7 @@ input[type=range]::-moz-range-thumb { width: 26px; height: 26px; border-radius: 
     <button class="back" id="plan" type="button" hidden>План</button>   <!-- версия 202: из комнаты - назад на план -->
     <button class="back" id="back" type="button" hidden>Весь дом</button>
     <span class="gpill" id="gpill" hidden></span>   <!-- версия 300 -->
-    <span class="demo" id="live">Образец · версия 351</span>
+    <span class="demo" id="live">Образец · версия 352</span>
   </div>
 
   <div class="gover" id="gover" hidden><b id="goverT"></b><span id="goverS"></span></div>   <!-- версия 300: гостевой доступ истёк / ещё не начался -->
@@ -698,13 +698,13 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
       g.moveTo(x + k / 2, y + 2); g.lineTo(x + q - k / 2, y + 2); g.lineTo(x + q - 2, y + k / 2); g.lineTo(x + q - 2, y + q - k / 2); g.lineTo(x + q - k / 2, y + q - 2); g.lineTo(x + k / 2, y + q - 2); g.lineTo(x + 2, y + q - k / 2); g.lineTo(x + 2, y + k / 2); g.closePath(); g.fill(); }
     var t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding; t.anisotropy = 8; return t;
   }
-  function oakTexture() {                         // версия 100: дуб мебели санузла - медовый тон, волокна, светлые блики-лучи (снимки владельца)
+  function oakTexture(lt) {   /* версия 352: lt - светлый желтоватый дуб наличников под матовым лаком (фото владельца) */                         // версия 100: дуб мебели санузла - медовый тон, волокна, светлые блики-лучи (снимки владельца)
     var c = document.createElement("canvas"); c.width = 1024; c.height = 512; var g = c.getContext("2d");
-    var gr = g.createLinearGradient(0, 0, 0, 512); gr.addColorStop(0, "#d39d5c"); gr.addColorStop(0.35, "#c98f4f"); gr.addColorStop(0.7, "#d6a265"); gr.addColorStop(1, "#c48b4c"); g.fillStyle = gr; g.fillRect(0, 0, 1024, 512);
+    var gr = g.createLinearGradient(0, 0, 0, 512); if (lt) { gr.addColorStop(0, "#c9a05e"); gr.addColorStop(0.35, "#be9453"); gr.addColorStop(0.7, "#cca666"); gr.addColorStop(1, "#ba9050");   /* версия 352: темнее (слово владельца) */ } else { gr.addColorStop(0, "#d39d5c"); gr.addColorStop(0.35, "#c98f4f"); gr.addColorStop(0.7, "#d6a265"); gr.addColorStop(1, "#c48b4c"); } g.fillStyle = gr; g.fillRect(0, 0, 1024, 512);
     var seed = 11; function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
     for (var i = 0; i < 140; i++) {                  // волокна: длинные волнистые линии вдоль доски
       var y0 = rnd() * 512, amp = 2 + rnd() * 7, per = 180 + rnd() * 420, ph = rnd() * 6.3, w = 0.6 + rnd() * 2.2, dark = rnd() > 0.3;
-      g.strokeStyle = dark ? "rgba(105,62,24," + (0.08 + rnd() * 0.22).toFixed(3) + ")" : "rgba(238,196,138," + (0.08 + rnd() * 0.18).toFixed(3) + ")"; g.lineWidth = w; g.beginPath();
+      g.strokeStyle = dark ? (lt ? "rgba(96,70,32," : "rgba(105,62,24,") + (0.08 + rnd() * 0.22).toFixed(3) + ")" : "rgba(238,196,138," + (0.08 + rnd() * 0.18).toFixed(3) + ")"; g.lineWidth = w; g.beginPath();
       for (var x = 0; x <= 1024; x += 16) { var y = y0 + amp * Math.sin(x / per * 6.283 + ph); if (x) g.lineTo(x, y); else g.moveTo(x, y); } g.stroke();
     }
     for (var k = 0; k < 60; k++) { g.fillStyle = "rgba(245,210,160," + (0.12 + rnd() * 0.18).toFixed(3) + ")"; g.fillRect(rnd() * 1024, rnd() * 512, 6 + rnd() * 18, 1.5); }   // блики-лучи дуба
@@ -759,7 +759,9 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
     }
     uv.needsUpdate = true; if (group) { scene.remove(b); group.add(b); } return b;
   }
-  var capM = mat(0xc9a06a, { roughness: 0.7 });   // версия 173: доска на торцах бруса в проёмах
+  var oakTrimM = mat(0xffffff, { map: oakTexture(true), roughness: 0.72 });   /* версия 352: наличники, откосы, подоконники - дуб под матовым лаком, желтее стен, с волокнами (фото владельца) */
+  var capM = oakTrimM;   // версия 173: доска на торцах бруса в проёмах
+  var capBedM = mat(0x2a2c2c, { roughness: 0.55 });   // версия 352: в проёме спальни откосы тёмно-серые, как наличник (фото владельца)
   function wall(s, y0, y1) {
     if (y1 - y0 < 0.03) return;
     var x0 = Math.min(s[0], s[2]) - T / 2, x1 = Math.max(s[0], s[2]) + T / 2, z0 = Math.min(s[1], s[3]) - T / 2, z1 = Math.max(s[1], s[3]) + T / 2;
@@ -776,7 +778,7 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
       [[s[0], s[1], -1], [s[2], s[3], 1]].forEach(function (e) {
         var joined = orig.some(function (o, k) { return k !== n && segD(o, e[0], e[1]) < T / 2 + 0.01; }); if (joined) return;
         var fx = e[0] + e[2] * ux * T / 2, fz = e[1] + e[2] * uz * T / 2, gx = fx + e[2] * ux * 0.018, gz = fz + e[2] * uz * 0.018, w = T / 2 - 0.001, yr = near(e[0] + e[2] * ux * T / 2, e[1] + e[2] * uz * T / 2) || [0, HW];   // версия 174: доска только в высоту проёма и не шире стены - полос над проёмами нет
-        box(Math.min(fx, gx) - Math.abs(uz) * w, yr[0], Math.min(fz, gz) - Math.abs(ux) * w, Math.max(fx, gx) + Math.abs(uz) * w, yr[1], Math.max(fz, gz) + Math.abs(ux) * w, capM);
+        box(Math.min(fx, gx) - Math.abs(uz) * w, yr[0], Math.min(fz, gz) - Math.abs(ux) * w, Math.max(fx, gx) + Math.abs(uz) * w, yr[1], Math.max(fz, gz) + Math.abs(ux) * w, ((Math.abs(fz - 3.0) < 0.2 && fx > 9.8 && fx < 11) || (Math.abs(fx - 6.05) < 0.2 && fz > 3.2 && fz < 4.3)) ? capBedM : capM);
       }); });
   })();
   WALLS.forEach(function (s) { wall(s, 0, HW); });
@@ -1123,9 +1125,10 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
     var g = new THREE.Mesh(new THREE.PlaneGeometry(len, w.y1 - w.y0), new THREE.MeshBasicMaterial({ color: 0x2a3550, side: THREE.DoubleSide, transparent: true, opacity: 0.22, depthWrite: false }));   /* версия 216: окна прозрачные (слово владельца) */
     if (w.axis === "x") g.position.set(mid, (w.y0 + w.y1) / 2, w.at); else { g.rotation.y = Math.PI / 2; g.position.set(w.at, (w.y0 + w.y1) / 2, mid); }
     scene.add(g); w.glass = g; g.userData.glass = true;   /* версия 224: для выбора ракурса окно - преграда, хоть и прозрачное */
-    var fr = mat(w.frame || 0x3a2c20), e = 0.05, a = w.at;                                       // рама
-    if (w.axis === "x") { box(w.a, w.y0, a - 0.11, w.a + e, w.y1, a + 0.11, fr); box(w.b - e, w.y0, a - 0.11, w.b, w.y1, a + 0.11, fr); box(w.a, w.y1 - e, a - 0.11, w.b, w.y1, a + 0.11, fr); box(w.a, w.y0, a - 0.11, w.b, w.y0 + e, a + 0.11, fr); if (!w.noMull) box(mid - 0.025, w.y0, a - 0.03, mid + 0.025, w.y1, a + 0.03, fr); }
-    else { box(a - 0.11, w.y0, w.a, a + 0.11, w.y1, w.a + e, fr); box(a - 0.11, w.y0, w.b - e, a + 0.11, w.y1, w.b, fr); box(a - 0.11, w.y1 - e, w.a, a + 0.11, w.y1, w.b, fr); box(a - 0.11, w.y0, w.a, a + 0.11, w.y0 + e, w.b, fr); if (!w.noMull) box(a - 0.03, w.y0, mid - 0.025, a + 0.03, w.y1, mid + 0.025, fr); }
+    if (!w.door) { var hd0 = w.at - T / 2 - 0.004, hd1 = w.at + T / 2 + 0.004; if (w.axis === "x") box(w.a, w.y1 - 0.02, hd0, w.b, w.y1, hd1, oakTrimM); else box(hd0, w.y1 - 0.02, w.a, hd1, w.y1, w.b, oakTrimM); }   /* версия 352: верхний откос окна - дуб (фото владельца) */
+    var fr = mat(w.frame || 0x141516)   /* версия 352: рама окна чёрная (фото владельца) */, e = 0.05, a = w.at;                                       // рама; версия 352: рама тонкая, откосы вокруг - дуб (фото владельца)
+    if (w.axis === "x") { box(w.a, w.y0, a - 0.035, w.a + e, w.y1, a + 0.035, fr); box(w.b - e, w.y0, a - 0.035, w.b, w.y1, a + 0.035, fr); box(w.a, w.y1 - e, a - 0.035, w.b, w.y1, a + 0.035, fr); box(w.a, w.y0, a - 0.035, w.b, w.y0 + e, a + 0.035, fr); if (!w.noMull) box(mid - 0.025, w.y0, a - 0.03, mid + 0.025, w.y1, a + 0.03, fr); }
+    else { box(a - 0.035, w.y0, w.a, a + 0.035, w.y1, w.a + e, fr); box(a - 0.035, w.y0, w.b - e, a + 0.035, w.y1, w.b, fr); box(a - 0.035, w.y1 - e, w.a, a + 0.035, w.y1, w.b, fr); box(a - 0.035, w.y0, w.a, a + 0.035, w.y0 + e, w.b, fr); if (!w.noMull) box(a - 0.03, w.y0, mid - 0.025, a + 0.03, w.y1, mid + 0.025, fr); }
   });
   // шторы
   DEV.forEach(function (d) {
@@ -1167,7 +1170,7 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   box(6.05 - T / 2 - 0.06, 1.15, 0.33, 6.05 - T / 2, 1.18, 2.57, shelfL); box(6.05 - T / 2 - 0.06, 1.92, 0.33, 6.05 - T / 2, 1.95, 2.57, shelfL);
   box(6.05 - T / 2 - 0.06, 1.15, 0.33, 6.05 - T / 2, 1.95, 0.36, shelfL); box(6.05 - T / 2 - 0.06, 1.15, 2.54, 6.05 - T / 2, 1.95, 2.57, shelfL);
   (function () { var dd = DEV.filter(function (x) { return x.id === "d5"; })[0]; if (dd) dd.saltM = saltM; })();
-  var wTrim = mat(0xc49a63), wi = 3.05 + T / 2;   // версия 113: наличник большого окна парной и деревянные откосы (слово владельца)
+  var wTrim = oakTrimM, wi = 3.05 + T / 2;   // версия 113: наличник большого окна парной и деревянные откосы (слово владельца)
   box(wi, 0.28, 0.63, wi + 0.03, 2.32, 0.75, wTrim); box(wi, 0.28, 2.25, wi + 0.03, 2.32, 2.37, wTrim); box(wi, 2.2, 0.63, wi + 0.03, 2.32, 2.37, wTrim); box(wi, 0.32, 0.63, wi + 0.08, 0.4, 2.37, wTrim);
   box(3.05 - T / 2, 0.4, 0.75, wi, 2.2, 0.77, wTrim); box(3.05 - T / 2, 0.4, 2.23, wi, 2.2, 2.25, wTrim); box(3.05 - T / 2, 2.18, 0.75, wi, 2.2, 2.25, wTrim); box(3.05 - T / 2, 0.4, 0.75, wi, 0.42, 2.25, wTrim);
   fanUnit("v3", 6.05 - T / 2 - 0.012, 0.55, 0.3, 0, -Math.PI / 2, true, [5.84, 0.78, T / 2 + 0.006, 0, 0.8], [4.7, 5.85, 0.02, 0.1, 0.35, 2.4]   /* версия 141: и из-под лежака */   /* версия 129: стелется по полу */   /* версия 125: ближе к углу, ниже, мельче - в пару к вытяжке */);   /* версия 124: цифра на соседней (дальней) стене у угла, лицом в парную */   /* версия 120: снова ниже, как было; цифра скорости над вытяжкой (слово владельца) */   /* версия 117: ниже; версия 119: сразу над лежаком, чтобы не пряталась за ним; надпись над вытяжкой */   // версия 115: вытяжка парной - на стене у угла под соляной стеной (место показал владелец), крыльчатка крутится
@@ -1331,7 +1334,7 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
     box(3.375, 0.35, zc + 0.06, 3.385, 1.25, zc + 0.07, mat(0x8d8f92, { metalness: 0.7, roughness: 0.35 })); box(3.35, 0.3, zc + 0.04, 3.42, 0.5, zc + 0.05, ci);   // кочерга и совок
   })();
   /* версия 104: кирпичный портал печи, ниша и топочная дверца убраны (владелец: «кирпичи в общем убери») */
-  var sTrim = mat(0xc49a63); box(4.23, 0, 3.0 + T / 2, 4.35, 2.02, 3.0 + T / 2 + 0.03, sTrim); box(5.05, 0, 3.0 + T / 2, 5.17, 2.02, 3.0 + T / 2 + 0.03, sTrim); box(4.23, 1.9, 3.0 + T / 2, 5.17, 2.02, 3.0 + T / 2 + 0.03, sTrim);   // версия 107: наличник входа в парную - по проёму, торцов бруса не видно (слово владельца)
+  var sTrim = oakTrimM; box(4.23, 0, 3.0 + T / 2, 4.35, 2.02, 3.0 + T / 2 + 0.03, sTrim); box(5.05, 0, 3.0 + T / 2, 5.17, 2.02, 3.0 + T / 2 + 0.03, sTrim); box(4.23, 1.9, 3.0 + T / 2, 5.17, 2.02, 3.0 + T / 2 + 0.03, sTrim);   // версия 107: наличник входа в парную - по проёму, торцов бруса не видно (слово владельца)
   box(4.35, 0, 3.0 - T / 2 - 0.01, 4.375, 1.9, 3.0 + T / 2 + 0.01, sTrim); box(5.025, 0, 3.0 - T / 2 - 0.01, 5.05, 1.9, 3.0 + T / 2 + 0.01, sTrim); box(4.35, 1.875, 3.0 - T / 2 - 0.01, 5.05, 1.9, 3.0 + T / 2 + 0.01, sTrim);   // откосы
 
 
@@ -1350,14 +1353,14 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
 
   box(4.1, 0, zf, 4.7, H, 4.6 - T / 2, stoneM);
   box(3.05 + T / 2, 2.2, zf - 0.004, 6.15, H, zf - 0.001, stoneM); box(5.53, 0, zf - 0.004, 6.15, 2.2, zf - 0.001, stoneM);   // версия 105: плитка над дверью и до угла - до конца (слово владельца)
-  var greyWoodM = mat(0x8e8c88, { roughness: 0.7 });   // версия 104: проём санузла оформлен серыми деревянными накладками (как на снимке)
+  var greyWoodM = mat(0x2a2c2c, { roughness: 0.55 });   /* версия 352: тёмно-серый, как проёмы спальни и коридора (слово владельца) */   // версия 104: проём санузла оформлен серыми деревянными накладками (как на снимке)
   box(4.67, 0, zf - 0.025, 4.775, 2.2, zf, greyWoodM); box(5.425, 0, zf - 0.025, 5.53, 2.2, zf, greyWoodM); box(4.67, 2.1, zf - 0.025, 5.53, 2.2, zf, greyWoodM);
-  box(4.77, 0, zf - 0.005, 4.795, 2.1, zN + 0.03, greyWoodM); box(5.405, 0, zf - 0.005, 5.43, 2.1, zN + 0.03, greyWoodM); box(4.77, 2.075, zf - 0.005, 5.43, 2.1, zN + 0.03, greyWoodM);   // откосы   /* развёртка - ниже */ box(5.5, 0, zf, 6.05 - T / 2, H, 4.6 - T / 2, stoneM); box(4.7, 2.1, zf, 5.5, H, 4.6 - T / 2, stoneM);   // стена под серый камень
+  box(4.77, 0, zf - 0.005, 4.795, 2.1, zN + 0.03, greyWoodM); box(5.405, 0, zf - 0.005, 5.43, 2.1, zN + 0.03, greyWoodM); box(4.77, 2.075, zf - 0.005, 5.43, 2.1, zN + 0.03, greyWoodM); box(4.705, 0, zN + 0.028, 4.795, 2.19, zN + 0.055, greyWoodM); box(5.405, 0, zN + 0.028, 5.495, 2.19, zN + 0.055, greyWoodM); box(4.795, 2.1, zN + 0.028, 5.405, 2.19, zN + 0.055, greyWoodM);   /* версия 352: наличник и со стороны санузла (слово владельца) */   // откосы   /* развёртка - ниже */ box(5.5, 0, zf, 6.05 - T / 2, H, 4.6 - T / 2, stoneM); box(4.7, 2.1, zf, 5.5, H, 4.6 - T / 2, stoneM);   // стена под серый камень
   scene.children.forEach(function (m) { if (!m.isMesh || m.material !== stoneM || m.geometry.attributes.uv.count !== 24) return;   // версия 103: плитка в натуральную величину
     var uv = m.geometry.attributes.uv, p = m.geometry.attributes.position; for (var i = 0; i < 24; i++) { var fc = Math.floor(i / 4), wx = p.getX(i) + m.position.x, wy = p.getY(i) + m.position.y, wz = p.getZ(i) + m.position.z; uv.setXY(i, (fc < 2 ? wz : wx) / 1.2, wy / 0.6); } uv.needsUpdate = true; });
   /* версия 88: дверей не рисуем - сразу видно комнату (слово владельца) */
 
-  var trimM = mat(0xc9a06a, { roughness: 0.7 });   // версия 86: светлый деревянный наличник уличной двери
+  var trimM = oakTrimM;   /* версия 352: наличники - дуб под матовым лаком, светлый (фото владельца) */   // версия 86: светлый деревянный наличник уличной двери
   // версия 172: наличники по всем окнам и дверям (слово владельца «сделай оклады по всем окнам дверям»), тот же светлый дуб
   function casing(axis, at, side, a, b, y0, y1, o) {   // side: +1 - лицо стены at + T/2, -1 - at - T/2; o: w - ширина, bot - низ, sill - подоконник
     o = o || {}; var w = o.w || 0.12, m = o.m || trimM, f0 = at + side * (T / 2 + 0.002), f1 = f0 + side * 0.03, lo = Math.min(f0, f1), hi = Math.max(f0, f1), yb = o.bot ? y0 - w : y0;
@@ -1370,30 +1373,39 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   // окна: изнутри и снаружи (у окна санузла и большого окна парной внутренние уже есть)
   casing("x", 0, 1, 7.03, 7.93, 0.95, 2.2);                                          // кухня - низ над столешницей не ставим
   casing("x", 0, -1, 7.03, 7.93, 0.95, 2.2, { bot: true, sill: true, m: outM });
-  casing("x", 0, 1, 10.5, 12.0, 0.8, 2.2, { bot: true, sill: true });                 // спальня
+  casing("x", 0, 1, 10.5, 12.0, 0.8, 2.2, { sill: true });   /* версия 352: изнутри снизу доски нет - только подоконник (фото владельца) */                 // спальня
   casing("x", 0, -1, 10.5, 12.0, 0.8, 2.2, { bot: true, sill: true, m: outM });
   casing("x", 6.9, 1, 4.55, 5.45, 0.95, 2.2, { bot: true, sill: true, m: outM });              // санузел - снаружи
-  casing("x", 6.9, -1, 10.5, 12.0, 0.8, 2.2, { bot: true, sill: true });              // гостиная, окно на террасу
+  casing("x", 6.9, -1, 10.5, 12.0, 0.8, 2.2, { sill: true });              // гостиная, окно на террасу
   casing("x", 6.9, 1, 10.5, 12.0, 0.8, 2.2, { bot: true, sill: true, m: outM });
-  casing("z", 12.75, -1, 4.1, 5.6, 0.8, 2.2, { bot: true, sill: true });              // гостиная, торцевое окно
+  casing("z", 12.75, -1, 4.1, 5.6, 0.8, 2.2, { sill: true });              // гостиная, торцевое окно
   casing("z", 12.75, 1, 4.1, 5.6, 0.8, 2.2, { bot: true, sill: true, m: outM });
   casing("z", 3.05, -1, 0.75, 2.25, 0.4, 2.2, { bot: true, sill: true, m: outM });             // парная, большое окно - снаружи
   // двери
   casing("x", 6.9, -1, 7.0, 8.8, 0, 2.1); casing("x", 6.9, 1, 7.0, 8.8, 0, 2.1, { m: outM });      // выход на террасу из гостиной
-  casing("z", 6.05, -1, 3.3, 4.2, 0, 2.1); casing("z", 6.05, 1, 3.3, 4.2, 0, 2.1);    // коридор - гостиная
-  casing("x", 3.0, 1, 9.95, 10.85, 0, 2.1, { w: 0.09 });
+  casing("z", 6.05, -1, 3.3, 4.2, 0, 2.1, { m: capBedM }); casing("z", 6.05, 1, 3.3, 4.2, 0, 2.1, { m: capBedM });   /* версия 352: тёмно-серый, как в спальне (слово владельца) */    // коридор - гостиная
+  var bedDoorM = mat(0x2a2c2c, { roughness: 0.55 });   /* версия 352: проём в спальню вживую тёмно-серый (фото владельца) */
+  casing("x", 3.0, 1, 9.95, 10.85, 0, 2.1, { w: 0.09, m: bedDoorM }); casing("x", 3.0, -1, 9.95, 10.85, 0, 2.1, { w: 0.09, m: bedDoorM });   // гостиная - спальня (со стороны спальни наличник пропал в 351 - возвращён)
   casing("z", 3.05, -1, 3.4, 4.3, 0, 2.1, { m: outM });                                           // уличная дверь - снаружи
-  casing("x", 3.0, -1, 4.35, 5.05, 0, 1.9, { m: mat(0xc49a63) });
-  function reveal(axis, at, a, b, y1, m) {   // версия 173: проём зашит доской - торцов бруса не видно (слово владельца «всё доской зашито»)
+  casing("x", 3.0, -1, 4.35, 5.05, 0, 1.9, { m: oakTrimM });
+  function reveal(axis, at, a, b, y1, m, sides) {   // версия 173: проём зашит доской - торцов бруса не видно (слово владельца «всё доской зашито»)
     m = m || trimM; var d0 = at - T / 2 - 0.004, d1 = at + T / 2 + 0.004, th = 0.02;
     var pc = function (p0, q0, p1, q1) { if (axis === "x") box(p0, q0, d0, p1, q1, d1, m); else box(d0, q0, p0, d1, q1, p1, m); };
     pc(a - T / 2, y1 - th, b + T / 2, y1);   // низ перемычки; бока - торцы стен, зашиты выше
+    if (sides) { pc(a, 0, a + th, y1); pc(b - th, 0, b, y1); }   /* версия 352: боковые доски на всю толщину стены и под наличник - щели с брусом нет (слово владельца) */
   }
-  reveal("z", 6.05, 3.3, 4.2, 2.1);       // коридор - гостиная
-  reveal("x", 3.0, 9.95, 10.85, 2.1);     // гостиная - спальня
+  reveal("z", 6.05, 3.3, 4.2, 2.1, capBedM, true);       // коридор - гостиная
+  reveal("x", 3.0, 9.95, 10.85, 2.1, bedDoorM, true);     // гостиная - спальня
   reveal("z", 3.05, 3.4, 4.3, 2.1);       // уличная дверь
   reveal("x", 6.9, 7.0, 8.8, 2.1);        // выход на террасу                     // вход в парную - со стороны парной
   box(3.05 + T / 2, 0, 3.28, 3.05 + T / 2 + 0.04, 2.2, 3.4, trimM); box(3.05 + T / 2, 0, 4.3, 3.05 + T / 2 + 0.04, 2.2, 4.42, trimM); box(3.05 + T / 2, 2.08, 3.23, 3.05 + T / 2 + 0.05, 2.22, 4.43, trimM);
+  scene.children.forEach(function (m) {   /* версия 352: у дубовых наличников волокна вдоль доски, рисунок по метрам */
+    if (!m.isMesh || m.material !== oakTrimM || !m.geometry.attributes.uv || m.geometry.attributes.uv.count !== 24) return;
+    var uv = m.geometry.attributes.uv, p = m.geometry.attributes.position; m.geometry.computeBoundingBox(); var bb = m.geometry.boundingBox, d = [bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z], S = 0.9;
+    for (var i = 0; i < 24; i++) { var fc = Math.floor(i / 4), w = [p.getX(i) + m.position.x, p.getY(i) + m.position.y, p.getZ(i) + m.position.z], ax = fc < 2 ? [1, 2] : fc < 4 ? [0, 2] : [0, 1];
+      if (d[ax[1]] > d[ax[0]]) ax = [ax[1], ax[0]]; uv.setXY(i, w[ax[0]] / S, w[ax[1]] / S * 2); }
+    uv.needsUpdate = true;
+  });
 
   // версия 34: кровать с серым бельём (снимки владельца), шкаф-ниша и телевизор на подъёмнике на стене напротив
   var linen = mat(0xa9adb2, { roughness: 1 });
@@ -2903,8 +2915,8 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   // ---------------------------------------------------------------- живое состояние с шины (только просмотр)
   function badge() {
     var b = $("live");
-    if (!LIVE.on) { b.textContent = "Образец · версия 351"; b.className = "demo"; return; }
-    b.innerHTML = (LIVE.ok ? "<span class=\"lt\">Дом на связи · </span>" : "<span class=\"lt\">Нет связи с домом · </span>") + "в. 351"; b.title = LIVE.ok ? "Дом на связи" : "Нет связи с домом";
+    if (!LIVE.on) { b.textContent = "Образец · версия 352"; b.className = "demo"; return; }
+    b.innerHTML = (LIVE.ok ? "<span class=\"lt\">Дом на связи · </span>" : "<span class=\"lt\">Нет связи с домом · </span>") + "в. 352"; b.title = LIVE.ok ? "Дом на связи" : "Нет связи с домом";
     b.className = "demo " + (LIVE.ok ? "ok" : "bad");
   }
   // версия 51: где сейчас телевизор и штора - по времени последней команды (служба помнит её время): ещё едут - с середины хода, доехали - в конце
