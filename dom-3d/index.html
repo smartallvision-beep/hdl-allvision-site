@@ -314,7 +314,7 @@ input[type=range]::-moz-range-thumb { width: 26px; height: 26px; border-radius: 
     <button class="back" id="plan" type="button" hidden>План</button>   <!-- версия 202: из комнаты - назад на план -->
     <button class="back" id="back" type="button" hidden>Весь дом</button>
     <span class="gpill" id="gpill" hidden></span>   <!-- версия 300 -->
-    <span class="demo" id="live">Образец · версия 353</span>
+    <span class="demo" id="live">Образец · версия 358</span>
   </div>
 
   <div class="gover" id="gover" hidden><b id="goverT"></b><span id="goverS"></span></div>   <!-- версия 300: гостевой доступ истёк / ещё не начался -->
@@ -613,7 +613,7 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
     scene.add(grp);
     var C = function (h) { return new THREE.Color(h); }, N = { top: C(0x04060c), mid: C(0x0b1424), hor: C(0x1c2c48) }, D = { top: C(0x2f7fe0), mid: C(0x74b6f2), hor: C(0xdcecf8) }, K = { top: C(0x1b2a55), mid: C(0x7a5f86), hor: C(0xe6a678) };
     scene.fog.near = 55; scene.fog.far = 118;   /* земля у дальней границы кадра полностью уходит в цвет горизонта - без полосы */
-    var S = { grp: grp, moon: moonS, dayF: 0, duskF: 0, hor: C(0x1c2c48), sunC: C(0xb9c8ea), sunI: 0.5, hemiS: C(0x93a8d8), hemiG: C(0x1c2026) };
+    var S = { grp: grp, moon: moonS, hemiK: 1, moonLit: 1, dayF: 0, duskF: 0, hor: C(0x1c2c48), sunC: C(0xb9c8ea), sunI: 0.5, hemiS: C(0x93a8d8), hemiG: C(0x1c2026) };
     var ss = function (a, b, x) { var t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
     S.update = function () {
       var mp = moonPhase(); if (Math.abs(mp - moonPh) > 0.004) { moonPh = mp; drawMoon(mp); moonT.needsUpdate = true; }   /* версия 353: фаза луны обновляется раз в минуту вместе с небом */
@@ -624,7 +624,7 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
       var mix = function (k) { return N[k].clone().lerp(D[k], dayF).lerp(K[k], duskF * (k === "top" ? 0.5 : 0.9)); }, top = mix("top"), mid = mix("mid"), hor = mix("hor");
       var gr = g2.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, "#" + top.getHexString()); gr.addColorStop(0.38, "#" + top.getHexString()); gr.addColorStop(0.483, "#" + mid.getHexString()); gr.addColorStop(0.55, "#" + hor.getHexString()); gr.addColorStop(1, "#" + hor.getHexString()); g2.fillStyle = gr; g2.fillRect(0, 0, 4, 256); tex.needsUpdate = true;
       stars.material.opacity = Math.max(0, 1 - dayF * 2 - duskF * 0.7) * 0.9; moonS.material.opacity = Math.max(0, 1 - dayF * 1.8);
-      S.hor.copy(hor); S.sunC.set(0xb9c8ea).lerp(C(0xfff2dc), dayF).lerp(C(0xffb07a), duskF * 0.7); S.sunI = 0.5 + 0.5 * dayF + 0.15 * duskF;
+      S.hor.copy(hor); S.sunC.set(0xb9c8ea).lerp(C(0xfff2dc), dayF).lerp(C(0xffb07a), duskF * 0.7); var lit = (1 - Math.cos(2 * Math.PI * moonPh)) / 2; S.moonLit = lit; S.sunI = 0.5 * (0.25 + 0.95 * lit) * (1 - dayF) + dayF + 0.15 * duskF; S.hemiK = dayF + (1 - dayF) * (0.45 + 0.6 * lit);   /* версия 354 (слово владельца): ночью свет на улице по фазе луны - полнолуние светлее, новолуние темнее (не до черноты); в комнатах не влияет */
       S.hemiS.set(0x93a8d8).lerp(C(0xe4eeff), dayF).lerp(C(0xc0b2d0), duskF * 0.6); S.hemiG.set(0x1c2026).lerp(C(0x8a8478), dayF);
     };
     return S;
@@ -1027,6 +1027,86 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
       ribbon(6.2, G + 0.022, new THREE.MeshBasicMaterial({ color: 0x020406, toneMapped: false })   /* версия 265: вода без бликов и отсветов (слово владельца) */);
     })();
     window.SITE_COOP = coop;
+    // версия 354 (слово владельца: «зверей за забором: волк у речки, бобры шастают, коза пробегает, заяц прыгает - у нас так и есть»): звери ходят по своим тропам за участком
+    (function () {
+      var nr = function () {}, A = [];
+      function part(g, geo, m, x, y, z) { var me = new THREE.Mesh(geo, m); me.position.set(x, y, z); me.raycast = nr; g.add(me); return me; }
+      function bx(g, w, h, d, m, x, y, z) { return part(g, new THREE.BoxGeometry(w, h, d), m, x, y, z); }
+      function sph(g, rx, ry, rz, m, x, y, z) { var me = part(g, new THREE.SphereGeometry(1, 10, 8), m, x, y, z); me.scale.set(rx, ry, rz); return me; }
+      function leg(g, m, x, z, hip, len, w) { var p = new THREE.Group(); p.position.set(x, hip, z); g.add(p); bx(p, w, len, w, m, 0, -len / 2, 0); return p; }
+      function mk(kind) {
+        var g = new THREE.Group(), legs = [], a = { g: g, legs: legs, kind: kind };
+        if (kind === "wolf") { var wm = mat(0x6e6a64, { roughness: 1 }), wd = mat(0x3c3a37, { roughness: 1 });
+          sph(g, 0.55, 0.2, 0.17, wm, 0, 0.62, 0); sph(g, 0.17, 0.16, 0.14, wm, 0.58, 0.78, 0); bx(g, 0.2, 0.09, 0.09, wd, 0.78, 0.74, 0);
+          part(g, new THREE.ConeGeometry(0.045, 0.12, 4), wd, 0.55, 0.95, 0.07); part(g, new THREE.ConeGeometry(0.045, 0.12, 4), wd, 0.55, 0.95, -0.07);
+          var tl = bx(g, 0.42, 0.08, 0.08, wm, -0.68, 0.58, 0); tl.rotation.z = 0.5;
+          [[0.36, 0.1], [0.36, -0.1], [-0.38, 0.1], [-0.38, -0.1]].forEach(function (q) { legs.push(leg(g, wd, q[0], q[1], 0.52, 0.52, 0.07)); });
+          a.speed = 1.0; a.amp = 0.45; a.freq = 7; }
+        if (kind === "goat") { var gm = mat(0x8c6a46, { roughness: 1 }), gw = mat(0xe8e2d4, { roughness: 1 }), gh = mat(0x3a2c20, { roughness: 1 });
+          sph(g, 0.48, 0.2, 0.16, gm, 0, 0.86, 0); sph(g, 0.1, 0.12, 0.12, gw, -0.46, 0.86, 0);
+          var nk = bx(g, 0.1, 0.34, 0.1, gm, 0.42, 1.08, 0); nk.rotation.z = -0.45; sph(g, 0.14, 0.09, 0.08, gm, 0.58, 1.26, 0);
+          var h1 = part(g, new THREE.ConeGeometry(0.02, 0.2, 4), gh, 0.52, 1.42, 0.04), h2 = part(g, new THREE.ConeGeometry(0.02, 0.2, 4), gh, 0.52, 1.42, -0.04); h1.rotation.z = h2.rotation.z = 0.3;
+          [[0.32, 0.08], [0.32, -0.08], [-0.32, 0.08], [-0.32, -0.08]].forEach(function (q) { legs.push(leg(g, gm, q[0], q[1], 0.76, 0.76, 0.05)); });
+          a.speed = 2.6; a.amp = 0.7; a.freq = 11; a.bound = 0.12; }
+        if (kind === "hare") { var hm = mat(0x8a7c68, { roughness: 1 }), hw = mat(0xece6da, { roughness: 1 });
+          sph(g, 0.22, 0.15, 0.13, hm, 0, 0.2, 0); sph(g, 0.09, 0.09, 0.08, hm, 0.2, 0.3, 0); sph(g, 0.05, 0.05, 0.05, hw, -0.22, 0.24, 0);
+          var e1 = bx(g, 0.03, 0.22, 0.05, hm, 0.17, 0.48, 0.03), e2 = bx(g, 0.03, 0.22, 0.05, hm, 0.17, 0.48, -0.03); e1.rotation.z = e2.rotation.z = 0.35;
+          a.speed = 1.6; a.hop = 0.28; a.freq = 9; }
+        if (kind === "beaver") { var bm = mat(0x4b3424, { roughness: 1 }), bt = mat(0x1d1714, { roughness: 0.8 });
+          sph(g, 0.34, 0.17, 0.19, bm, 0, 0.17, 0); sph(g, 0.12, 0.1, 0.1, bm, 0.32, 0.2, 0); bx(g, 0.03, 0.05, 0.06, mat(0xd8a24a), 0.44, 0.17, 0);
+          var tb = bx(g, 0.3, 0.03, 0.16, bt, -0.44, 0.06, 0); tb.rotation.z = 0.12;
+          a.speed = 0.32; a.waddle = 0.05; a.freq = 6; }
+        scene.add(g); A.push(a); return a; }
+      /* версия 355 (слово владельца: «чтобы в неожиданных местах, больше перемещались»): звери бродят по всей полосе вокруг участка - с запада за рекой, с юга за задним забором, с востока за дорогой;
+         каждый сам выбирает, куда идти дальше (на 1-6 точек вперёд или назад), со случайным сдвигом в сторону, иногда бежит, стоит разное время */
+      var RING = [[-22, 38], [-19.5, 29], [-21, 19], [-22.5, 9], [-22.5, -3], [-23, -13], [-13, -19], [-3, -21], [7, -16.5], [17, -21], [27, -17], [35, -9], [33, 3], [37, 13], [34, 24], [37, 35]],
+          BANK = [[-11.3, 38], [-11.6, 31], [-12.1, 26], [-11.4, 21], [-13.2, 15], [-13.6, 9.6], [-15.2, 7.2], [-16, 3], [-14.4, -3], [-14.2, -11]];
+      function walk(a, route, y, pause, jit, lo, hi) { a.route = route.map(function (p) { return new THREE.Vector3(p[0], y, p[1]); }); a.y = y; a.pause = pause; a.jit = jit; a.lo = lo || 0; a.hi = hi === undefined ? route.length - 1 : hi;
+        a.i = a.lo + Math.floor(Math.random() * (a.hi - a.lo + 1)); a.goal = a.i; a.tgt = a.route[a.i].clone(); a.g.position.copy(a.tgt); a.wait = Math.random() * 4; a.ph = Math.random() * 6; a.run = 1; a.base = a.speed; }
+      function pick(a) { a.tgt.copy(a.route[a.i]); a.tgt.x += (Math.random() - 0.5) * 2 * a.jit; a.tgt.z += (Math.random() - 0.5) * 2 * a.jit; }
+      walk(mk("wolf"), RING, G, [2, 10], 2.2, 0, 5);   /* версия 356 (слово владельца: «волк с зайцем не дружит»): волки - только на западе, за рекой; заяц и коза - на юге и востоке */
+      walk(mk("wolf"), RING, G, [3, 14], 2.2, 0, 5);
+      /* версия 357 (слово владельца: «бобров почти нет, у нас их много»): восемь бобров - по обоим берегам и вплавь по реке (над водой видна спина), у берега две хатки из веток */
+      var BANK2 = [[-12.3, 40], [-11.8, 32], [-13.2, 24], [-12.8, 17], [-15.8, 11], [-20.4, 5], [-21.2, -1], [-20.2, -9]], SWIM = [[-8.4, 46], [-8.9, 40], [-8, 32], [-9.4, 24], [-9, 17], [-12.4, 11.8], [-17, 6.5], [-17.6, -1], [-16.6, -9]];
+      walk(mk("beaver"), BANK, G, [2, 9], 0.6); walk(mk("beaver"), BANK, G, [3, 10], 0.6); walk(mk("beaver"), BANK, G, [1, 8], 0.6);
+      walk(mk("beaver"), BANK2, G, [2, 9], 0.6); walk(mk("beaver"), BANK2, G, [3, 12], 0.6); walk(mk("beaver"), BANK2, G, [1, 7], 0.6);
+      [SWIM.slice(0, 4).concat([[-9.1, 16.4]]), [[-12, 12.2], [-17, 6.5], [-17.6, -1], [-16.6, -9]]].forEach(function (sw) { var sb = mk("beaver"); sb.speed = 0.55; sb.waddle = 0; walk(sb, sw, G - 0.13, [1, 5], 0.6); });   /* версия 358: плывут выше и ниже запруды, через неё не проплывают */   // плывут: тело наполовину в воде
+      [].forEach(function (h) {   /* версия 358: хатки бобров убраны совсем (слово владельца «бобрин домик убери») */ var lg = new THREE.Group(), lm = mat(0x4a3826, { roughness: 1 }), lm2 = mat(0x5e4a33, { roughness: 1 });
+        part(lg, new THREE.SphereGeometry(1, 9, 6, 0, Math.PI * 2, 0, Math.PI / 2), lm, 0, 0, 0).scale.set(1.3, 0.75, 1.1);
+        for (var s = 0; s < 14; s++) { var a0 = s / 14 * Math.PI * 2, st = bx(lg, 1.1, 0.05, 0.05, s % 2 ? lm : lm2, Math.cos(a0) * 0.9, 0.3 + (s % 3) * 0.12, Math.sin(a0) * 0.8); st.rotation.set(0.3 * (s % 2 ? 1 : -1), -a0 + 1.2, 0.5); }
+        lg.position.set(h[0], G, h[1]); scene.add(lg); });   // хатки бобров из веток
+      (function () {   /* версия 358 (снимок владельца: «здесь у них запруда, перегородили речку сильно»): бобровая плотина поперёк реки выше курятника, ~9 м от берега до берега */
+        var dg = new THREE.Group(), dm = mat(0x4b3a27, { roughness: 1 }), dm2 = mat(0x6a5236, { roughness: 1 }), dmud = mat(0x3a3024, { roughness: 1 }), L = 6.4, s;   /* владелец: «левее, и на берега не выходить» - только по ширине воды */
+        for (s = 0; s < 14; s++) { var sx = -L / 2 + (s + 0.5) * L / 14, hh = 0.38 + ((s * 0.618) % 1) * 0.3, sg = bx(dg, L / 14 + 0.25, hh, 1.1 + ((s * 0.37) % 1) * 0.5, s % 2 ? dmud : dm, sx, hh / 2 - 0.02, ((s * 0.29) % 1 - 0.5) * 0.3); sg.rotation.y = ((s * 0.53) % 1 - 0.5) * 0.5; }   // неровный вал из ила и веток
+        for (s = 0; s < 46; s++) { var x = -L / 2 + (s * 0.618 % 1) * L, st = bx(dg, 0.9 + (s % 4) * 0.35, 0.06, 0.06, s % 3 ? dm : dm2, x, 0.45 + (s % 5) * 0.08, ((s * 0.37) % 1 - 0.5) * 1.1); st.rotation.set((s % 2 ? 1 : -1) * 0.35, (s * 1.7) % 3.1, (s % 3 - 1) * 0.3); }
+        dg.position.set(-10.7, G, 14.4); dg.rotation.y = Math.atan2(0.548, 0.839); scene.add(dg);
+        var wv = part(dg, new THREE.PlaneGeometry(L * 0.8, 0.5), new THREE.MeshBasicMaterial({ color: 0x2c3a44, transparent: true, opacity: 0.55, toneMapped: false, depthWrite: false }), 0, 0.12, -0.75); wv.rotation.x = -0.9;   // слив воды через гребень
+      })();
+      walk(mk("goat"), RING, G, [3, 12], 3, 6, 15);
+      walk(mk("hare"), RING, G, [1, 6], 3, 6, 15);
+      walk(mk("hare"), RING, G, [1, 7], 3, 6, 15);
+      var tmp = new THREE.Vector3();
+      window.ANIMALS = function (dt) {
+        A.forEach(function (a) {
+          var moving = a.wait <= 0;
+          if (moving) {
+            tmp.subVectors(a.tgt, a.g.position); tmp.y = 0; var dist = tmp.length(), step = a.base * a.run * dt;
+            if (dist <= step) { a.g.position.x = a.tgt.x; a.g.position.z = a.tgt.z;
+              if (a.i !== a.goal) { a.i += a.goal > a.i ? 1 : -1; pick(a); }
+              else { a.wait = a.pause[0] + Math.random() * (a.pause[1] - a.pause[0]); var n = 1 + Math.floor(Math.random() * 6) * (Math.random() < 0.5 ? -1 : 1); a.goal = Math.max(a.lo, Math.min(a.hi, a.i + n)); if (a.goal === a.i) a.goal = a.i > a.lo ? a.i - 1 : a.i + 1; a.run = Math.random() < 0.25 ? 2.2 : 0.7 + Math.random() * 0.6; if (a.goal !== a.i) { a.i += a.goal > a.i ? 1 : -1; pick(a); } } }
+            else { tmp.multiplyScalar(step / dist); a.g.position.x += tmp.x; a.g.position.z += tmp.z;
+              var ry = Math.atan2(-tmp.z, tmp.x), dr = ry - a.g.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); a.g.rotation.y += dr * Math.min(1, dt * 5); }
+          } else a.wait -= dt;
+          a.g.position.y = a.y;
+          if (moving) a.ph += dt * a.freq * Math.min(1.6, a.run);
+          var sw = moving ? Math.sin(a.ph) : 0;
+          a.legs.forEach(function (l, j) { l.rotation.z = sw * a.amp * (j % 3 ? -1 : 1); });
+          if (a.hop) a.g.position.y += moving ? Math.abs(Math.sin(a.ph * 0.5)) * a.hop : 0;
+          if (a.bound) a.g.position.y += moving ? Math.abs(Math.sin(a.ph)) * a.bound : 0;
+          if (a.waddle) a.g.rotation.x = sw * a.waddle;
+        });
+      };
+    })();
     // версия 264: касание домика - «Свет внутри», перголы - «Свет под навесом»; окно и дверь светятся, когда горит свет внутри
     coop.traverse(function (m) { if (m.isMesh) m.userData.dev = m.material === pM || m.userData.run ? "k5" : "k3"; });
     var winG = new THREE.MeshBasicMaterial({ color: 0xffc77a, transparent: true, opacity: 0, toneMapped: false, depthWrite: false });
@@ -2822,7 +2902,7 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
     if (WIDE() && current && NEIGH[current] && current !== "terrace") { var fr = focusRoom(); if (fr !== focNow) { focNow = fr; ui(); var fe = document.querySelector("#chips .grp.foc"); if (fe && Date.now() - chipsTouchT > 900 && fe.scrollIntoView) fe.scrollIntoView({ block: "nearest", behavior: "smooth" }); } }   // версия 320: подсветка группы, на которую смотрят
     if (window.SITE_GATE) { var gdt = GATE.t ? Math.min(0.1, (now - GATE.t) / 1000) : 0, gtg = GATE_X[GATE.pos] || 15.2; GATE.t = now; GATE.x += Math.max(-0.22 * gdt, Math.min(0.22 * gdt, gtg - GATE.x)); SITE_GATE.position.x = GATE.x; if (window.SITE_FLOOD && byId.k8) { var fa = Math.sqrt((byId.k8.curBri || 0) / 100); SITE_FLOOD.color.setRGB(0.23 + 0.77 * fa, 0.22 + 0.76 * fa, 0.21 + 0.7 * fa); } if (window.SITE_SCONCE && byId.k1) { var sa = (byId.k1.curBri || 0) / 100; SITE_SCONCE.color.setRGB(0.23 + 0.77 * Math.sqrt(sa), 0.22 + 0.62 * Math.sqrt(sa), 0.21 + 0.35 * Math.sqrt(sa)); } if (window.SITE_COOPWIN && byId.k3) { var cw = Math.max(byId.k3.curBri || 0, byId.k4.curBri || 0) / 100; SITE_COOPWIN.opacity = Math.min(0.92, 0.15 + Math.sqrt(cw)) * (cw > 0.01 ? 1 : 0); } if (window.SITE_LAMP) { var gOn = Math.abs(gtg - GATE.x) > 0.005 && Math.floor(now / 500) % 2 === 0; SITE_LAMP.m.emissiveIntensity = gOn ? 2.2 : 0.15; SITE_LAMP.l.intensity = gOn ? 1.6 : 0; } }   // версия 259: ворота едут ~0,22 м/с; версия 260: лампа мигает, пока едут
     atvScreen(now);   // версия 247
-    var dt = Math.min(0.1, (now - last) / 1000); last = now; climTick(now);   // версия 186
+    var dt = Math.min(0.1, (now - last) / 1000); last = now; climTick(now); if (window.ANIMALS) ANIMALS(dt);   /* версия 354: звери за участком */   // версия 186
     DEV.forEach(function (d) {   // версия 158: цифра не крутится - лежит ровно, параллельно решётке, читается лицом к двери
       if (d.rotor && d.lvl > 0) d.rotor.rotation.z -= dt * (2 + d.lvl * 2.2);
       var A = d.air; if (!A) return; var on = d.lvl > 0 && current === d.room; A.pts.visible = on; if (!on) return;
@@ -2855,7 +2935,7 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
     SKY.moon.position.y += (90 * Math.tan((10 - Math.max(0, Math.min(1, (camera.position.y - 2) / 8)) * 12.7) * Math.PI / 180) - SKY.moon.position.y) * skK;   /* луна: с земли - на 10 градусов над горизонтом, с высоты общего вида - у дальнего края земли, чтобы оставалась в кадре */
     moon.color.lerp(outside ? SKY.sunC : SKY_IN.sun, skK); moon.intensity += ((outside ? SKY.sunI : 0.38 * Math.min(1, (frame.litPrev || 0) / 1.2)) - moon.intensity) * skK;   /* версия 329: внутри дома направленный свет есть, только пока в комнате что-то горит - иначе он давал отблески на стенах при выключенном свете */
     hemi.color.lerp(outside ? SKY.hemiS : SKY_IN.hs, skK); hemi.groundColor.lerp(outside ? SKY.hemiG : frame.hgC.copy(frame.hgOff).lerp(SKY_IN.hg, Math.min(1, (frame.litPrev || 0) / 1.2)), skK);   /* версия 333 (владелец: «менее контрастно стало»): без света общий свет снизу темнее - потолок и тени глубже, картинка не плоская */
-    hemi.intensity += (((current ? (outside ? 0.32 : 0.34 /* версия 333 */ - 0.02 * Math.min(1, (frame.litPrev || 0) / 1.2)) : 0.62) + (outside ? 0.3 * SKY.dayF : 0)) - hemi.intensity) * Math.min(1, dt * 3);   /* версия 52: в комнате общий фон тише - яркость светильников видна */
+    hemi.intensity += (((current ? (outside ? 0.32 : 0.34 /* версия 333 */ - 0.02 * Math.min(1, (frame.litPrev || 0) / 1.2)) : 0.62) * (outside ? SKY.hemiK : 1) + (outside ? 0.3 * SKY.dayF : 0)) - hemi.intensity) * Math.min(1, dt * 3);   /* версия 52: в комнате общий фон тише - яркость светильников видна */
     Object.keys(ROOMS).forEach(function (id) { ROOMS[id].glowA = 0; });
     DEV.forEach(function (d) {
       if (d.light) {
@@ -2933,8 +3013,8 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   // ---------------------------------------------------------------- живое состояние с шины (только просмотр)
   function badge() {
     var b = $("live");
-    if (!LIVE.on) { b.textContent = "Образец · версия 353"; b.className = "demo"; return; }
-    b.innerHTML = (LIVE.ok ? "<span class=\"lt\">Дом на связи · </span>" : "<span class=\"lt\">Нет связи с домом · </span>") + "в. 353"; b.title = LIVE.ok ? "Дом на связи" : "Нет связи с домом";
+    if (!LIVE.on) { b.textContent = "Образец · версия 358"; b.className = "demo"; return; }
+    b.innerHTML = (LIVE.ok ? "<span class=\"lt\">Дом на связи · </span>" : "<span class=\"lt\">Нет связи с домом · </span>") + "в. 358"; b.title = LIVE.ok ? "Дом на связи" : "Нет связи с домом";
     b.className = "demo " + (LIVE.ok ? "ok" : "bad");
   }
   // версия 51: где сейчас телевизор и штора - по времени последней команды (служба помнит её время): ещё едут - с середины хода, доехали - в конце
