@@ -314,7 +314,7 @@ input[type=range]::-moz-range-thumb { width: 26px; height: 26px; border-radius: 
     <button class="back" id="plan" type="button" hidden>План</button>   <!-- версия 202: из комнаты - назад на план -->
     <button class="back" id="back" type="button" hidden>Весь дом</button>
     <span class="gpill" id="gpill" hidden></span>   <!-- версия 300 -->
-    <span class="demo" id="live">Образец · версия 352</span>
+    <span class="demo" id="live">Образец · версия 353</span>
   </div>
 
   <div class="gover" id="gover" hidden><b id="goverT"></b><span id="goverS"></span></div>   <!-- версия 300: гостевой доступ истёк / ещё не начался -->
@@ -592,7 +592,23 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
     var sg = new THREE.BufferGeometry(); sg.setAttribute("position", new THREE.Float32BufferAttribute(sp, 3)); sg.setAttribute("color", new THREE.Float32BufferAttribute(scol, 3));
     var stc = document.createElement("canvas"); stc.width = stc.height = 32; var st2 = stc.getContext("2d"), stg = st2.createRadialGradient(16, 16, 0, 16, 16, 16); stg.addColorStop(0, "rgba(255,255,255,1)"); stg.addColorStop(0.35, "rgba(255,255,255,.85)"); stg.addColorStop(1, "rgba(255,255,255,0)"); st2.fillStyle = stg; st2.fillRect(0, 0, 32, 32);   // звезда - мягкая круглая точка, яркость у каждой своя
     var stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, map: new THREE.CanvasTexture(stc), vertexColors: true, size: 3.4, sizeAttenuation: false, transparent: true, opacity: 0, fog: false, depthWrite: false, toneMapped: false })); stars.renderOrder = -9; stars.raycast = noRay; stars.frustumCulled = false; grp.add(stars);
-    var mc = document.createElement("canvas"); mc.width = mc.height = 128; var m2 = mc.getContext("2d"), mg = m2.createRadialGradient(64, 64, 8, 64, 64, 64); mg.addColorStop(0, "rgba(225,233,255,.5)"); mg.addColorStop(1, "rgba(225,233,255,0)"); m2.fillStyle = mg; m2.fillRect(0, 0, 128, 128); m2.fillStyle = "#eef2fb"; m2.beginPath(); m2.arc(64, 64, 13, 0, 7); m2.fill();
+    var mc = document.createElement("canvas"); mc.width = mc.height = 256; var m2 = mc.getContext("2d");
+    /* версия 353: луна в своей фазе (слово владельца «следить за фазой Луны и рисовать её, какая она сейчас»); фаза по дате: от новолуния 06.01.2000 18:14 UTC, синодический месяц 29,530589 сут.; ?moon=0.25 - проверка */
+    var moonPhase = function () { var q = /[?&]moon=([\d.]+)/.exec(location.search); if (q) return (+q[1]) % 1; var d = (Date.now() - Date.UTC(2000, 0, 6, 18, 14)) / 86400000 / 29.530588853; return d - Math.floor(d); };
+    var drawMoon = function (ph) {
+      var c = 128, r = 26, lit = (1 - Math.cos(2 * Math.PI * ph)) / 2, sd = ph < 0.5 ? 1 : -1, a = r * Math.cos(2 * Math.PI * ph), k;
+      m2.clearRect(0, 0, 256, 256);
+      var mg = m2.createRadialGradient(c, c, 16, c, c, 128); mg.addColorStop(0, "rgba(225,233,255," + (0.12 + 0.4 * lit).toFixed(3) + ")"); mg.addColorStop(1, "rgba(225,233,255,0)"); m2.fillStyle = mg; m2.fillRect(0, 0, 256, 256);   // ореол - тем ярче, чем больше освещено
+      m2.fillStyle = "rgba(60,70,92,.55)"; m2.beginPath(); m2.arc(c, c, r, 0, 7); m2.fill();   // неосвещённая часть - чуть видна (пепельный свет)
+      m2.save(); m2.beginPath();
+      for (k = 0; k <= 32; k++) { var t1 = -Math.PI / 2 + Math.PI * k / 32; m2.lineTo(c + sd * r * Math.cos(t1), c + r * Math.sin(t1)); }   // освещённый край: справа - растущая, слева - убывающая
+      for (k = 32; k >= 0; k--) { var t2 = -Math.PI / 2 + Math.PI * k / 32; m2.lineTo(c + sd * a * Math.cos(t2), c + r * Math.sin(t2)); }   // граница света и тени - полуэллипс
+      m2.closePath(); m2.clip();
+      m2.fillStyle = "#eef2fb"; m2.fillRect(c - r, c - r, 2 * r, 2 * r);
+      m2.fillStyle = "rgba(150,160,180,.35)"; [[-8, -7, 7], [6, -10, 5], [-2, 6, 8], [10, 7, 4], [-12, 9, 4]].forEach(function (s) { m2.beginPath(); m2.arc(c + s[0], c + s[1], s[2], 0, 7); m2.fill(); });   // моря - тёмные пятна
+      m2.restore();
+    };
+    var moonPh = moonPhase(); drawMoon(moonPh);
     var moonT = new THREE.CanvasTexture(mc); moonT.encoding = THREE.sRGBEncoding; var moonS = new THREE.Sprite(new THREE.SpriteMaterial({ map: moonT, transparent: true, opacity: 0, fog: false, depthWrite: false, toneMapped: false })); moonS.scale.set(18, 18, 1); moonS.position.set(-68, 9, -60);   /* луна невысоко над горизонтом: в общем виде небо видно только до 10-12 градусов */ moonS.renderOrder = -8; moonS.raycast = noRay; grp.add(moonS);
     scene.add(grp);
     var C = function (h) { return new THREE.Color(h); }, N = { top: C(0x04060c), mid: C(0x0b1424), hor: C(0x1c2c48) }, D = { top: C(0x2f7fe0), mid: C(0x74b6f2), hor: C(0xdcecf8) }, K = { top: C(0x1b2a55), mid: C(0x7a5f86), hor: C(0xe6a678) };
@@ -600,6 +616,8 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
     var S = { grp: grp, moon: moonS, dayF: 0, duskF: 0, hor: C(0x1c2c48), sunC: C(0xb9c8ea), sunI: 0.5, hemiS: C(0x93a8d8), hemiG: C(0x1c2026) };
     var ss = function (a, b, x) { var t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
     S.update = function () {
+      var mp = moonPhase(); if (Math.abs(mp - moonPh) > 0.004) { moonPh = mp; drawMoon(mp); moonT.needsUpdate = true; }   /* версия 353: фаза луны обновляется раз в минуту вместе с небом */
+      S.moonPhase = moonPh;
       var q = /[?&]hour=([\d.]+)/.exec(location.search), now = new Date(), hh = q ? +q[1] : now.getHours() + now.getMinutes() / 60, st = sunTimes(now);
       var dayF = Math.min(ss(st.rise - 0.55, st.rise + 0.45, hh), 1 - ss(st.set - 0.45, st.set + 0.55, hh)), duskF = Math.max(0, 1 - Math.min(Math.abs(hh - st.rise), Math.abs(hh - st.set)) / 0.9); duskF = duskF * duskF * (3 - 2 * duskF);
       S.dayF = dayF; S.duskF = duskF; S.hour = hh; S.rise = st.rise; S.set = st.set;
@@ -2915,8 +2933,8 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   // ---------------------------------------------------------------- живое состояние с шины (только просмотр)
   function badge() {
     var b = $("live");
-    if (!LIVE.on) { b.textContent = "Образец · версия 352"; b.className = "demo"; return; }
-    b.innerHTML = (LIVE.ok ? "<span class=\"lt\">Дом на связи · </span>" : "<span class=\"lt\">Нет связи с домом · </span>") + "в. 352"; b.title = LIVE.ok ? "Дом на связи" : "Нет связи с домом";
+    if (!LIVE.on) { b.textContent = "Образец · версия 353"; b.className = "demo"; return; }
+    b.innerHTML = (LIVE.ok ? "<span class=\"lt\">Дом на связи · </span>" : "<span class=\"lt\">Нет связи с домом · </span>") + "в. 353"; b.title = LIVE.ok ? "Дом на связи" : "Нет связи с домом";
     b.className = "demo " + (LIVE.ok ? "ok" : "bad");
   }
   // версия 51: где сейчас телевизор и штора - по времени последней команды (служба помнит её время): ещё едут - с середины хода, доехали - в конце
