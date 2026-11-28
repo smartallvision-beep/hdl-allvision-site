@@ -314,7 +314,7 @@ input[type=range]::-moz-range-thumb { width: 26px; height: 26px; border-radius: 
     <button class="back" id="plan" type="button" hidden>План</button>   <!-- версия 202: из комнаты - назад на план -->
     <button class="back" id="back" type="button" hidden>Весь дом</button>
     <span class="gpill" id="gpill" hidden></span>   <!-- версия 300 -->
-    <span class="demo" id="live">Образец · версия 358</span>
+    <span class="demo" id="live">Образец · версия 359</span>
   </div>
 
   <div class="gover" id="gover" hidden><b id="goverT"></b><span id="goverS"></span></div>   <!-- версия 300: гостевой доступ истёк / ещё не начался -->
@@ -2002,7 +2002,7 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   document.addEventListener("selectstart", function (e) { if (e.target.tagName !== "INPUT") e.preventDefault(); });
   canvas.addEventListener("touchstart", function (e) { if (e.touches.length === 1) e.preventDefault(); }, { passive: false });   // iOS: не начинать выделение и лупу
   canvas.addEventListener("wheel", function (e) { e.preventDefault(); zoom(e.deltaY > 0 ? 1.08 : 0.93); }, { passive: false });
-  function zoom(f) {
+  function zoom(f) { return;   /* версия 359 (слово владельца: «зум убрать совсем - в одну сторону зумится, назад не вернуть»): щипок и колесо больше не приближают */
     if (current) look.fov = Math.max(40, Math.min(100, look.fov * f));
     else orbit.dist = Math.max(9, Math.min(60, orbit.dist * f));   /* версия 251: участок - можно отдалить до 60 м */
   }
@@ -3013,8 +3013,8 @@ window.VIEW_ONLY = true;   /* на дом команды не уходят; на
   // ---------------------------------------------------------------- живое состояние с шины (только просмотр)
   function badge() {
     var b = $("live");
-    if (!LIVE.on) { b.textContent = "Образец · версия 358"; b.className = "demo"; return; }
-    b.innerHTML = (LIVE.ok ? "<span class=\"lt\">Дом на связи · </span>" : "<span class=\"lt\">Нет связи с домом · </span>") + "в. 358"; b.title = LIVE.ok ? "Дом на связи" : "Нет связи с домом";
+    if (!LIVE.on) { b.textContent = "Образец · версия 359"; b.className = "demo"; return; }
+    b.innerHTML = (LIVE.ok ? "<span class=\"lt\">Дом на связи · </span>" : "<span class=\"lt\">Нет связи с домом · </span>") + "в. 359"; b.title = LIVE.ok ? "Дом на связи" : "Нет связи с домом";
     b.className = "demo " + (LIVE.ok ? "ok" : "bad");
   }
   // версия 51: где сейчас телевизор и штора - по времени последней команды (служба помнит её время): ещё едут - с середины хода, доехали - в конце
